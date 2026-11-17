@@ -175,3 +175,45 @@ html[data-theme="dark"] #map{background:#28323c}
   pointer-events:none;
 }
 .map-basemap-notice[hidden]{display:none}
+
+/* Integração P9+P14 — quatro modos sem esmagar controles no celular. */
+@media(max-width:759px){
+  .sheet-head{
+    display:grid;
+    grid-template-columns:minmax(0,1fr) 44px;
+    gap:6px;
+    align-items:center;
+    min-height:64px;
+    padding:6px 9px 8px;
+  }
+  .sheet-head .sheet-identity{display:none}
+  .sheet-head .quick-tabs{
+    display:grid;
+    grid-template-columns:repeat(4,minmax(0,1fr));
+    width:100%;
+    min-width:0;
+    gap:4px;
+    align-items:stretch;
+  }
+  #sheet .quick-tabs button{
+    width:100%;
+    min-height:44px;
+    padding:6px 1px;
+    font-size:clamp(11px,3.4vw,13px);
+    white-space:nowrap;
+    text-overflow:ellipsis;
+    overflow:hidden;
+  }
+  .sheet-toggle{min-width:44px;min-height:44px}
+  #sheet:not(.detail) #body{padding-bottom:env(safe-area-inset-bottom,0px)}
+  #sheet .route-place-actions button,
+  #sheet .route-options select,
+  #sheet .route-plan-button{min-height:44px}
+  #sheet .route-place input{font-size:16px;min-height:44px}
+  #sheet .route-options label{font-size:13px}
+}
+@media(max-width:360px){
+  .sheet-head{gap:3px;padding-inline:6px}
+  .sheet-head .quick-tabs{gap:2px}
+  #sheet .quick-tabs button{font-size:11px}
+}
