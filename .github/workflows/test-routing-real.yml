@@ -8,6 +8,9 @@ on:
     paths:
       - transit/planner.py
       - tests/test_planner.py
+      - tests/test_walking.py
+      - transit/walking.py
+      - catalog/walk-network.json.gz
       - scripts/build_routing.py
       - .github/workflows/test-routing-real.yml
   workflow_dispatch:
@@ -36,6 +39,18 @@ jobs:
           from transit.planner import JourneyPlanner
           p=JourneyPlanner(Path('catalog'))
           assert p.ready, p.failure
+          if p.walking.ready:
+            print('WALK_NETWORK_REAL',len(p.walking.points),'nodes')
+            nearest=p.nearby(-19.8695,-43.9675,radius=550,limit=25)
+            reachable=[
+              p.walking.route((-19.8695,-43.9675),
+                              tuple(float(x) for x in p.stops[sid][1:3]),
+                              max_meters=950)
+              for _,sid in nearest
+            ]
+            count=sum(x is not None for x in reachable)
+            print('WALK_REACHABLE_UFMG',count,'of',len(nearest))
+            assert count>=1, 'Nenhum ponto acessível pela rede OSM próximo à UFMG'
           pairs=[
             ({'lat':-19.8695,'lng':-43.9675},{'lat':-19.918,'lng':-43.938},
              'departAt','fastest'),
