@@ -61,4 +61,5 @@ def summarize(rows):
             'medianErrorMinutes':round(statistics.median(abs_errors),2) if abs_errors else None,
             'p90ErrorMinutes':round(p90,2) if p90 is not None else None,
             'signedBiasMinutes':round(statistics.mean(errors),2) if errors else None,
-            'fieldAccuracyVerified':bool(errors)}
+            'errorCalculable':bool(errors),
+            'fieldAccuracyVerified':False}
