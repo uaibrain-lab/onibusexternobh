@@ -119,5 +119,49 @@ function suggest(metro,origin,destination,epoch,mode='departAt'){
   return aa.localeCompare(bb)
  }).slice(0,8);
 }
-global.__MetroJourney={suggest,lineState,routeMinutes};
+function multimodal(metro,busItineraries,origin,destination,requested,mode='departAt'){
+  // Combining a scheduled bus with an estimated rail trip must never
+  // make an unverified transfer look like a confirmed boarding.
+  if(mode!=='departAt')return [];
+  const result=[],seen=new Set();
+  function save(hint,bus,order){
+    const fingerprint=order+':'+bus.tripId+':'+hint.line+':'+hint.fromStationId+':'+hint.toStationId;
+    if(seen.has(fingerprint))return;
+    seen.add(fingerprint);
+    result.push({...hint,mode:order,status:'conditional_bus_metro',
+      busLine:bus.line,busTripId:bus.tripId,
+      busDeparture:bus.departure,busArrival:bus.arrival,
+      confidence:'scheduled bus + uncertain metro boarding window; no guarantee',
+      note:'Conexão CONDICIONAL: ônibus programado GTFS; espera/viagem de metrô estimadas; distância entre estação e ponto não verificada por ruas.'});
+  }
+  for(const trip of busItineraries.slice(0,6)){
+    const buses=trip.legs.filter(x=>x.mode==='bus');
+    if(!buses.length)continue;
+    const first=buses[0],last=buses.at(-1);
+    // Metro first: only include a feeder transfer if even the worst-case
+    // published interval estimate reaches the verified bus boarding stop.
+    const early=suggest(metro,origin,first.fromCoords,requested,'departAt');
+    for(const hint of early){
+      if(!hint.timeWindow.latestArrival)continue;
+      const station=metro.stations.find(x=>x.id===hint.toStationId);
+      if(!station||dist([station.lat,station.lng],first.fromCoords)>500)continue;
+      const walk=walkMs(dist([station.lat,station.lng],first.fromCoords));
+      if(Date.parse(hint.timeWindow.latestArrival)+walk+45000 <=
+         Date.parse(first.departure)){
+        save(hint,first,'metro+bus');
+      }
+    }
+    // Bus first: arrive at a station from the final scheduled bus,
+    // then train to a station near the destination; no precise train ETA.
+    const late=suggest(metro,last.toCoords,destination,
+      Date.parse(last.arrival),'departAt');
+    for(const hint of late){
+      const station=metro.stations.find(x=>x.id===hint.fromStationId);
+      if(!station||dist([station.lat,station.lng],last.toCoords)>500)continue;
+      save(hint,last,'bus+metro');
+    }
+  }
+  return result.slice(0,8);
+}
+global.__MetroJourney={suggest,lineState,routeMinutes,multimodal};
 })(self);
