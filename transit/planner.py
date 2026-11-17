@@ -18,6 +18,7 @@ import hashlib
 import json
 import math
 import pathlib
+from array import array
 from dataclasses import dataclass
 from typing import Optional
 
@@ -161,7 +162,13 @@ class JourneyPlanner:
         return bool(entry and entry['start_date']<=d<=entry['end_date']
                     and entry[WEEKDAYS[date.weekday()]]=='1')
 
-    @functools.lru_cache(maxsize=32)
+    @functools.lru_cache(maxsize=128)
+    def _binary_trips(self,code,binary_path):
+        # Packed route tables are small enough to retain without expanding
+        # millions of nested stop list objects.
+        return BinaryTripTable.read(self.catalog/binary_path,self.stop_ids)
+
+    @functools.lru_cache(maxsize=24)
     def _trips(self,code):
         name=self.files.get(code)
         if not name:
@@ -171,14 +178,14 @@ class JourneyPlanner:
             if binary_path:
                 # Compact UBR3 keeps 11 bytes per stop without expanding
                 # millions of nested Python lists into resident memory.
-                return BinaryTripTable.read(self.catalog/binary_path,self.stop_ids)
+                return self._binary_trips(code,binary_path)
             # Offline-compatible legacy GTFS shards remain a fallback.
             with gzip.open(self.catalog/name,'rb') as file:
                 return tuple(_JSON_LOADS(line) for line in file)
         except (OSError,ValueError,IndexError) as exc:
             raise PlannerError('Falha ao ler o índice da linha '+str(code)) from exc
 
-    @functools.lru_cache(maxsize=24)
+    @functools.lru_cache(maxsize=128)
     def _trip_stop_index(self, code):
         """Inverted stop->trip offsets for this route.
 
@@ -186,12 +193,12 @@ class JourneyPlanner:
         The immutable route shard stays the source of truth for trips,
         service dates, and the exact stop sequence.
         """
-        by_stop = collections.defaultdict(list)
+        by_stop = collections.defaultdict(lambda: array('I'))
         for i, (_, _, _, stops) in enumerate(self._trips(code)):
             # Preserve each trip only once per stop, even on loop services.
             for sid in {row[0] for row in stops}:
                 by_stop[sid].append(i)
-        return {sid: tuple(indices) for sid, indices in by_stop.items()}
+        return dict(by_stop)
 
     def _insert(self,labels,label,backward=False):
         current=labels.setdefault(label.stop,[])
