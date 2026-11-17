@@ -67,6 +67,7 @@ def build_graph(ways):
     nodes={}
     edges={}
     accepted=0
+    edge_count=0
     for tags,points in ways:
         if not allowed(tags):
             continue
@@ -89,10 +90,12 @@ def build_graph(ways):
             nodes[a]=(round(lat1*1e6),round(lon1*1e6))
             nodes[b]=(round(lat2*1e6),round(lon2*1e6))
             if not reverse_only:
-                edges.setdefault(a,{})[b]=length
+                if b not in edges.setdefault(a,{}):edge_count+=1
+                edges[a][b]=length
             if not oneway or reverse_only:
-                edges.setdefault(b,{})[a]=length
-            if len(nodes)>MAX_NODES or sum(map(len,edges.values()))>MAX_EDGES:
+                if a not in edges.setdefault(b,{}):edge_count+=1
+                edges[b][a]=length
+            if len(nodes)>MAX_NODES or edge_count>MAX_EDGES:
                 raise ValueError('Grafo OSM excedeu limites de memória predefinidos')
     return nodes,edges,accepted
 
