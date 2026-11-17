@@ -306,19 +306,81 @@ function setRoutePoint(which,point){
   routeStatus('Locais selecionados. Escolha o horário e pressione Encontrar trajetos.');
   drawSoon();
 }
+// P7: calculate all bus itineraries locally. Static GTFS, no paid backend.
+let freeWorker=null,freeInit=null,freeInitResolve=null,freeInitReject=null;
+let freeSeq=0,freeCallbacks=new Map();
+const freeBase=new URL('./catalog/scan/',location.href).href;
+function ensureFreeWorker(){
+  if(freeInit)return freeInit;
+  if(typeof Worker==='undefined')return Promise.reject(Error('Este navegador não suporta Web Workers.'));
+  freeInit=new Promise((resolve,reject)=>{freeInitResolve=resolve;freeInitReject=reject});
+  freeWorker=new Worker(new URL('./route-worker.js',location.href));
+  freeWorker.onmessage=event=>{
+    const msg=event.data||{};
+    if(msg.kind==='ready'){
+      if(freeInitResolve){freeInitResolve(msg);freeInitResolve=null;freeInitReject=null}
+      return;
+    }
+    const call=freeCallbacks.get(msg.seq);
+    if(msg.kind==='progress'){
+      if(call?.type==='plan')routeStatus('Buscando conexões GTFS no dispositivo: '+
+        msg.done+'/'+msg.total+' faixas de horário · '+msg.scanned.toLocaleString('pt-BR')+
+        ' conexões verificadas…');
+      return;
+    }
+    if(msg.kind==='error'){
+      if(freeInitReject){freeInitReject(Error(msg.message));freeInitResolve=null;freeInitReject=null}
+      if(call){freeCallbacks.delete(msg.seq);call.reject(Error(msg.message))}
+      return;
+    }
+    if((msg.kind==='result'||msg.kind==='places')&&call){
+      freeCallbacks.delete(msg.seq);call.resolve(msg);
+    }
+  };
+  freeWorker.onerror=event=>{
+    const error=Error(event.message||'Falha no motor local de rotas');
+    if(freeInitReject)freeInitReject(error);
+    freeInitReject=null;freeInitResolve=null;
+    for(const call of freeCallbacks.values())call.reject(error);
+    freeCallbacks.clear();freeInit=null;
+    freeWorker?.terminate();freeWorker=null;
+  };
+  freeWorker.postMessage({kind:'init',seq:++freeSeq,baseUrl:freeBase});
+  return freeInit;
+}
+async function freeCall(kind,props={}){
+  await ensureFreeWorker();
+  return new Promise((resolve,reject)=>{
+    const seq=++freeSeq;
+    for(const [id,previous] of freeCallbacks){
+      if(previous.type===kind){
+        previous.reject(Error('Consulta substituída'));freeCallbacks.delete(id);
+      }
+    }
+    freeCallbacks.set(seq,{resolve,reject,type:kind});
+    freeWorker.postMessage({kind,seq,baseUrl:freeBase,...props});
+  });
+}
 async function searchRoutePlace(which){
   const q=routeInput(which).value.trim(),area=routeCandidates(which);
-  if(q.length<3){routeStatus('Digite pelo menos 3 caracteres para buscar um endereço.','warn');return}
-  area.textContent='Buscando endereço…';
+  if(q.length<2){routeStatus('Digite pelo menos 2 caracteres de um ponto ou estação.','warn');return}
+  const coords=q.match(/^(-?\d{1,2}\.\d+)\s*[,;]\s*(-?\d{1,3}\.\d+)$/);
+  if(coords){
+    setRoutePoint(which,{lat:Number(coords[1]),lng:Number(coords[2]),label:'Coordenadas: '+q});return;
+  }
+  area.textContent='Procurando pontos e estações no catálogo…';
   try{
-    const result=await api('/api/places?q='+encodeURIComponent(q));
+    const result=await freeCall('places',{which,query:q});
     area.replaceChildren();
-    if(!result.items?.length){area.textContent='Nenhum endereço encontrado nesta região.';return}
+    if(!result.items?.length){
+      area.textContent='Não localizado no catálogo. Use Escolher no mapa para marcar um endereço.';
+      return;
+    }
     for(const p of result.items){
       const b=document.createElement('button');b.type='button';b.className='row-item';
       b.textContent=p.label;b.onclick=()=>setRoutePoint(which,p);area.append(b);
     }
-  }catch(e){area.textContent='Serviço de endereços indisponível. Você também pode escolher diretamente no mapa.'}
+  }catch(e){area.textContent='Busca local indisponível: '+e.message+' — use o mapa.'}
 }
 function pickRoutePlace(which){
   state.routePick=which;switchTab('rotas',false);closeSheet();
@@ -357,21 +419,15 @@ async function submitRoute(){
   routeStatus('Calculando viagens a partir dos horários GTFS…');
   $('routeResults').replaceChildren();$('routeMetroHints').replaceChildren();
   try{
-    const base=location.pathname.startsWith('/externo')?'/externo':'';
-    const response=await fetch(base+'/api/plan',{
-      method:'POST',cache:'no-store',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({origin,destination,
-        mode:when==='arriveBy'?'arriveBy':'departAt',
-        at:when==='now'?undefined:at,
-        preference:$('routePreference').value})
-    });
-    const data=await response.json();
-    if(!response.ok)throw Error(data.error||'Não foi possível calcular');
+    const response=await freeCall('plan',{params:{origin,destination,
+      mode:when==='arriveBy'?'arriveBy':'departAt',
+      at:when==='now'?undefined:at,
+      preference:$('routePreference').value}});
+    const data=response.data;
     state.routeResults=data.itineraries||[];state.routeSelected=0;
     renderRouteResults(data);
   }catch(e){
-    routeStatus('Falha ao consultar rotas: '+e.message,'warn');
+    routeStatus('Falha ao calcular rotas neste dispositivo: '+e.message,'warn');
   }finally{btn.disabled=false}
 }
 function renderRouteResults(data){
@@ -498,6 +554,7 @@ $('routeOriginLocation').onclick=useRouteLocation;
 $('routeWhen').onchange=routeWhenChanged;
 $('routeSubmit').onclick=submitRoute;
 initRouteDate();routeWhenChanged();
-api('/api/plan/status').then(x=>{
-  if(!x.ready)routeStatus('Índice detalhado do GTFS ainda não disponível neste servidor. A busca por ônibus ficará indisponível até a geração do catálogo.','warn');
-}).catch(()=>{});
+// Route calculations use only browser Worker and static data files.
+$('quick-rotas').addEventListener('click',()=>{
+  ensureFreeWorker().catch(e=>routeStatus('Catálogo estático indisponível: '+e.message,'warn'));
+});
