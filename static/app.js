@@ -324,8 +324,11 @@ function focusLineBoardingStop(stop,{userInitiated=false}={}){
   centerLineStop(stop);drawSoon();scheduleMapStops();
   const prefix=userInitiated?'Ponto selecionado. ':'Ponto mais próximo no percurso. ';
   $('lineStopForecast').textContent=prefix+'Consultando horários programados…';
+  const capturedId=lineFocusStopId,capturedCode=state.route.code;
   loadLineStopForecast(stop).catch(e=>{
-    $('lineStopForecast').textContent='Horários indisponíveis: '+e.message;
+    if(lineMode()&&state.route?.code===capturedCode&&
+       lineFocusStopId===capturedId)
+      $('lineStopForecast').textContent='Horários indisponíveis: '+e.message;
   });
 }
 async function loadLineStopForecast(stop){
@@ -374,7 +377,15 @@ async function selectPattern(){
     if(lineMode()&&lineFocusStopId){
       const focus=geo.selected.stops.find(s=>String(s.id)===String(lineFocusStopId));
       if(focus)focusLineBoardingStop(focus,{userInitiated:false});
-      else {lineFocusStopId=null;fitCoordinates(geo.selected.coordinates)}
+      else {
+        lineFocusStopId=null;
+        $('lineStopSelect').value='';
+        $('lineStopForecast').textContent='Este ponto não pertence ao sentido escolhido. Selecione outro.';
+        const closest=state.userPosition
+          ?nearestStopForLine(geo.selected.stops,state.userPosition):null;
+        if(closest)focusLineBoardingStop(closest,{userInitiated:false});
+        else fitCoordinates(geo.selected.coordinates);
+      }
     }else if(lineMode()&&state.userPosition){
       const best=nearestStopForLine(geo.selected.stops,state.userPosition);
       if(best)focusLineBoardingStop(best,{userInitiated:false});
