@@ -15,7 +15,21 @@ function mercator(lat,lng,z){const size=256*2**z;let y=Math.max(-85.0511,Math.mi
 function invMercator(x,y,z){const size=256*2**z;const n=Math.PI-2*Math.PI*y/size;return [180/Math.PI*Math.atan(Math.sinh(n)),x/size*360-180]}
 function screen(lat,lng){let [cx,cy]=mercator(...state.center,state.zoom),[px,py]=mercator(lat,lng,state.zoom);return [px-cx+$canvas.clientWidth/2,py-cy+$canvas.clientHeight/2]}
 function resize(){let dpr=Math.min(window.devicePixelRatio||1,(navigator.deviceMemory&&navigator.deviceMemory<=3)?1.35:1.75);$canvas.width=Math.floor($canvas.clientWidth*dpr);$canvas.height=Math.floor($canvas.clientHeight*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);drawSoon();scheduleMapStops()}
-function drawSoon(){if(!state.frame)state.frame=requestAnimationFrame(()=>{state.frame=0;draw()})}
+function drawSoon(){
+  if(state.frame)return;
+  state.frame=requestAnimationFrame(()=>{
+    state.frame=0;
+    try{
+      draw();
+      $('map').dataset.renderStatus='ready';
+    }catch(error){
+      // A single rendering bug must never leave "Carregando mapa" forever.
+      $('map').dataset.renderStatus='error';
+      $('mapToast').textContent='Mapa temporariamente indisponível. Consulte pontos e linhas pelo painel.';
+      console.error('Falha ao renderizar mapa',error);
+    }
+  });
+}
 let basemapFailures=0;
 function getTile(z,x,y){
   const n=2**z;
