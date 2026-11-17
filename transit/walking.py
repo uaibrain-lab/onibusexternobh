@@ -136,8 +136,8 @@ class WalkingGraph:
                 for n in chain]+[[round(end[0],6),round(end[1],6)]]
         return value
 
-    def reachable_stops(self,origin,stops,radius=1200,limit=28):
-        """Return only foot-reachable GTFS stops, sorted by walked distance."""
+    def reachable_stops(self,origin,stops,radius=1200,limit=28,reverse=False):
+        """Return connected footpaths; reverse=True means stop -> endpoint."""
         if not self.ready:
             return None
         results=[]
@@ -145,7 +145,7 @@ class WalkingGraph:
             target=(float(entry[1]),float(entry[2]))
             if distance_m(origin,target)>radius:
                 continue
-            path=self.route(origin,target,max_meters=int(radius*1.45))
+            path=self.route(target,origin,max_meters=int(radius*1.45)) if reverse else self.route(origin,target,max_meters=int(radius*1.45))
             if path:
                 results.append((path['meters'],sid,path))
         results.sort(key=lambda x:x[0])
