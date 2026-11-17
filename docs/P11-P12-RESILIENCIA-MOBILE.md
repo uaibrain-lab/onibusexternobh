@@ -23,6 +23,16 @@
 - Ao recolher o painel mobile, os controles ocultos ficam inertes ao teclado/leitor de tela. A tecla Escape fecha o detalhe ou recolhe o painel, sem interferir com diálogo de favorito.
 - Melhorias de tipografia, toque, contraste elevado e rotulagem dos tempos; ETA GPS permanece **aproximado** e horários de tabela são identificados.
 
+## P13 — primeira consulta rápida e leitura segura
+
+- Endpoints `/api/status`, `/api/stop` e `/api/fleet` iniciam `refresh_in_background()` sem aguardar a PBH. O usuário vê imediatamente a última telemetria disponível e/ou a tabela GTFS; a próxima consulta reflete o GPS recém-coletado.
+- O serviço expõe `gpsUpdating` para diferenciar **coleta em curso** de **GPS indisponível**. Uma posição GPS antiga nunca é rotulada como atual.
+- O calendário e o índice GTFS compactado são carregados uma única vez por processo, protegidos por lock e publicados apenas após leitura integral. Isso evita carregamentos simultâneos duplicados na primeira consulta.
+- A API mantém `poll=True` como padrão nos métodos do motor para compatibilidade com os testes e chamadas internas; o servidor HTTP escolhe `poll=False` após agendar a coleta.
+- Os testes `tests/test_p13_nonblocking.py` verificam o retorno imediato durante download lento e a leitura GTFS em paralelo.
+
+**Limite:** o protótipo Python local não garante disponibilidade contínua em produção. A hospedagem compartilhada e o monitoramento externo permanecem decisões da integração final.
+
 ## Testes
 
 ```bash
