@@ -132,6 +132,11 @@
           <option value="leastWalking">Andar menos</option>
           <option value="leastTransfers">Menos baldeações</option>
         </select>
+        <label for="routeSearchDepth"><strong>Profundidade da busca</strong></label>
+        <select id="routeSearchDepth">
+          <option value="standard">Normal — menor consumo do celular</option>
+          <option value="expanded">Ampliada — compara mais alternativas, pode demorar</option>
+        </select>
       </div>
       <button id="routeSubmit" type="button" class="btn primary route-plan-button">Encontrar trajetos</button>
       <div id="routePlanStatus" class="notice" role="status" aria-live="polite">Selecione origem e destino para começar.</div>
