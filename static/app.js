@@ -198,8 +198,9 @@ function reportError(e){console.error(e);statusLed(false,'Erro ao consultar dado
 async function refresh(){if(document.hidden)return;if(!state.route)return;const code=state.route.code;let [fleet,status]=await Promise.all([api('/api/fleet?route='+encodeURIComponent(code)),api('/api/status')]);if(state.route?.code!==fleet.line)return;state.fleet=fleet;updateStatus(status);renderVehicles();drawSoon()}
 // Interface compartilhada com o padrão visual do Hub UFMG / Interno.
 let activeTab='pontos';
-function openSheet(full=false){const sheet=$('sheet');sheet.classList.remove('peek');sheet.classList.toggle('full',!!full);$('sheet-toggle').setAttribute('aria-expanded','true');$('grab').setAttribute('aria-expanded','true');$('body').setAttribute('aria-hidden','false')}
-function closeSheet(){const sheet=$('sheet');sheet.classList.add('peek');sheet.classList.remove('full');$('sheet-toggle').setAttribute('aria-expanded','false');$('grab').setAttribute('aria-expanded','false');$('body').setAttribute('aria-hidden','true')}
+function syncSheetAccessibility(){const hidden=innerWidth<760&&$('sheet').classList.contains('peek');$('body').inert=hidden;$('body').setAttribute('aria-hidden',String(hidden))}
+function openSheet(full=false){const sheet=$('sheet');sheet.classList.remove('peek');sheet.classList.toggle('full',!!full);$('sheet-toggle').setAttribute('aria-expanded','true');$('grab').setAttribute('aria-expanded','true');syncSheetAccessibility()}
+function closeSheet(){if($('body').contains(document.activeElement))$('sheet-toggle').focus();const sheet=$('sheet');sheet.classList.add('peek');sheet.classList.remove('full');$('sheet-toggle').setAttribute('aria-expanded','false');$('grab').setAttribute('aria-expanded','false');syncSheetAccessibility()}
 function switchTab(tab,open=false){activeTab=tab;const pts=tab==='pontos';$('pontosPane').hidden=!pts;$('linhasPane').hidden=pts;$('quick-pontos').classList.toggle('on',pts);$('quick-linhas').classList.toggle('on',!pts);$('quick-pontos').setAttribute('aria-pressed',String(pts));$('quick-linhas').setAttribute('aria-pressed',String(!pts));if(open)openSheet()}
 function renderStops(){const el=$('stopList');el.textContent='';const stops=state.geometry?.selected?.stops||[];$('pontosHelp').textContent=stops.length?`${stops.length} paradas no trajeto`:'Selecione uma linha para ver suas paradas.';if(!stops.length){const b=document.createElement('button');b.type='button';b.className='row-item';b.textContent='Escolher linha e percurso';b.onclick=()=>switchTab('linhas',true);el.append(b);return}for(let [i,s] of stops.entries()){const b=document.createElement('button');b.type='button';b.className='row-item';b.dataset.stopId=s.id;const num=document.createElement('span');num.className='num';num.textContent=String(i+1);const text=document.createElement('span');text.className='name';const name=document.createElement('b');name.textContent=s.name;const meta=document.createElement('small');meta.textContent='Ponto '+(i+1)+' · toque para localizar';text.append(name,meta);b.append(num,text);b.onclick=()=>focusStop(s);el.append(b)}}
 function focusStop(stop){state.selectedStop=String(stop.id);updatePointLink(state.selectedStop);state.stopCoordinates=[Number(stop.lat),Number(stop.lng)];state.selectedVehicle="";state.center=[Number(stop.lat),Number(stop.lng)];state.zoom=Math.max(state.zoom,16);switchTab('pontos',true);centerStopInAvailableMap();$('body').scrollTo({top:0,behavior:'smooth'});for(let node of $('stopList').querySelectorAll('[data-stop-id]'))node.classList.toggle('selected',node.dataset.stopId===String(stop.id));drawSoon();scheduleMapStops();openStopDetail(state.selectedStop).catch(reportError)}
@@ -520,11 +521,16 @@ async function openStopDetail(id,silent=false){
   drawSoon();
 }
 
-switchTab('pontos');renderStops();
-window.addEventListener('resize',resize);document.addEventListener('visibilitychange',()=>{if(!document.hidden){drawSoon();scheduleMapStops();refresh().catch(reportError)}});
-resize();loadRoutes().catch(reportError);setInterval(()=>{if(document.hidden)return;tickVehicleAges();if(state.fleet?.vehicles?.length)drawSoon()},15000);setInterval(()=>refresh().catch(reportError),35000);setInterval(()=>{if(!document.hidden&&state.selectedStop)openStopDetail(state.selectedStop,true).catch(reportError)},35000);
+switchTab('pontos');renderStops();syncSheetAccessibility();
+window.addEventListener('resize',()=>{resize();syncSheetAccessibility()});
+document.addEventListener('keydown',event=>{if(event.key!=='Escape'||document.querySelector('dialog[open]'))return;if(state.selectedStop&&activeTab==='pontos')closeStopDetail();else if(innerWidth<760)closeSheet()});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden){drawSoon();scheduleMapStops();if(navigator.onLine)refresh().catch(reportError)}});
+resize();loadRoutes().catch(reportError);setInterval(()=>{if(document.hidden)return;tickVehicleAges();if(state.fleet?.vehicles?.length)drawSoon()},15000);setInterval(()=>{if(navigator.onLine)refresh().catch(reportError)},35000);setInterval(()=>{if(navigator.onLine&&!document.hidden&&state.selectedStop)openStopDetail(state.selectedStop,true).catch(reportError)},35000);
 
-// P8 PWA: cache only the static app shell, never GPS APIs or map tiles.
+window.addEventListener('offline',()=>{statusLed(false,'Sem conexão · favoritos disponíveis');$('stopDetail').classList.add('stale-arrivals');const note=$('stopDetail').querySelector('[data-note]');if(note)note.textContent='Sem conexão · últimos horários podem estar desatualizados.'});
+window.addEventListener('online',()=>{statusLed(false,'Reconectando…');if(state.selectedStop)openStopDetail(state.selectedStop,true).catch(reportError);refresh().catch(reportError)});
+
+// P11 PWA: shell network-first, GPS e tiles nunca ficam armazenados.
 if('serviceWorker' in navigator && (location.protocol==='https:' || ['localhost','127.0.0.1'].includes(location.hostname))
    && location.pathname.startsWith('/externo')){
   window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js',{scope:'./'}).catch(e=>console.info('PWA indisponível',e)));
