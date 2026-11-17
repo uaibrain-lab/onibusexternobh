@@ -1,3 +1,17 @@
+# P8 — Mais precisão com roteamento gratuito no navegador
+
+**Fase de desenvolvimento, sem deploy.** O planejador do Ônibus Externo BH agora carrega apenas as conexões GTFS dos grupos de calendário necessários à data consultada, trata viagens acima de 24h, respeita a margem inicial de embarque nas buscas de chegada e rejeita blocos incompletos.
+
+**Redução verificada de dados:** 18,35 → **4,13 MB** na consulta de partida e 13,69 → **3,48 MB** na busca reversa subsequente. O processamento continua no navegador e não exige Firebase Blaze/Cloud Functions nem VPS. Uma cache opcional guarda no máximo 16 blocos horários consultados.
+
+**Fonte e automação:** SHA-256 do GTFS oficial, validação e workflow que prepara a atualização sempre que a fonte mudar; a agenda GitHub só fica ativa após a integração à branch padrão, e **não publica no Firebase** nesta fase. O GTFS atual expira em 31/12/2026.
+
+**Ainda não está pronto para lançamento público:** resultados podem ser parciais, caminhadas não seguem a rede de ruas verificada, metrô sem horários de partidas integrados e telas antigas de ônibus dependentes de Python não migradas.
+
+Documentação e homologação: [P8 — Roteamento com custo zero](docs/ROTEAMENTO-P8-CUSTO-ZERO.md).
+
+---
+
 # P7 — Roteamento gratuito no navegador (17/11/2026)
 
 **O planejador de ônibus agora roda no navegador, sem servidor pago.** O catálogo GTFS oficial é convertido pelo GitHub Actions em arquivos estáticos horários comprimidos. As viagens são calculadas por um Web Worker, com saída programada ou chegada planejada, até duas baldeações, respeito às restrições oficiais de embarque/desembarque e alternativas por tempo, caminhada e transferências.
