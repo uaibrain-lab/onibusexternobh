@@ -1,0 +1,488 @@
+/* Externo BH P7 — client-side Connection Scan (CSA-like) in a Web Worker.
+ * Only static GTFS files: no APIs/paid routing server, no transmission of
+ * the user's origin/destination to any routing endpoint.
+ *
+ * Binary scan shards are built by scripts/build_static_scan.py:
+ * 5 little-endian uint32 per connection [from,to,depart,arrive,packed].
+ * GTFS calendar, service day >24h and pickup/dropoff restrictions apply.
+ * Metro is deliberately displayed as a non-timed suggestion only.
+ */
+'use strict';
+const HOUR=3600000, MIN=60000, DAY=86400000, MAX_HOURS=5;
+const TRIP_MASK=(1<<20)-1,BOARD=1<<20,ALIGHT=1<<21;
+const BUFFER=45000,WALK_SPEED=1.15,WALK_FACTOR=1.35,MAX_RIDES=3;
+const MAX_SCANNED=2100000,MAX_LABELS=8,MAX_ONBOARD=8;
+const cityTZ='America/Sao_Paulo';
+let root='',meta=null,stops=null,trips=null,grid=null,stopLines=null,metro=null;
+let currentSeq=0;
+const bucketCache=new Map(),nearCache=new Map();
+
+function bhDay(time) {
+  const parts=new Intl.DateTimeFormat('en-GB',{timeZone:cityTZ,year:'numeric',
+    month:'2-digit',day:'2-digit'}).formatToParts(new Date(time));
+  const item=type=>parts.find(p=>p.type===type).value;
+  return item('year')+'-'+item('month')+'-'+item('day');
+}
+function addDay(day,delta) {
+  return new Date(Date.parse(day+'T12:00:00Z')+delta*DAY).toISOString().slice(0,10);
+}
+function midnight(day){return Date.parse(day+'T00:00:00-03:00');}
+function stamp(epoch){return new Date(epoch).toISOString();}
+function distance(a,b) {
+  const dlat=(b[0]-a[0])*Math.PI/180,dlon=(b[1]-a[1])*Math.PI/180;
+  const la=a[0]*Math.PI/180,lb=b[0]*Math.PI/180;
+  const h=Math.sin(dlat/2)**2+Math.cos(la)*Math.cos(lb)*Math.sin(dlon/2)**2;
+  return 12742000*Math.asin(Math.min(1,Math.sqrt(Math.max(0,h))));
+}
+const cell=(a,b)=>Math.floor(a*200)+','+Math.floor(b*200);
+const walkSeconds=m=>Math.max(20,Math.ceil(m*WALK_FACTOR/WALK_SPEED+25));
+const rounded=m=>Math.round(m*WALK_FACTOR);
+function coord(p){
+  if(!p||!Number.isFinite(Number(p.lat))||!Number.isFinite(Number(p.lng)))throw Error('Coordenadas inválidas');
+  const a=Number(p.lat),b=Number(p.lng);
+  if(a < -20.5||a >-19.5||b < -44.4||b >-43.5)throw Error('Selecione um local na região de Belo Horizonte');
+  return [a,b];
+}
+function norm(s){return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('pt-BR')}
+async function loadBinary(url) {
+  const response=await fetch(url,{cache:'force-cache'});
+  if(!response.ok)throw Error('Arquivo GTFS indisponível (HTTP '+response.status+')');
+  const raw=await response.arrayBuffer();
+  if(raw.byteLength>=2 && new Uint8Array(raw,0,2)[0]===31
+      && new Uint8Array(raw,0,2)[1]===139) {
+    if(typeof DecompressionStream==='undefined')throw Error('Navegador sem suporte a gzip');
+    return new Response(new Blob([raw]).stream().pipeThrough(
+      new DecompressionStream('gzip'))).arrayBuffer();
+  }
+  return raw; // Some hosts transparently decode .gz (Content-Encoding).
+}
+async function jsonGzip(url){
+  return JSON.parse(new TextDecoder().decode(await loadBinary(url)));
+}
+async function bootstrap(base) {
+  if(meta&&root===base)return;
+  root=base.endsWith('/')?base:base+'/';
+  meta=null;stops=null;trips=null;grid=null;metro=null;
+  bucketCache.clear();nearCache.clear();
+  const response=await fetch(root+'index.json',{cache:'no-store'});
+  if(!response.ok)throw Error('Catálogo estático não publicado: '+response.status);
+  const m=await response.json();
+  if(m.schema!==1||m.format?.indexOf('uint32le/5')!==0)
+    throw Error('Versão do catálogo de roteamento incompatível');
+  const version='?v='+encodeURIComponent(m.builtUTC);
+  const [s,t]=await Promise.all([
+    jsonGzip(root+'stops.json.gz'+version),
+    jsonGzip(root+'trips.json.gz'+version)
+  ]);
+  if(s.length!==m.stopCount||t.length!==m.tripCount)
+    throw Error('Índice GTFS incompleto ou com versões divergentes');
+  meta=m;stops=s;trips=t;
+  grid=new Map();
+  for(let i=0;i<stops.length;i++){
+    const key=cell(stops[i][2],stops[i][3]);
+    if(!grid.has(key))grid.set(key,[]);
+    grid.get(key).push(i);
+  }
+  self.postMessage({kind:'ready',builtUTC:m.builtUTC,tripCount:m.tripCount,
+    stopCount:m.stopCount,connectionCount:m.connectionCount});
+}
+function nearby(lat,lng,radius=1050,limit=22) {
+  const result=[],span=Math.ceil(radius/400)+1;
+  const x=Math.floor(lat*200),y=Math.floor(lng*200);
+  for(let dx=-span;dx<=span;dx++)
+    for(let dy=-span;dy<=span;dy++)
+      for(const idx of grid.get((x+dx)+','+(y+dy))||[]){
+        const s=stops[idx],metres=distance([lat,lng],[s[2],s[3]]);
+        if(metres<=radius)result.push([metres,idx]);
+      }
+  result.sort((a,b)=>a[0]-b[0]);
+  return result.slice(0,limit);
+}
+function neighbors(idx) {
+  if(nearCache.has(idx))return nearCache.get(idx);
+  const s=stops[idx];
+  const list=nearby(s[2],s[3],165,10).filter(([m,id])=>id!==idx&&m>=2);
+  if(nearCache.size>20000)nearCache.clear();
+  nearCache.set(idx,list);
+  return list;
+}
+function serviceActive(serviceIdx,day){
+  const svc=meta.services[serviceIdx];
+  if(!svc)return false;
+  const compact=day.replaceAll('-','');
+  const exception=meta.exceptions?.[compact]?.[svc.id];
+  if(exception!=null)return Number(exception)===1;
+  const cal=svc.calendar;
+  if(!cal||compact<cal.start_date||compact>cal.end_date)return false;
+  const week=(new Date(day+'T12:00:00Z').getUTCDay()+6)%7;
+  const wd=['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
+  return String(cal[wd[week]])==='1';
+}
+async function bucket(direction,h) {
+  const hours=meta.hours[direction];
+  if(!hours[String(h).padStart(2,'0')])return new Uint32Array(0);
+  const id=direction+':'+h;
+  if(bucketCache.has(id))return bucketCache.get(id);
+  const url=root+direction+'/'+String(h).padStart(2,'0')+'.bin.gz?v='+
+    encodeURIComponent(meta.builtUTC);
+  const buffer=await loadBinary(url);
+  if(buffer.byteLength%20)throw Error('Arquivo GTFS corrompido: '+id);
+  // Browser and Node targets are little-endian.
+  const data=new Uint32Array(buffer);
+  bucketCache.set(id,data);
+  if(bucketCache.size>8)bucketCache.delete(bucketCache.keys().next().value);
+  return data;
+}
+function dominates(a,b,backward){
+  return (backward?a.time>=b.time:a.time<=b.time)
+    && a.walk<=b.walk+.01 && a.rides<=b.rides;
+}
+function insert(labels,node,ctx) {
+  const existing=labels.get(node.stop)||[];
+  for(const other of existing)if(dominates(other,node,ctx.backward))return false;
+  const kept=existing.filter(other=>!dominates(node,other,ctx.backward));
+  kept.push(node);
+  if(kept.length>MAX_LABELS){
+    ctx.partial=true;
+    kept.sort((a,b)=>(a.walk/90+a.rides*15+(ctx.backward?-a.time:a.time)/60000)
+                  -(b.walk/90+b.rides*15+(ctx.backward?-b.time:b.time)/60000));
+    kept.splice(MAX_LABELS);
+  }
+  labels.set(node.stop,kept);
+  return kept.includes(node);
+}
+function addTransfers(node,ctx){
+  if(!ctx.pending.has(node.stop))ctx.pending.add(node.stop);
+  for(const [m,next] of neighbors(node.stop)){
+    const duration=walkSeconds(m)*1000;
+    const newTime=node.time+(ctx.backward?-duration:duration);
+    if(newTime<ctx.lo||newTime>ctx.hi)continue;
+    const walk=node.walk+rounded(m);
+    const edge=ctx.backward
+      ?{mode:'walk',from:next,to:node.stop,departure:newTime,arrival:node.time,
+        metersApprox:rounded(m),pathVerified:false}
+      :{mode:'walk',from:node.stop,to:next,departure:node.time,arrival:newTime,
+        metersApprox:rounded(m),pathVerified:false};
+    const sibling={stop:next,time:newTime,walk,rides:node.rides,
+       prev:node,edge};
+    // Deliberately one walking connector per change of vehicle; no recursive
+    // infinite walking paths or chaining dozens of pedestrian hops.
+    if(insert(ctx.labels,sibling,ctx))ctx.pending.add(next);
+  }
+}
+function appendOnboard(map,key,candidate,ctx){
+  const before=map.get(key)||[];
+  if(before.some(other=>other.prev===candidate.prev&&other.endStop===candidate.endStop))return;
+  if(before.some(other=>(other.prev.walk<=candidate.prev.walk &&
+       other.prev.rides<=candidate.prev.rides &&
+       (ctx.backward?other.endTime>=candidate.endTime:other.endTime<=candidate.endTime))))
+    return;
+  let next=before.filter(other=>!(candidate.prev.walk<=other.prev.walk&&
+    candidate.prev.rides<=other.prev.rides&&
+    (ctx.backward?candidate.endTime>=other.endTime:candidate.endTime<=other.endTime)));
+  next.push(candidate);
+  if(next.length>MAX_ONBOARD){
+    ctx.partial=true;
+    next.sort((a,b)=>a.prev.walk-b.prev.walk||a.prev.rides-b.prev.rides);
+    next=next.slice(0,MAX_ONBOARD);
+  }
+  map.set(key,next);
+}
+function emit(node,ctx) {
+  if(!insert(ctx.labels,node,ctx))return;
+  const ending=ctx.ends.get(node.stop);
+  if(ending!==undefined){
+    const seconds=walkSeconds(ending),ms=seconds*1000;
+    const endTime=node.time+(ctx.backward?-ms:ms);
+    if(endTime>=ctx.lo&&endTime<=ctx.hi){
+      ctx.finals.push({node,time:endTime,meters:rounded(ending)});
+      if(ctx.finals.length>1000){
+        ctx.partial=true;ctx.finals.splice(1000);
+      }
+    }
+  }
+  addTransfers(node,ctx);
+}
+function processConnection(conn,ctx){
+  const {from,to,dep,arr,flags,tripIdx,day}=conn;
+  const key=day+':'+tripIdx;
+  if(ctx.backward){
+    // A passenger can alight at 'to' if GTFS drop_off_type permits it.
+    if(flags&ALIGHT){
+      for(const label of ctx.labels.get(to)||[]){
+        if(label.rides>=MAX_RIDES)continue;
+        const buffer=label.rides===0?0:BUFFER;
+        if(label.time<arr+buffer)continue;
+        appendOnboard(ctx.onboard,key,{prev:label,endStop:to,endTime:arr},ctx);
+      }
+    }
+    if(flags&BOARD){
+      for(const aboard of ctx.onboard.get(key)||[]){
+        const node={stop:from,time:dep,rides:aboard.prev.rides+1,
+          walk:aboard.prev.walk,prev:aboard.prev,
+          edge:{mode:'bus',tripIdx,from,to:aboard.endStop,
+            departure:dep,arrival:aboard.endTime}};
+        emit(node,ctx);
+      }
+    }
+  }else{
+    if(flags&BOARD){
+      for(const label of ctx.labels.get(from)||[]){
+        if(label.rides>=MAX_RIDES||label.time+BUFFER>dep)continue;
+        appendOnboard(ctx.onboard,key,{prev:label,endStop:from,endTime:dep},ctx);
+      }
+    }
+    if(flags&ALIGHT){
+      for(const aboard of ctx.onboard.get(key)||[]){
+        const node={stop:to,time:arr,rides:aboard.prev.rides+1,
+          walk:aboard.prev.walk,prev:aboard.prev,
+          edge:{mode:'bus',tripIdx,from:aboard.endStop,to,
+            departure:aboard.endTime,arrival:arr}};
+        emit(node,ctx);
+      }
+    }
+  }
+}
+function reconstruct(hit,ctx) {
+  const all=[];
+  let label=hit.node;
+  while(label){
+    if(label.edge)all.push({...label.edge});
+    label=label.prev;
+  }
+  if(!ctx.backward)all.reverse();
+  const endWalk=ctx.backward
+    ?{mode:'walk',from:'origin',to:hit.node.stop,
+      departure:hit.time,arrival:hit.node.time,
+      metersApprox:hit.meters,pathVerified:false}
+    :{mode:'walk',from:hit.node.stop,to:'destination',
+      departure:hit.node.time,arrival:hit.time,
+      metersApprox:hit.meters,pathVerified:false};
+  const legs=ctx.backward?[endWalk,...all]:[...all,endWalk];
+  const buses=legs.filter(leg=>leg.mode==='bus');
+  if(!buses.length)return null;
+  // A reverse search seeds the final walk using the latest arrival deadline.
+  // Display the physical final arrival after the bus, not artificial waiting.
+  if(ctx.backward&&legs.at(-1)?.mode==='walk'){
+    const lastBus=buses.at(-1);
+    const walk=legs.at(-1);
+    const duration=walkSeconds(walk.metersApprox/WALK_FACTOR)*1000;
+    walk.departure=lastBus.arrival;walk.arrival=lastBus.arrival+duration;
+    if(walk.arrival>ctx.requested)return null;
+  }
+  for(const leg of legs){
+    if(leg.mode!=='bus')continue;
+    const t=trips[leg.tripIdx],a=stops[leg.from],b=stops[leg.to];
+    leg.tripId=t[0];leg.line=t[1];leg.headsign=t[2];
+    leg.fromName=a[1];leg.toName=b[1];
+    leg.fromCoords=[a[2],a[3]];leg.toCoords=[b[2],b[3]];
+    leg.prediction='GTFS scheduled';
+    delete leg.tripIdx;
+  }
+  for(const leg of legs){
+    leg.departure=stamp(leg.departure);
+    leg.arrival=stamp(leg.arrival);
+  }
+  const begin=Date.parse(legs[0].departure);
+  const finish=Date.parse(legs.at(-1).arrival);
+  if(!(finish>begin)||finish-begin>MAX_HOURS*HOUR)return null;
+  return {
+    departure:stamp(begin),arrival:stamp(finish),
+    durationMinutes:Math.round((finish-begin)/MIN),
+    walkMetersApprox:Math.round(hit.node.walk+hit.meters),
+    rides:buses.length,transfers:buses.length-1,
+    legs,confidence:'scheduled_gtfs_with_unverified_walks'
+  };
+}
+function ranked(ctx,preference) {
+  const options=[];
+  const found=new Set();
+  for(const hit of ctx.finals){
+    const trip=reconstruct(hit,ctx);
+    if(!trip)continue;
+    const signature=trip.legs.filter(l=>l.mode==='bus')
+      .map(l=>l.tripId+'@'+l.from+'>'+l.to).join('|');
+    if(found.has(signature))continue;
+    found.add(signature);options.push(trip);
+  }
+  const fastest=(a,b)=>ctx.backward
+    ?Date.parse(b.departure)-Date.parse(a.departure)
+    :Date.parse(a.arrival)-Date.parse(b.arrival);
+  options.sort((a,b)=>{
+    if(preference==='leastTransfers')
+      return a.transfers-b.transfers||fastest(a,b)||a.walkMetersApprox-b.walkMetersApprox;
+    if(preference==='leastWalking')
+      return a.walkMetersApprox-b.walkMetersApprox||fastest(a,b)||a.transfers-b.transfers;
+    return fastest(a,b)||a.walkMetersApprox-b.walkMetersApprox||a.transfers-b.transfers;
+  });
+  return options.slice(0,6);
+}
+async function metroHints(origin,destination,at){
+  try{
+    if(!metro){
+      const path=new URL('../metro.json',root).href;
+      const r=await fetch(path,{cache:'force-cache'});
+      if(!r.ok)return [];
+      metro=await r.json();
+    }
+    const near=(p)=>metro.stations.filter(s=>s.active&&distance(p,[s.lat,s.lng])<=1050)
+      .sort((a,b)=>distance(p,[a.lat,a.lng])-distance(p,[b.lat,b.lng])).slice(0,3);
+    const day=bhDay(at);
+    const clock=new Intl.DateTimeFormat('en-GB',{timeZone:cityTZ,
+      hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date(at));
+    const hints=[];
+    for(const a of near(origin))for(const b of near(destination))
+      for(const line of metro.lines){
+        if(a.id===b.id||!line.stations.includes(a.id)||!line.stations.includes(b.id))continue;
+        let end=line.hours.end;
+        for(const e of metro.operations.hoursExceptions||[])
+          if(e.line===line.id&&e.from<=day&&day<=e.through)end=e.end;
+        if(clock<line.hours.start||clock>=end)continue;
+        hints.push({mode:'metro',line:line.id,fromStation:a.name,toStation:b.name,
+          fromStationId:a.id,toStationId:b.id,
+          stationCount:Math.abs(line.stations.indexOf(a.id)-line.stations.indexOf(b.id)),
+          status:'requires_timetable',
+          note:'Metrô sem partidas verificadas: possibilidade informativa, não comparável às viagens GTFS.'});
+      }
+    return hints.slice(0,4);
+  }catch(e){return []}
+}
+function seedStops(ctx,which) {
+  const place=which==='start'?(ctx.backward?ctx.destination:ctx.origin)
+                             :(ctx.backward?ctx.origin:ctx.destination);
+  const found=nearby(...place);
+  if(which==='end'){
+    for(const [metres,id] of found)ctx.ends.set(id,metres);
+    return;
+  }
+  for(const [metres,id] of found){
+    const ms=walkSeconds(metres)*1000;
+    const t=ctx.requested+(ctx.backward?-ms:ms);
+    const edge=ctx.backward
+      ?{mode:'walk',from:id,to:'destination',departure:t,
+        arrival:ctx.requested,metersApprox:rounded(metres),pathVerified:false}
+      :{mode:'walk',from:'origin',to:id,departure:ctx.requested,
+        arrival:t,metersApprox:rounded(metres),pathVerified:false};
+    insert(ctx.labels,{stop:id,time:t,rides:0,walk:rounded(metres),
+      prev:null,edge},ctx);
+  }
+}
+async function scanHour(ctx,epoch) {
+  const direction=ctx.backward?'in':'out';
+  const parts=[];
+  for(let dayDiff=-1;dayDiff<=1;dayDiff++){
+    const d=addDay(bhDay(ctx.requested),dayDiff);
+    const base=midnight(d);
+    const hour=Math.floor((epoch-base)/HOUR);
+    if(hour<0||hour>=48||!meta.hours[direction][String(hour).padStart(2,'0')])continue;
+    parts.push({day:d,base,hour,ptr:0,active:meta.services.map((_,i)=>serviceActive(i,d))});
+  }
+  const arrays=await Promise.all(parts.map(p=>bucket(direction,p.hour)));
+  for(let i=0;i<parts.length;i++)parts[i].rows=arrays[i];
+  // Multiple GTFS service days can overlap the same clock hour due to 24h+ trips.
+  // Merge their sorted connections, respecting actual timeline order.
+  while(true){
+    let chosen=null,best=ctx.backward?-Infinity:Infinity;
+    for(const p of parts){
+      if(p.ptr>=p.rows.length)continue;
+      const value=p.base+p.rows[p.ptr+(ctx.backward?3:2)]*1000;
+      if((ctx.backward?value>best:value<best)){
+        best=value;chosen=p;
+      }
+    }
+    if(!chosen)break;
+    const p=chosen,offset=p.ptr,values=p.rows;
+    p.ptr+=5;
+    if(best<ctx.lo||best>ctx.hi)continue;
+    const packed=values[offset+4],tripIdx=packed&TRIP_MASK;
+    const info=trips[tripIdx];
+    if(!info||!p.active[info[3]])continue;
+    ctx.scanned++;
+    if(ctx.scanned>MAX_SCANNED){ctx.partial=true;ctx.exceeded=true;return}
+    processConnection({from:values[offset],to:values[offset+1],
+      dep:p.base+values[offset+2]*1000,arr:p.base+values[offset+3]*1000,
+      flags:packed,tripIdx,day:p.day},ctx);
+  }
+}
+async function plan(params,seq) {
+  if(!meta)throw Error('Catálogo GTFS ainda não carregado');
+  const origin=coord(params.origin),destination=coord(params.destination);
+  const mode=params.mode||'departAt';
+  if(mode!=='departAt'&&mode!=='arriveBy')throw Error('Modo de viagem inválido');
+  const preference=params.preference||'fastest';
+  if(!['fastest','leastWalking','leastTransfers'].includes(preference))
+    throw Error('Critério de ordenação inválido');
+  const requested=params.at?Date.parse(params.at):Date.now();
+  if(!Number.isFinite(requested))throw Error('Data/hora inválida');
+  const date=bhDay(requested).replaceAll('-','');
+  if(date<meta.validFrom||date>meta.validThrough)
+    return {status:'out_of_calendar',message:'Data fora da validade do GTFS',
+      validFrom:meta.validFrom,validThrough:meta.validThrough,itineraries:[],metroHints:[]};
+  const backward=mode==='arriveBy';
+  const ctx={origin,destination,mode,backward,requested,preference,labels:new Map(),
+    onboard:new Map(),ends:new Map(),finals:[],pending:new Set(),
+    scanned:0,partial:false,exceeded:false,
+    lo:backward?requested-MAX_HOURS*HOUR:requested,
+    hi:backward?requested:requested+MAX_HOURS*HOUR};
+  seedStops(ctx,'start');seedStops(ctx,'end');
+  const first=Math.floor(ctx.lo/HOUR),last=Math.floor(ctx.hi/HOUR);
+  const hours=[];
+  for(let h=first;h<=last;h++)hours.push(h*HOUR);
+  if(backward)hours.reverse();
+  for(const [i,epoch] of hours.entries()){
+    if(seq!==currentSeq)throw Error('Busca substituída');
+    await scanHour(ctx,epoch);
+    if(ctx.exceeded)break;
+    self.postMessage({kind:'progress',seq,done:i+1,total:hours.length,
+      found:ctx.finals.length,scanned:ctx.scanned});
+  }
+  const itineraries=ranked(ctx,preference);
+  const hints=await metroHints(origin,destination,requested);
+  return {
+    status:ctx.partial?'partial':'ok',mode,preference,
+    requestedAt:stamp(requested),itineraries,metroHints:hints,
+    stats:{connectionsScanned:ctx.scanned,hoursScanned:hours.length,
+      truncatedLabels:ctx.partial},
+    pedestrianRouting:'approximate',
+    dataSource:'static_gtfs_browser_worker',
+    notes:[
+      'Horários de ônibus programados no GTFS, não previsões GPS.',
+      'Caminhadas estimadas em linha reta com fator conservador; rede de ruas não verificada.',
+      'Busca limitada a 5 h e no máximo 2 baldeações; resultado parcial quando houver poda.',
+      'Metrô apenas informativo até termos grade verificável de partidas.'
+    ]
+  };
+}
+async function searchPlaces(query){
+  if(!stops)throw Error('Catálogo indisponível');
+  const q=norm(query).trim();
+  if(q.length<2)return [];
+  const candidates=[];
+  for(const s of stops){
+    if(norm(s[1]).includes(q)){
+      candidates.push({lat:s[2],lng:s[3],label:'Ponto: '+s[1]});
+      if(candidates.length>=12)break;
+    }
+  }
+  return candidates;
+}
+self.onmessage=async event=>{
+  const msg=event.data||{};
+  const seq=Number(msg.seq)||++currentSeq;
+  currentSeq=seq;
+  try{
+    if(msg.kind==='init'){
+      await bootstrap(msg.baseUrl);
+    }else if(msg.kind==='places'){
+      if(!meta)await bootstrap(msg.baseUrl);
+      self.postMessage({kind:'places',seq,which:msg.which,
+        items:await searchPlaces(msg.query)});
+    }else if(msg.kind==='plan'){
+      if(!meta)await bootstrap(msg.baseUrl);
+      const data=await plan(msg.params,seq);
+      if(seq===currentSeq)self.postMessage({kind:'result',seq,data});
+    }
+  }catch(err){
+    if(seq===currentSeq)self.postMessage({kind:'error',seq,message:String(err?.message||err)});
+  }
+};
