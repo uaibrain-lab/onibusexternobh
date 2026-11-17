@@ -21,7 +21,12 @@
   <div class="attribution">Dados: PBH/SUMOB · © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a></div>
 </main>
 <div id="top"><button class="fab" id="loc" type="button" title="Localizar-me no mapa" aria-label="Localizar-me no mapa">⌖ <span>Perto de mim</span></button></div>
-<div class="source-pill" aria-live="polite"><span id="sourceLed" class="dot"></span><span id="sourceText">Aguardando GPS oficial…</span></div>
+<div id="locationPrompt" class="location-prompt" role="region" aria-label="Usar localização para encontrar pontos próximos">
+  <strong>Encontrar pontos perto de você?</strong>
+  <p>Sua localização serve para encontrar pontos próximos e centralizar o mapa. Não é salva no servidor. Sem permissão, exibimos o campus UFMG.</p>
+  <div class="location-actions"><button type="button" id="allowLocation" class="btn">Usar minha localização</button><button type="button" id="skipLocation" class="subtle">Agora não</button></div>
+</div>
+<div class="source-pill" aria-live="polite"><span id="sourceLed" class="dot"></span><span id="sourceText">Pontos · Horários GTFS</span></div>
 <section id="sheet" class="peek" aria-label="Consulta de linhas e pontos do Externo BH">
   <button type="button" id="grab" aria-label="Expandir lista de pontos e linhas" aria-expanded="false" aria-controls="body"></button>
   <div class="sheet-head" id="sheet-head">
@@ -36,7 +41,10 @@
   </div>
   <div id="body" aria-hidden="true">
     <div class="notice-top" role="note">Protótipo de dados oficiais PBH/SUMOB. Posições GPS podem estar atrasadas; horários de coleta não significam movimento.</div>
-    <section id="pontosPane" aria-label="Pontos da linha">
+    <section id="pontosPane" aria-label="Pontos de ônibus">
+      <section id="stopDetail" class="stop-detail" hidden aria-live="polite"></section>
+      <div class="flexhead"><h3>Meus pontos favoritos</h3></div><div id="favoriteStops" class="list-rows"></div>
+      <h3 id="nearbyHeading">Pontos próximos</h3><p class="hint" id="nearbyHint">Mostrando a região da UFMG. Permita a localização para encontrar pontos perto de você.</p><div id="nearbyStops" class="list-rows"></div>
       <h2>Pontos de ônibus</h2>
       <label class="srch" for="stopInput"><span aria-hidden="true">⌕</span><input id="stopInput" type="search" placeholder="Buscar ponto em BH" aria-label="Buscar ponto em Belo Horizonte" autocomplete="off"></label>
       <div id="stopSearchResult" class="list-rows" aria-live="polite"></div>
@@ -45,10 +53,11 @@
       <div id="stopList" class="list-rows"></div>
     </section>
     <section id="linhasPane" hidden aria-label="Linhas e veículos">
+      <h3>Minhas linhas favoritas</h3><div id="favoriteLines" class="list-rows"></div>
       <label class="srch" for="lineInput"><span aria-hidden="true">⌕</span><input id="lineInput" list="routeList" placeholder="Buscar linha, ex.: 9202, S32, 62" autocomplete="off" aria-label="Buscar linha"></label>
       <datalist id="routeList"></datalist>
       <button id="goLine" type="button" class="btn primary">Consultar linha</button>
-      <div class="line-title" id="lineTitle">Selecione uma linha</div>
+      <div class="line-heading"><div class="line-title" id="lineTitle">Selecione uma linha</div><button type="button" id="lineFavorite" class="fav-btn" aria-label="Favoritar linha" hidden>☆</button></div>
       <div class="stats"><div><strong id="vTotal">—</strong><small>Veículos encontrados</small></div><div><strong id="vRecent">—</strong><small>GPS recente (até 2 min)</small></div></div>
       <div class="block"><label for="patternInput"><strong>Percurso de referência</strong></label><select id="patternInput"><option value="">Sem traçado</option></select><p class="hint">O percurso selecionado é uma variante ilustrativa do GTFS. Ele não é atribuído automaticamente aos ônibus.</p></div>
       <div class="block vehicles-block"><div class="flexhead"><b>Ônibus da linha</b><button id="refresh" type="button" class="subtle">Atualizar</button></div><div id="vehicleList" class="vehicle-list"><p class="muted">Selecione uma linha.</p></div></div>

@@ -39,6 +39,15 @@ class TransitEngine:
         for p in self.patterns:self.by_route[p['route']].append(p)
         self.nl_map=json.loads((self.catalog/'gps-nl-map.json').read_text(encoding='utf8'))
         self.matcher=ShapeMatcher(self.shapes,self.patterns)
+        self.stop_routes=collections.defaultdict(set)
+        for p in self.patterns:
+            route=self.route_by_id.get(p['route'])
+            if route:
+                for stop in p['stops']:
+                    self.stop_routes[stop].add(route['code'])
+        # Lazy import to avoid circular dependency with shared BRT helpers.
+        from .timetable import Timetable
+        self.timetable=Timetable(self.catalog)
         self.ttl=max(20,int(ttl))
         self.fetcher=fetcher or self._download
         self.lock=threading.RLock()
@@ -223,6 +232,47 @@ class TransitEngine:
             found.append({'id':sid,'name':entry[0],'lat':entry[1],'lng':entry[2]})
             if len(found)>=n:break
         return {'items':found,'truncated':len(found)>=n,'query':query}
+
+    def nearby_stops(self,lat,lng,limit=15,radius_m=2500):
+        """Return nearest stops; never request or store user's coordinates upstream."""
+        lat=float(lat);lng=float(lng)
+        if not (-90<=lat<=90 and -180<=lng<=180):raise ValueError('invalid coordinate')
+        ranked=[]
+        for sid,entry in self.stops.items():
+            dist=distance_m((lat,lng),(entry[1],entry[2]))
+            if dist<=radius_m:
+                ranked.append((dist,sid,entry))
+        ranked.sort(key=lambda x:x[0])
+        return {'items':[{'id':sid,'name':e[0],'lat':e[1],'lng':e[2],
+                          'distanceM':round(dist)} for dist,sid,e in ranked[:max(1,min(50,int(limit)))]],
+                'count':len(ranked)}
+
+    def map_stops(self, minlat,minlng,maxlat,maxlng,limit=550):
+        """Stops in viewport, with cap for efficient rendering in canvas."""
+        a,b,c,d=map(float,(minlat,minlng,maxlat,maxlng))
+        if not (-90<=a<=c<=90 and -180<=b<=d<=180):raise ValueError('invalid bounds')
+        limit=max(1,min(750,int(limit)))
+        visible=[{'id':sid,'name':e[0],'lat':e[1],'lng':e[2]}
+                 for sid,e in self.stops.items() if a<=e[1]<=c and b<=e[2]<=d]
+        return {'items':visible[:limit],'total':len(visible),'truncated':len(visible)>limit}
+
+    def stop_detail(self,stop_id,at=None):
+        item=self.stops.get(str(stop_id))
+        if not item:return None
+        now=at or now_brt()
+        forecasts=self.timetable.next_by_line(str(stop_id),now)
+        routes=[]
+        for code in sorted(self.stop_routes.get(str(stop_id),()),key=lambda c:(not c.isdigit(),c)):
+            route=self.route_by_code.get(code)
+            if not route:continue
+            routes.append({'code':code,'name':route['name'],'nextArrival':forecasts.get(code)})
+        routes.sort(key=lambda x:(x['nextArrival'] is None,
+                                 x['nextArrival']['minutes'] if x['nextArrival'] else 10**10,
+                                 x['code']))
+        return {'id':str(stop_id),'name':item[0],'lat':item[1],'lng':item[2],
+                'routes':routes,'asOf':iso(now),
+                'forecastSource':'GTFS scheduled (not GPS)',
+                'timetableAvailable':self.timetable.error is None and self.timetable.calendar is not None}
 
     def fleet(self,code):
         self.refresh()

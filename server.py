@@ -42,6 +42,19 @@ def run(host='127.0.0.1',port=8765,open_browser=False):
                 if path=='/api/stops':
                     q=qs.get('q',[''])[0][:120]
                     return self.payload(200,engine.search_stops(q))
+                if path=='/api/nearby-stops':
+                    try:
+                        v=engine.nearby_stops(qs.get('lat',[''])[0],qs.get('lng',[''])[0])
+                    except (ValueError, TypeError):return self.payload(400,{'error':'Coordenadas invalidas'})
+                    return self.payload(200,v)
+                if path=='/api/map-stops':
+                    try:
+                        v=engine.map_stops(*(qs.get(n,[''])[0] for n in ('minlat','minlng','maxlat','maxlng')))
+                    except (ValueError, TypeError):return self.payload(400,{'error':'Limites invalidos'})
+                    return self.payload(200,v)
+                if path=='/api/stop':
+                    v=engine.stop_detail(qs.get('id',[''])[0])
+                    return self.payload(200,v) if v else self.payload(404,{'error':'Ponto nao encontrado'})
                 if path=='/api/fleet':
                     code=qs.get('route',[''])[0]
                     v=engine.fleet(code)
@@ -58,8 +71,10 @@ def run(host='127.0.0.1',port=8765,open_browser=False):
                 try:self.payload(500,{'error':'Erro interno','detail':type(exc).__name__})
                 except (BrokenPipeError,ConnectionResetError):pass
         def log_message(self,fmt,*args):
-            # Never log user-controlled query parameters.
-            print(self.address_string(), fmt % args)
+            # Suppress full request lines: /api/nearby-stops carries user coordinates.
+            method=getattr(self,'command','GET')
+            path=urllib.parse.urlsplit(getattr(self,'path','/')).path
+            print(self.address_string(),method,path)
     httpd=ThreadingHTTPServer((host,port),Handler)
     print('BH Rastreador P2 — desenvolvimento local (não é serviço público)')
     print(f'Abra: http://{host}:{port}')
