@@ -66,7 +66,7 @@ class PreciseGTFSRulesTests(unittest.TestCase):
         cls.temp.cleanup()
 
     def test_catalog_retains_pickup_restrictions(self):
-        self.assertEqual(self.index['schema'],2)
+        self.assertEqual(self.index['schema'],3)
         self.assertEqual(self.planner._trips('NOB')[0][3][0][3],1)
         self.assertEqual(self.planner._trips('NOD')[0][3][1][4],1)
 
