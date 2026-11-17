@@ -78,6 +78,12 @@ def build(target=None, gps_staging=False):
         if heading not in html:
             raise ValueError('Marcador do título do Externo mudou')
         html=html.replace(heading,heading.replace('BELO HORIZONTE','BELO HORIZONTE · GPS EM TESTE'),1)
+        pill='<div class="source-pill" aria-live="polite">'
+        if pill not in html:
+            raise ValueError('Marcador do status GPS não localizado')
+        html=html.replace(pill,pill+
+                          '<span class="gps-staging-label" aria-label="GPS em homologação">'
+                          'TESTE</span>',1)
         notice='<div class="notice-top" role="note">'
         if notice not in html:
             raise ValueError('Marcador do aviso GPS não localizado')
@@ -91,8 +97,6 @@ def build(target=None, gps_staging=False):
             '/externo/gps-config.json\n'
             '  Cache-Control: no-store, max-age=0\n',
             encoding='utf-8')
-        if STAGING_HOST not in ('externo-bh-hml-uaibrain.pages.dev',):
-            raise ValueError('O domínio de homologação deve ser explícito')
     (public/'index.html').write_text(html,encoding='utf-8')
     (public/'catalog').mkdir(exist_ok=True)
     shutil.copy2(catalog/'metro.json',public/'catalog'/'metro.json')
