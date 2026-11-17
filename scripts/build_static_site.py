@@ -58,7 +58,7 @@ def build(target=None):
     (public/'index.html').write_text(html,encoding='utf-8')
     (public/'catalog').mkdir(exist_ok=True)
     shutil.copy2(catalog/'metro.json',public/'catalog'/'metro.json')
-    for name in ('routes.json','stops.json','patterns.json','shapes.json','routing-stop-routes.json'):
+    for name in ('manifest.json','routes.json','stops.json','patterns.json','shapes.json','routing-stop-routes.json'):
         shutil.copy2(catalog/name,public/'catalog'/name)
     shutil.copytree(scan,public/'catalog'/'scan')
     # Do not ship the 18 MiB monolithic timetable to mobile visitors.
