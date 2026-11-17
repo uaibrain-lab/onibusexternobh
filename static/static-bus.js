@@ -36,9 +36,31 @@ const StaticBus=(()=>{
     patternsByStop=index;
     return index;
   }
+  // Release-scoped requests prevent mixing old route/stop JSON after a GTFS
+  // update on Firebase Hosting. The manifest is always checked against network.
+  let manifestPromise=null;
+  function releaseVersion(){
+    if(!manifestPromise){
+      manifestPromise=fetch(new URL('manifest.json',base),{cache:'no-store'})
+        .then(response=>{
+          if(!response.ok)throw Error('Manifesto GTFS indisponível');
+          return response.json();
+        })
+        .then(data=>{
+          const version=String(data.gtfsVersion||'');
+          if(!/^[0-9A-Za-z_.-]{5,60}$/.test(version))throw Error('Versão GTFS inválida');
+          return version;
+        }).catch(error=>{manifestPromise=null;throw error});
+    }
+    return manifestPromise;
+  }
   async function data(file){
     if(cache.has(file))return cache.get(file);
-    const promise=fetch(new URL(file,base),{cache:'force-cache'}).then(r=>{
+    const promise=releaseVersion().then(version=>{
+      const url=new URL(file,base);
+      url.searchParams.set('v',version);
+      return fetch(url,{cache:'force-cache'});
+    }).then(r=>{
       if(!r.ok)throw Error('Catálogo GTFS não disponível: '+file+' HTTP '+r.status);
       return r.json();
     }).catch(error=>{cache.delete(file);throw error});
