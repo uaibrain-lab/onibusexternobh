@@ -238,8 +238,8 @@ async function selectLine(code,{fromStop=false,vehicleKey=null,destination=null}
   }
   renderVehicles();renderStops();drawSoon();
   if(chosen){sel.value=chosen.id;await selectPattern();}
-  else {$('lineStopChooser').hidden=true;}
   else{
+    $('lineStopChooser').hidden=true;
     sel.value='';state.geometry.selected=null;
     $('patternHint').textContent=stop
        ?'Nenhum percurso com esse destino foi confirmado neste ponto. Escolha outro sentido para consultar.'
