@@ -205,5 +205,5 @@ const StaticBus=(()=>{
     }
     throw Error('Endpoint ainda não disponível no modo estático: '+endpoint);
   }
-  return {api,init};
+  return {api,init,version:releaseVersion};
 })();
