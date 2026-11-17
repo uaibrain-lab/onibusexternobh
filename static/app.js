@@ -87,8 +87,14 @@ if(state.geometry?.selected&&lineMode()){let selected=state.geometry.selected,co
   drawMetroLayer();
   drawRouteLayer();
   state.markers=[];let vehicles=state.fleet?.vehicles||[];for(let v of vehicles){let [x,y]=screen(v.latitude,v.longitude);if(x<-25||y<-25||x>w+25||y>h+25)continue;let changedAge=diffSeconds(v.positionUnchangedSinceAt);let stale=diffSeconds(v.lastGpsFixAt)>120,frozen=Boolean(v.positionUnchangedSinceAt)&&changedAge>120;let isSelected=state.selectedVehicle===v.source+'|'+v.vehicleId;ctx.save();ctx.translate(x,y);if(isSelected){ctx.beginPath();ctx.arc(0,0,24,0,Math.PI*2);ctx.fillStyle='#38d5ab44';ctx.fill()}ctx.beginPath();ctx.arc(0,0,13,0,Math.PI*2);ctx.fillStyle=stale?'#a6565d':frozen?'#ad7728':'#136c66';ctx.fill();ctx.strokeStyle='#ffffff';ctx.lineWidth=2;ctx.stroke();ctx.rotate((v.heading||0)*Math.PI/180);ctx.fillStyle='#ffffff';ctx.beginPath();ctx.moveTo(0,-9);ctx.lineTo(-5,6);ctx.lineTo(0,3);ctx.lineTo(5,6);ctx.closePath();ctx.fill();ctx.restore();state.markers.push({x,y,id:v.source+'|'+v.vehicleId});}
-  if(state.stopCoordinates && state.selectedStop){const [sx,sy]=screen(...state.stopCoordinates);ctx.beginPath();ctx.arc(sx,sy,11,0,Math.PI*2);ctx.fillStyle='#fff';ctx.fill();ctx.lineWidth=4;ctx.strokeStyle='#f79009';ctx.stroke();ctx.beginPath();ctx.arc(sx,sy,3,0,Math.PI*2);ctx.fillStyle='#f79009';ctx.fill();}
-  if(state.stopCoordinates&&state.selectedStop&&state.selectedVehicle){const v=vehicles.find(x=>x.source+'|'+x.vehicleId===state.selectedVehicle);if(v){const [sx,sy]=screen(...state.stopCoordinates);const [vx,vy]=screen(v.latitude,v.longitude);const area=visibleMapRect(),inView=vx>=area.left&&vx<=area.right&&vy>=area.top&&vy<=area.bottom;ctx.save();ctx.setLineDash([5,7]);ctx.strokeStyle='#0c6e6b';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(sx,sy);if(inView)ctx.lineTo(vx,vy);else{const dx=vx-sx,dy=vy-sy;const tx=dx>0?(area.right-sx)/dx:dx<0?(area.left-sx)/dx:Infinity;const ty=dy>0?(area.bottom-sy)/dy:dy<0?(area.top-sy)/dy:Infinity;const t=Math.max(0,Math.min(tx,ty,1));const ex=sx+dx*t,ey=sy+dy*t;ctx.lineTo(ex,ey);ctx.stroke();ctx.setLineDash([]);ctx.beginPath();ctx.arc(ex,ey,14,0,Math.PI*2);ctx.fillStyle='#136c66';ctx.fill();ctx.fillStyle='#fff';ctx.font='16px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('➤',ex,ey);ctx.restore();}if(inView){ctx.stroke();ctx.restore()}}}
+  const highlightedLineStop=lineMode()&&lineFocusStopId
+    ?state.geometry?.selected?.stops?.find(s=>String(s.id)===String(lineFocusStopId))
+    :null;
+  const highlightedStop=highlightedLineStop
+    ?[Number(highlightedLineStop.lat),Number(highlightedLineStop.lng)]
+    :(!lineMode()&&state.stopCoordinates&&state.selectedStop?state.stopCoordinates:null);
+  if(highlightedStop){const [sx,sy]=screen(...highlightedStop);ctx.beginPath();ctx.arc(sx,sy,11,0,Math.PI*2);ctx.fillStyle='#fff';ctx.fill();ctx.lineWidth=4;ctx.strokeStyle='#f79009';ctx.stroke();ctx.beginPath();ctx.arc(sx,sy,3,0,Math.PI*2);ctx.fillStyle='#f79009';ctx.fill();}
+  if(highlightedStop&&state.selectedVehicle){const v=vehicles.find(x=>x.source+'|'+x.vehicleId===state.selectedVehicle);if(v){const [sx,sy]=screen(...highlightedStop);const [vx,vy]=screen(v.latitude,v.longitude);const area=visibleMapRect(),inView=vx>=area.left&&vx<=area.right&&vy>=area.top&&vy<=area.bottom;ctx.save();ctx.setLineDash([5,7]);ctx.strokeStyle='#0c6e6b';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(sx,sy);if(inView)ctx.lineTo(vx,vy);else{const dx=vx-sx,dy=vy-sy;const tx=dx>0?(area.right-sx)/dx:dx<0?(area.left-sx)/dx:Infinity;const ty=dy>0?(area.bottom-sy)/dy:dy<0?(area.top-sy)/dy:Infinity;const t=Math.max(0,Math.min(tx,ty,1));const ex=sx+dx*t,ey=sy+dy*t;ctx.lineTo(ex,ey);ctx.stroke();ctx.setLineDash([]);ctx.beginPath();ctx.arc(ex,ey,14,0,Math.PI*2);ctx.fillStyle='#136c66';ctx.fill();ctx.fillStyle='#fff';ctx.font='16px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('➤',ex,ey);ctx.restore();}if(inView){ctx.stroke();ctx.restore()}}}
   if(state.userPosition){const [x,y]=screen(...state.userPosition);ctx.beginPath();ctx.arc(x,y,9,0,Math.PI*2);ctx.fillStyle='#1570ef';ctx.fill();ctx.lineWidth=3;ctx.strokeStyle='#fff';ctx.stroke()}
   $('mapToast').textContent=activeTab==='rotas'
     ?'Rotas · ônibus em horários GTFS; traços esquemáticos; caminhada aproximada'
@@ -252,7 +258,7 @@ async function selectLine(code,{fromStop=false,vehicleKey=null,destination=null}
 }
 function visibleMapRect(){const w=$canvas.clientWidth,h=$canvas.clientHeight,r=$('sheet').getBoundingClientRect();if(window.innerWidth>=760){let left=Math.max(20,Math.min(w-120,r.right+14));return {left,top:65,right:w-16,bottom:h-18}}let bottom=Math.max(100,Math.min(h-10,r.top-14));return {left:15,top:70,right:w-15,bottom}}
 function centerStopInAvailableMap(){if(!state.stopCoordinates)return;const a=visibleMapRect(),x=(a.left+a.right)/2,y=(a.top+a.bottom)/2;const [px,py]=mercator(...state.stopCoordinates,state.zoom);state.center=invMercator(px-(x-$canvas.clientWidth/2),py-(y-$canvas.clientHeight/2),state.zoom)}
-function focusVehicle(v){state.selectedVehicle=v.source+'|'+v.vehicleId;if(lineMode()&&lineFocusStopId&&state.geometry?.selected?.stops){const target=state.geometry.selected.stops.find(s=>String(s.id)===String(lineFocusStopId));const saved=state.stopCoordinates; if(target)state.stopCoordinates=[target.lat,target.lng];const rect=visibleMapRect(),w=Math.max(130,rect.right-rect.left),h=Math.max(130,rect.bottom-rect.top);let z=16;for(;z>=14.5;z-=0.25){const stop=mercator(...state.stopCoordinates,z),bus=mercator(v.latitude,v.longitude,z);if(Math.abs(stop[0]-bus[0])<w*.40&&Math.abs(stop[1]-bus[1])<h*.40)break;}state.zoom=Math.max(14.5,z);centerStopInAvailableMap();state.stopCoordinates=saved; // Stay in tracking layer.
+function focusVehicle(v){state.selectedVehicle=v.source+'|'+v.vehicleId;if(lineMode()&&lineFocusStopId&&state.geometry?.selected?.stops?.some(s=>String(s.id)===String(lineFocusStopId))){const target=state.geometry.selected.stops.find(s=>String(s.id)===String(lineFocusStopId));const saved=state.stopCoordinates;state.stopCoordinates=[Number(target.lat),Number(target.lng)];const rect=visibleMapRect(),w=Math.max(130,rect.right-rect.left),h=Math.max(130,rect.bottom-rect.top);let z=16;for(;z>=14.5;z-=0.25){const stop=mercator(...state.stopCoordinates,z),bus=mercator(v.latitude,v.longitude,z);if(Math.abs(stop[0]-bus[0])<w*.40&&Math.abs(stop[1]-bus[1])<h*.40)break;}state.zoom=Math.max(14.5,z);centerStopInAvailableMap();state.stopCoordinates=saved; // Stay in tracking layer.
  }else{state.center=[v.latitude,v.longitude];state.zoom=Math.max(state.zoom,15);switchTab('linhas',true)}renderVehicles();drawSoon();scheduleMapStops()}
 function vehicleMeta(v){let match=v.shapeMatch||{};let shape=match.status==='probable'?`Traçado provável ${match.shapeId} (não confirmado)`:'Traçado ainda indeterminado';const movement=v.positionUnchangedSinceAt?`Posição sem mudança: ${fmtAge(diffSeconds(v.positionUnchangedSinceAt))}`:'Movimento: não verificado';return `Último GPS: ${fmtTime(v.lastGpsFixAt)} · há ${fmtAge(diffSeconds(v.lastGpsFixAt))}\n${movement}\n${shape}`}
 function vehicleRow(v){let b=document.createElement('button');b.type='button';b.className='vehicle'+(state.selectedVehicle===v.source+'|'+v.vehicleId?' selected':'');b.dataset.vehicleKey=v.source+'|'+v.vehicleId;let top=document.createElement('div');top.className='top';let name=document.createElement('b');name.textContent='Ônibus';let lab=document.createElement('span');lab.className='label';let gpsAge=diffSeconds(v.lastGpsFixAt),stillAge=diffSeconds(v.positionUnchangedSinceAt);if(gpsAge>120)lab.classList.add('old');else if(v.positionUnchangedSinceAt&&stillAge>120)lab.classList.add('warn');lab.textContent=gpsAge>300?'Sinal antigo':gpsAge>120?'Sinal atrasado':v.positionUnchangedSinceAt&&stillAge>120?'Sem movimento recente':'GPS recente';top.append(name,lab);let m=document.createElement('div');m.className='meta';m.textContent=vehicleMeta(v);m.style.whiteSpace='pre-line';b.append(top,m);b.onclick=()=>focusVehicle(v);return b}
@@ -264,6 +270,74 @@ function renderVehicles(){
     return;
   }
   let arr=state.fleet?.vehicles||[];$('vTotal').textContent=arr.length;$('vRecent').textContent=arr.filter(v=>diffSeconds(v.lastGpsFixAt)<=120).length;let list=$('vehicleList');list.innerHTML='';if(!arr.length){let p=document.createElement('p');p.className='notice';p.textContent='Nenhuma posição GPS recente foi recebida para esta linha. Isso não significa que não haja ônibus circulando. Consulte os horários programados.';list.append(p);return}for(let v of arr.slice(0,200))list.append(vehicleRow(v));}
+function nearestStopForLine(stops,coords){
+  if(!Array.isArray(stops)||!stops.length||!Array.isArray(coords))return null;
+  return stops.filter(p=>Number.isFinite(Number(p.lat))&&Number.isFinite(Number(p.lng)))
+    .sort((a,b)=>distanceCoords([Number(a.lat),Number(a.lng)],coords)-
+                 distanceCoords([Number(b.lat),Number(b.lng)],coords))[0]||null;
+}
+function populateLineStopChooser(stops){
+  const list=$('lineStopSelect');list.replaceChildren();
+  const placeholder=document.createElement('option');
+  placeholder.value='';placeholder.textContent='Selecione seu ponto neste trajeto';
+  list.append(placeholder);
+  const visited=new Set();
+  for(const stop of stops){
+    if(visited.has(String(stop.id)))continue;
+    visited.add(String(stop.id));
+    const item=document.createElement('option');
+    item.value=String(stop.id);item.textContent=stop.name;
+    list.append(item);
+  }
+  $('lineStopChooser').hidden=!stops.length;
+  if(stops.length&&!lineFocusStopId)
+    $('lineStopForecast').textContent=state.userPosition
+      ?'Selecione um ponto para ver as próximas partidas programadas.'
+      :'Escolha o ponto de embarque neste percurso. Localização não autorizada.';
+}
+function centerLineStop(stop){
+  const coords=[Number(stop.lat),Number(stop.lng)];
+  const a=visibleMapRect(),x=(a.left+a.right)/2,y=(a.top+a.bottom)/2;
+  const [px,py]=mercator(...coords,state.zoom);
+  state.center=invMercator(px-(x-$canvas.clientWidth/2),
+                           py-(y-$canvas.clientHeight/2),state.zoom);
+}
+function focusLineBoardingStop(stop,{userInitiated=false}={}){
+  if(!state.route||!lineMode())return;
+  lineFocusStopId=String(stop.id);
+  $('lineStopSelect').value=lineFocusStopId;
+  state.zoom=Math.max(15.5,state.zoom);
+  centerLineStop(stop);drawSoon();scheduleMapStops();
+  const prefix=userInitiated?'Ponto selecionado. ':'Ponto mais próximo no percurso. ';
+  $('lineStopForecast').textContent=prefix+'Consultando horários programados…';
+  loadLineStopForecast(stop).catch(e=>{
+    $('lineStopForecast').textContent='Horários indisponíveis: '+e.message;
+  });
+}
+async function loadLineStopForecast(stop){
+  const seq=++lineStopForecastSeq,code=state.route?.code||'';
+  const result=await api('/api/stop?id='+encodeURIComponent(stop.id));
+  if(seq!==lineStopForecastSeq||!lineMode()||state.route?.code!==code||
+     String(stop.id)!==String(lineFocusStopId))return;
+  const matched=(result.routes||[]).filter(x=>String(x.code)===String(code));
+  const scheduled=matched.filter(x=>x.nextArrival?.type==='scheduled')
+    .sort((a,b)=>(a.nextArrival.minutes??9999)-(b.nextArrival.minutes??9999));
+  if(result.expired){
+    $('lineStopForecast').textContent='GTFS vencido: não há previsão confiável neste ponto.';
+  }else if(scheduled.length){
+    const first=scheduled[0],minutes=Number(first.nextArrival.minutes);
+    const when=first.nextArrival.at?' às '+fmtTime(first.nextArrival.at).slice(0,5):'';
+    const direction=first.destination?' · '+first.destination:'';
+    $('lineStopForecast').textContent=
+      stop.name+direction+' — próxima passagem programada em '+
+      (minutes<=0?'instantes':minutes+' min')+when+
+      '. Horário de tabela; não é ETA calculado pelo GPS.';
+  }else{
+    $('lineStopForecast').textContent=stop.name+
+      ': sem próximo horário programado disponível para esta linha. Não significa ausência de ônibus.';
+  }
+  drawSoon();
+}
 async function selectPattern(){
   if(!state.route||!state.geometry)return;
   const code=state.route.code,pattern=$('patternInput').value;
