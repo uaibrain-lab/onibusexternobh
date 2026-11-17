@@ -32,8 +32,11 @@ class MetroCatalog:
                                           'hours', 'plannedStations')}
 
     def _station_summary(self, station):
-        return {key: station[key] for key in ('id', 'name', 'lat', 'lng',
+        out = {key: station[key] for key in ('id', 'name', 'lat', 'lng',
                                              'lines', 'interchange', 'active')}
+        if 'officialForecastUrl' in station:
+            out['officialForecastUrl'] = station['officialForecastUrl']
+        return out
 
     @staticmethod
     def _moment(at=None):
@@ -100,6 +103,9 @@ class MetroCatalog:
             'stationCoordinatesNote': self.data['stationCoordinates'],
             'realtimeAvailable': False,
             'sources': self.data['sources'],
+            'fareBRL': self.data['operations']['fareBRL'],
+            'fareSource': self.data['operations']['fareSource'],
+            'forecastLinkNote': self.data['operations']['forecastLinkNote'],
             'notice': self.data['operations']['notice']
         }
 
