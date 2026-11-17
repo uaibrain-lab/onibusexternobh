@@ -22,6 +22,7 @@ from typing import Optional
 
 from .matcher import distance_m
 from .metro import BRT
+from .walking import WalkingGraph
 
 WEEKDAYS = ('monday','tuesday','wednesday','thursday','friday','saturday','sunday')
 WALK_SPEED_M_S = 1.15
@@ -51,6 +52,7 @@ class JourneyPlanner:
     def __init__(self, catalog_dir, metro=None):
         self.catalog = pathlib.Path(catalog_dir)
         self.metro = metro
+        self.walking = WalkingGraph(catalog_dir)
         self.ready = False
         self.failure = 'Índice de viagens não encontrado'
         index_path = self.catalog / 'routing-index.json'
@@ -107,6 +109,17 @@ class JourneyPlanner:
 
     def _walk_time(self,dist):
         return max(20.,dist * WALK_FACTOR / WALK_SPEED_M_S + 25.)
+
+    def _access_points(self, point, radius=1050, limit=22):
+        candidates=self.nearby(*point,radius=radius,limit=90)
+        if not self.walking.ready:
+            return [(meters,sid,None) for meters,sid in candidates[:limit]]
+        # An OSM network exists: only present stops connected by actual
+        # pedestrian ways. Straight line is used solely for snapping to a
+        # graph node at the origin and the stop (explicitly disclosed).
+        available=[(sid,self.stops[sid]) for _,sid in candidates]
+        routed=self.walking.reachable_stops(point,available,radius=radius*1.4,limit=limit)
+        return [(meters/WALK_FACTOR,sid,path) for meters,sid,path in routed]
 
     @staticmethod
     def _iso(stamp):
@@ -174,11 +187,20 @@ class JourneyPlanner:
             del current[5:]
         return any(x is label for x in current)
 
-    def _edge_walk(self,source,dest,meters,depart,arrive):
-        return {'mode':'walk','from':source,'to':dest,
-                'metersApprox':round(meters * WALK_FACTOR),
-                'departure':self._iso(depart),'arrival':self._iso(arrive),
-                'pathVerified':False}
+    def _edge_walk(self,source,dest,meters,depart,arrive,route=None):
+        edge={'mode':'walk','from':source,'to':dest,
+              'metersApprox':round(meters * WALK_FACTOR),
+              'durationSeconds':round(arrive-depart),
+              'departure':self._iso(depart),'arrival':self._iso(arrive),
+              'pathVerified':False}
+        if route is not None:
+            edge['walkingNetwork']='OpenStreetMap'
+            edge['connectedGraph']=True
+            edge['routeType']='connected_osm_graph'
+            edge['unverifiedAccessMeters']=route['unverifiedAccessMeters']
+        else:
+            edge['walkingNetwork']='geometric_estimate'
+        return edge
 
     def _edge_bus(self,code,trip,headsign,a,b,depart,arrive):
         return {'mode':'bus','line':code,'lineName':self.routes.get(code,code),
@@ -209,12 +231,21 @@ class JourneyPlanner:
             for meters,sid in self.nearby(float(stop[1]),float(stop[2]),radius=165,limit=40):
                 if sid==old.stop or meters<2:
                     continue
+                foot=None
+                if self.walking.ready:
+                    dest=self.stops[sid]
+                    foot=self.walking.route((float(stop[1]),float(stop[2])),
+                                            (float(dest[1]),float(dest[2])),
+                                            max_meters=410)
+                    if foot is None:
+                        continue  # never bridge a disconnected OSM barrier
+                    meters=foot['meters']/WALK_FACTOR
                 seconds=self._walk_time(meters)+TRANSFER_BUFFER_SECONDS
                 t=old.time-seconds if backward else old.time+seconds
                 if bound is not None and (t<=bound if backward else t>=bound):
                     continue
-                edge=(self._edge_walk(sid,old.stop,meters,t,old.time) if backward
-                      else self._edge_walk(old.stop,sid,meters,old.time,t))
+                edge=(self._edge_walk(sid,old.stop,meters,t,old.time,foot) if backward
+                      else self._edge_walk(old.stop,sid,meters,old.time,t,foot))
                 self._insert(labels,Label(sid,t,old.walked+meters*WALK_FACTOR,
                                           old.rides,old,edge),backward)
 
@@ -311,16 +342,16 @@ class JourneyPlanner:
         return legs
 
     def _collect(self,labels,origin,dest,search_ts,backward):
-        endings=self.nearby(*(origin if backward else dest),radius=1050,limit=22)
+        endings=self._access_points(origin if backward else dest,radius=1050,limit=22)
         results=[]
-        for meters,sid in endings:
+        for meters,sid,foot in endings:
             for label in labels.get(sid,()):
                 delay=self._walk_time(meters)
                 if backward:
                     # Reserve a boarding buffer at the initial stop too.
                     walk_arrival=label.time-TRANSFER_BUFFER_SECONDS
                     departure=walk_arrival-delay
-                    legs=[self._edge_walk('origin',sid,meters,departure,walk_arrival)]+self._path(label,True)
+                    legs=[self._edge_walk('origin',sid,meters,departure,walk_arrival,foot)]+self._path(label,True)
                     # Actual arrival is usually earlier than the requested deadline.
                     # Never inflate the itinerary duration with artificial idle time.
                     finish=search_ts
@@ -329,8 +360,7 @@ class JourneyPlanner:
                         if last_bus:
                             last_arrival=dt.datetime.fromisoformat(last_bus['arrival']).timestamp()
                             trailing=legs[-1]
-                            extra_walk=trailing['metersApprox']/WALK_FACTOR
-                            finish=min(search_ts,last_arrival+self._walk_time(extra_walk))
+                            finish=min(search_ts,last_arrival+trailing['durationSeconds'])
                             trailing['departure']=self._iso(last_arrival)
                             trailing['arrival']=self._iso(finish)
                     if departure>search_ts or search_ts-departure>HORIZON_SECONDS:
@@ -338,7 +368,7 @@ class JourneyPlanner:
                 else:
                     departure=search_ts
                     finish=label.time+delay
-                    legs=self._path(label,False)+[self._edge_walk(sid,'destination',meters,label.time,finish)]
+                    legs=self._path(label,False)+[self._edge_walk(sid,'destination',meters,label.time,finish,foot)]
                     if finish<search_ts or finish-search_ts>HORIZON_SECONDS:
                         continue
                 if not any(leg['mode']=='bus' for leg in legs):
@@ -384,6 +414,31 @@ class JourneyPlanner:
         except (KeyError,ValueError,TypeError):
             return []
 
+    def _finish_walk_geometry(self, options, origin, destination):
+        if not self.walking.ready:
+            return options
+        def point(which):
+            if which=='origin':
+                return origin
+            if which=='destination':
+                return destination
+            entry=self.stops.get(which)
+            if not entry:
+                return None
+            return (float(entry[1]),float(entry[2]))
+        for option in options:
+            for leg in option['legs']:
+                if leg.get('mode')!='walk' or not leg.get('connectedGraph'):
+                    continue
+                a,b=point(leg['from']),point(leg['to'])
+                if a is None or b is None:
+                    continue
+                path=self.walking.route(a,b,max_meters=max(250,leg['metersApprox']+65),
+                                        geometry=True)
+                if path:
+                    leg['geometry']=path['geometry']
+        return options
+
     def plan(self,origin,destination,at=None,mode='departAt',preference='fastest'):
         origin=self._geo(origin)
         destination=self._geo(destination)
@@ -405,13 +460,13 @@ class JourneyPlanner:
                     'itineraries':[],'metroHints':[]}
         backward=(mode=='arriveBy')
         search_ts=at_dt.timestamp()
-        starts=self.nearby(*(destination if backward else origin),radius=1050,limit=22)
+        starts=self._access_points(destination if backward else origin,radius=1050,limit=22)
         prior={}
-        for meters,sid in starts:
+        for meters,sid,foot in starts:
             delay=self._walk_time(meters)
             t=search_ts-delay if backward else search_ts+delay
-            edge=(self._edge_walk(sid,'destination',meters,t,search_ts) if backward
-                  else self._edge_walk('origin',sid,meters,search_ts,t))
+            edge=(self._edge_walk(sid,'destination',meters,t,search_ts,foot) if backward
+                  else self._edge_walk('origin',sid,meters,search_ts,t,foot))
             self._insert(prior,Label(sid,t,meters*WALK_FACTOR,0,None,edge),backward)
         candidates=[]
         stats={'stopScans':0,'limited':False,'rounds':0,'candidateRoutes':0,'candidateTrips':0}
@@ -459,7 +514,8 @@ class JourneyPlanner:
                 break
         return {'status':'partial' if stats['limited'] else 'ok',
                 'mode':mode,'preference':preference,'requestedAt':at_dt.isoformat(),
-                'itineraries':list(unique.values())[:6],
+                'itineraries':self._finish_walk_geometry(list(unique.values())[:6],origin,destination),
+                'walkingNetworkReady':self.walking.ready,
                 'metroHints':self._metro_hints(origin,destination,at_dt),
                 'stats':stats,
                 'notes':[
