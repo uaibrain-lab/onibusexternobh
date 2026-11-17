@@ -1,0 +1,386 @@
+{
+  "schema": 1,
+  "updatedAt": "2026-11-17",
+  "timezone": "America/Sao_Paulo",
+  "stationCoordinates": "Localização indicativa de estação, NÃO entrada de acesso; validar em campo antes do roteamento.",
+  "sources": {
+    "operator": "https://www.metrobh.com.br/va-de-metro/",
+    "construction": "https://www.metrobh.com.br/obras/",
+    "serviceNotice": "https://www.metrobh.com.br/metro-bh-tera-operacao-especial-para-show-da-xuxa-e-aplicacao-do-enem-neste-fim-de-semana/",
+    "railCoordinates": "https://repositorio.ufmg.br/server/api/core/bitstreams/fdbd8771-500f-4b4b-a375-c942f72e472c/content",
+    "newCoordinates": "© OpenStreetMap contributors via mapcarta.com"
+  },
+  "lines": [
+    {
+      "id": "1",
+      "name": "Linha 1 — Laranja",
+      "color": "#ef8e25",
+      "stations": [
+        "novo-eldorado",
+        "eldorado",
+        "cidade-industrial",
+        "vila-oeste",
+        "gameleira",
+        "nova-suica",
+        "calafate",
+        "carlos-prates",
+        "lagoinha",
+        "central",
+        "santa-efigenia",
+        "santa-tereza",
+        "horto",
+        "santa-ines",
+        "jose-candido",
+        "minas-shopping",
+        "sao-gabriel",
+        "primeiro-de-maio",
+        "waldomiro-lobo",
+        "floramar",
+        "vilarinho"
+      ],
+      "operational": true,
+      "hours": {
+        "start": "05:15",
+        "end": "23:00"
+      },
+      "plannedStations": []
+    },
+    {
+      "id": "2",
+      "name": "Linha 2 — Roxa",
+      "color": "#8655b7",
+      "stations": [
+        "nova-suica",
+        "amazonas"
+      ],
+      "operational": true,
+      "hours": {
+        "start": "05:15",
+        "end": "23:00"
+      },
+      "plannedStations": [
+        "Nova Gameleira",
+        "Nova Cintra",
+        "Vista Alegre",
+        "Ferrugem",
+        "Barreiro"
+      ]
+    }
+  ],
+  "stations": [
+    {
+      "id": "vilarinho",
+      "name": "Vilarinho",
+      "lat": -19.821706,
+      "lng": -43.947586,
+      "source": "UFMG-2021",
+      "lines": [
+        "1"
+      ],
+      "interchange": false,
+      "active": true
+    },
+    {
+      "id": "floramar",
+      "name": "Floramar",
+      "lat": -19.833922,
+      "lng": -43.940433,
+      "source": "UFMG-2021",
+      "lines": [
+        "1"
+      ],
+      "interchange": false,
+      "active": true
+    },
+    {
+      "id": "waldomiro-lobo",
+      "name": "Waldomiro Lobo",
+      "lat": -19.847789,
+      "lng": -43.932664,
+      "source": "UFMG-2021",
+      "lines": [
+        "1"
+      ],
+      "interchange": false,
+      "active": true
+    },
+    {
+      "id": "primeiro-de-maio",
+      "name": "Primeiro de Maio",
+      "lat": -19.857833,
+      "lng": -43.933867,
+      "source": "UFMG-2021",
+      "lines": [
+        "1"
+      ],
+      "interchange": false,
+      "active": true
+    },
+    {
+      "id": "sao-gabriel",
+      "name": "São Gabriel",
+      "lat": -19.863236,
+      "lng": -43.926264,
+      "source": "UFMG-2021",
+      "lines": [
+        "1"
+      ],
+      "interchange": false,
+      "active": true
+    },
+    {
+      "id": "minas-shopping",
+      "name": "Minas Shopping",
+      "lat": -19.872367,
+      "lng": -43.925306,
+      "source": "UFMG-2021",
+      "lines": [
+        "1"
+      ],
+      "interchange": false,
+      "active": true
+    },
+    {
+      "id": "jose-candido",
+      "name": "José Cândido da Silveira",
+      "lat": -19.883533,
+      "lng": -43.912964,
+      "source": "UFMG-2021",
+      "lines": [
+        "1"
+      ],
+      "interchange": false,
+      "active": true
+    },
+    {
+      "id": "santa-ines",
+      "name": "Santa Inês",
+      "lat": -19.895244,
+      "lng": -43.910539,
+      "source": "UFMG-2021",
+      "lines": [
+        "1"
+      ],
+      "interchange": false,
+      "active": true
+    },
+    {
+      "id": "horto",
+      "name": "Horto Florestal",
+      "lat": -19.906108,
+      "lng": -43.913072,
+      "source": "UFMG-2021",
+      "lines": [
+        "1"
+      ],
+      "interchange": false,
+      "active": true
+    },
+    {
+      "id": "santa-tereza",
+      "name": "Santa Tereza",
+      "lat": -19.917903,
+      "lng": -43.9127,
+      "source": "UFMG-2021",
+      "lines": [
+        "1"
+      ],
+      "interchange": false,
+      "active": true
+    },
+    {
+      "id": "santa-efigenia",
+      "name": "Santa Efigênia",
+      "lat": -19.919497,
+      "lng": -43.922225,
+      "source": "UFMG-2021",
+      "lines": [
+        "1"
+      ],
+      "interchange": false,
+      "active": true
+    },
+    {
+      "id": "central",
+      "name": "Central Supermercados BH",
+      "lat": -19.916667,
+      "lng": -43.932778,
+      "source": "UFMG-2021",
+      "lines": [
+        "1"
+      ],
+      "interchange": false,
+      "active": true
+    },
+    {
+      "id": "lagoinha",
+      "name": "Lagoinha",
+      "lat": -19.912994,
+      "lng": -43.942494,
+      "source": "UFMG-2021",
+      "lines": [
+        "1"
+      ],
+      "interchange": false,
+      "active": true
+    },
+    {
+      "id": "carlos-prates",
+      "name": "Carlos Prates",
+      "lat": -19.917458,
+      "lng": -43.956578,
+      "source": "UFMG-2021",
+      "lines": [
+        "1"
+      ],
+      "interchange": false,
+      "active": true
+    },
+    {
+      "id": "calafate",
+      "name": "Calafate",
+      "lat": -19.922283,
+      "lng": -43.970258,
+      "source": "UFMG-2021",
+      "lines": [
+        "1"
+      ],
+      "interchange": false,
+      "active": true
+    },
+    {
+      "id": "gameleira",
+      "name": "Gameleira",
+      "lat": -19.928086,
+      "lng": -43.988317,
+      "source": "UFMG-2021",
+      "lines": [
+        "1"
+      ],
+      "interchange": false,
+      "active": true
+    },
+    {
+      "id": "vila-oeste",
+      "name": "Vila Oeste",
+      "lat": -19.938628,
+      "lng": -44.002722,
+      "source": "UFMG-2021",
+      "lines": [
+        "1"
+      ],
+      "interchange": false,
+      "active": true
+    },
+    {
+      "id": "cidade-industrial",
+      "name": "Cidade Industrial",
+      "lat": -19.945503,
+      "lng": -44.016464,
+      "source": "UFMG-2021",
+      "lines": [
+        "1"
+      ],
+      "interchange": false,
+      "active": true
+    },
+    {
+      "id": "eldorado",
+      "name": "Eldorado",
+      "lat": -19.938739,
+      "lng": -44.029311,
+      "source": "UFMG-2021",
+      "lines": [
+        "1"
+      ],
+      "interchange": false,
+      "active": true
+    },
+    {
+      "id": "nova-suica",
+      "name": "Nova Suíça",
+      "lat": -19.92484,
+      "lng": -43.9783,
+      "source": "OSM-2026",
+      "lines": [
+        "1",
+        "2"
+      ],
+      "interchange": true,
+      "active": true
+    },
+    {
+      "id": "amazonas",
+      "name": "Amazonas",
+      "lat": -19.93188,
+      "lng": -43.98419,
+      "source": "OSM-2026",
+      "lines": [
+        "2"
+      ],
+      "interchange": false,
+      "active": true
+    },
+    {
+      "id": "novo-eldorado",
+      "name": "Novo Eldorado",
+      "lat": -19.9307,
+      "lng": -44.04162,
+      "source": "OSM-2026",
+      "lines": [
+        "1"
+      ],
+      "interchange": false,
+      "active": true
+    }
+  ],
+  "operations": {
+    "headways": {
+      "1": {
+        "weekdays": {
+          "peakMinutes": 7.5,
+          "offPeakMinutes": 15,
+          "peakWindows": [
+            [
+              "06:00",
+              "08:00"
+            ],
+            [
+              "16:30",
+              "18:30"
+            ]
+          ]
+        },
+        "saturday": {
+          "morningMinutes": 7.5,
+          "morningWindow": [
+            "06:00",
+            "08:00"
+          ],
+          "otherMinutes": 15
+        },
+        "sundayAndHolidays": {
+          "minutes": 15
+        }
+      },
+      "2": {
+        "note": "Intervalo geral não confirmado para a Linha 2; consultar operadora."
+      }
+    },
+    "exceptional": [
+      {
+        "line": "1",
+        "from": "2026-11-16",
+        "through": "2026-11-20",
+        "after": "20:00",
+        "headwayMinutes": 24,
+        "note": "Entre 16 e 20/11/2026, após 20h: intervalos de 24 min na Linha 1. Via única em Gameleira, Nova Suíça e Calafate.",
+        "url": "https://www.metrobh.com.br/metro-bh-tera-operacao-especial-para-show-da-xuxa-e-aplicacao-do-enem-neste-fim-de-semana/"
+      }
+    ],
+    "fareBRL": 6,
+    "fareSource": "https://www.metrobh.com.br/va-de-metro/",
+    "lastVerified": "2026-11-17",
+    "notice": "Intervalos são frequências, NÃO horários exatos ou ETA GPS. Revalidar alterações junto à operadora."
+  }
+}
