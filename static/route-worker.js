@@ -280,6 +280,12 @@ function reconstruct(hit,ctx) {
     delete leg.tripIdx;
   }
   for(const leg of legs){
+    if(leg.mode==='walk'){
+      const a=typeof leg.from==='number'?stops[leg.from]:null;
+      const b=typeof leg.to==='number'?stops[leg.to]:null;
+      if(a)leg.fromName=a[1];
+      if(b)leg.toName=b[1];
+    }
     leg.departure=stamp(leg.departure);
     leg.arrival=stamp(leg.arrival);
   }
@@ -458,13 +464,23 @@ async function searchPlaces(query){
   const q=norm(query).trim();
   if(q.length<2)return [];
   const candidates=[];
+  try{
+    if(!metro){
+      const response=await fetch(new URL('../metro.json',root).href,{cache:'force-cache'});
+      if(response.ok)metro=await response.json();
+    }
+    for(const s of metro?.stations||[]){
+      if(s.active&&norm(s.name).includes(q))
+        candidates.push({lat:s.lat,lng:s.lng,label:'Metrô: '+s.name});
+    }
+  }catch(e){/* The bus stop search still works offline. */}
   for(const s of stops){
     if(norm(s[1]).includes(q)){
       candidates.push({lat:s[2],lng:s[3],label:'Ponto: '+s[1]});
       if(candidates.length>=12)break;
     }
   }
-  return candidates;
+  return candidates.slice(0,12);
 }
 self.onmessage=async event=>{
   const msg=event.data||{};
