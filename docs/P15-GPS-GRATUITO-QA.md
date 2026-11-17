@@ -64,6 +64,14 @@ O browser precisa de suporte a `DecompressionStream('gzip')` para os índices, o
 - As medidas de heap obtidas com GTFS embutido no HTML são **artefato do harness** e NÃO equivalem à memória do aplicativo implantado. A navegação HTTP local do Chromium foi negada pelo administrador do ambiente, inclusive para URLs interceptadas. **Não é teste em Android físico**, nem teste de rede móvel/3G.
 - GitHub Actions da branch-base de integração e da revisão P15 encerram com `steps=null` antes dos testes. Sem log de execução, causa não comprovada. Não declarar suíte Python/JS/Playwright verde sem execução.
 
+## Benchmark preliminar de CPU (não é homologação do Cloudflare)
+
+Uma simulação local de JSON PBH no Node 22 deste ambiente (análise de JSON + filtro de NL) produziu mediana aproximada de **12,6 ms para 0,88 MiB / 10.000 registros**, **35,9 ms para 2,67 MiB / 30.000** e **50,8 ms para 5,35 MiB / 60.000**. Isso é **wall time do Node em ambiente compartilhado**, e **não** CPU do Worker Cloudflare; os dois números não são comparáveis como equivalentes. O resultado revela risco material de exceder os **10 ms de CPU do Workers Free** se a PBH enviar feeds grandes. Não presumir compatibilidade com a franquia.
+
+O script `node scripts/benchmark_gps_parse.mjs` executa o próprio handler Worker com feeds simulados para obter uma medição local reprodutível. Só o teste no POP real do Cloudflare, com tamanhos reais da PBH e verificação de cache, pode autorizar `enabled:true`. Em caso de excesso, **priorizar alternativa gratuita tecnicamente comprovada ou manter GPS indisponível**, jamais exigir serviço pago.
+
+A origem oficial PBH publica os dados de localização em formato aberto sob Creative Commons Atribuição: https://dados.pbh.gov.br/pt_BR/dataset/tempo_real_onibus_-_coordenada. Disponibilidade, volume, limites de tráfego e permissões efetivas da origem precisam ser testados novamente no ambiente de execução.
+
 ## Risco de franquia Spark
 
 Documentação: Firebase Hosting Spark prevê franquia compartilhada com o restante do Hub de aproximadamente 10 GiB/mês de transferência e até 10 GiB de armazenamento; Cloudflare Workers Free impõe limite de 100 mil requisições/dia e CPU limitada. **Zero cobrança obrigatória, mas também zero garantia de capacidade ilimitada.**
