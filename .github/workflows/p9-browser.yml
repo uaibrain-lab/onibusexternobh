@@ -13,6 +13,7 @@ on:
       - static/metro-timing.js
       - tests/browser-p9.spec.cjs
       - tests/playwright.config.cjs
+      - catalog/walk/graph.json.gz
       - .github/workflows/p9-browser.yml
 
 permissions:
@@ -40,6 +41,7 @@ jobs:
           test -s dist/externo/static-bus.js
           test -s dist/externo/route-worker.js
           test -s dist/externo/catalog/scan/index.json
+          if test -s catalog/walk/graph.json.gz; then test -s dist/externo/catalog/walk/graph.json.gz; fi
       - name: Executar app em servidor estatico local
         run: |
           python -m http.server 8765 --bind 127.0.0.1 --directory dist >/tmp/p9-browser.log 2>&1 &
