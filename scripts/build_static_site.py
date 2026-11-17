@@ -34,16 +34,20 @@ def build(target=None):
     public=target/'externo'
     public.mkdir(parents=True)
     static=ROOT/'static'
-    for name in ('app.js','style.css','route-worker.js','service-worker.js'):
+    for name in ('app.js','style.css','route-worker.js','service-worker.js','static-bus.js'):
         shutil.copy2(static/name,public/name)
     html=(static/'index.html').read_text(encoding='utf-8')
     anchor='<html lang="pt-BR">'
     if anchor not in html:
         raise ValueError('Marcador de HTML para modo estático não localizado')
     html=html.replace(anchor,'<html lang="pt-BR" data-app-mode="free-static">',1)
+    html=html.replace('<script src="./app.js"></script>',
+                      '<script src="./static-bus.js"></script>\n<script src="./app.js"></script>')
     (public/'index.html').write_text(html,encoding='utf-8')
     (public/'catalog').mkdir(exist_ok=True)
     shutil.copy2(catalog/'metro.json',public/'catalog'/'metro.json')
+    for name in ('routes.json','stops.json','patterns.json','shapes.json','routing-stop-routes.json'):
+        shutil.copy2(catalog/name,public/'catalog'/name)
     shutil.copytree(scan,public/'catalog'/'scan')
     # Firebase CLI may run from dist/; public is that directory ('.').
     # Deploy package at /externo/ on a free Firebase Hosting site.
