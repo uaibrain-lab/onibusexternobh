@@ -33,4 +33,4 @@ jobs:
         run: |
           node --check static/app.js
           node --check static/sw.js
-          node --test tests/test_p11_ui.cjs
+          node --test tests/*.cjs

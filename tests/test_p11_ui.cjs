@@ -43,7 +43,7 @@ test('atualizações de chegada reutilizam botões e não recriam o painel',()=>
   assert.match(app,/if\(area\.dataset\.stopId!==String\(data\.id\)/);
 });
 test('cache PWA é renovável e não guarda coordenadas ou tiles',()=>{
-  assert.match(worker,/hub-externo-static-p11-r1/);
+  assert.match(worker,/hub-externo-static-p14-r1/);
   assert.match(worker,/latestOrCached\(request,cacheKey\)/);
   assert.match(worker,/u(?:rl)?\.origin!==self\.location\.origin/);
   assert.match(worker,/pathname\.includes\('\/api\/'\)/);

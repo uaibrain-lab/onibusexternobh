@@ -27,6 +27,15 @@ def run(host='127.0.0.1',port=8765,open_browser=False):
                 u=urllib.parse.urlsplit(self.path)
                 qs=urllib.parse.parse_qs(u.query)
                 path=u.path
+                if path=='/externo':
+                    # Canonical trailing slash is essential for ./style.css,
+                    # ./app.js and ./hub-parity.css inside an iframe.
+                    self.send_response(308)
+                    self.send_header('Location','/externo/')
+                    self.send_header('Content-Length','0')
+                    self.send_header('Cache-Control','no-store')
+                    self.end_headers()
+                    return
                 if path.startswith('/externo/api/'):
                     path=path[len('/externo'):]
                 elif path.startswith('/externo/'):
@@ -66,11 +75,11 @@ def run(host='127.0.0.1',port=8765,open_browser=False):
                     v=engine.fleet(code,poll=False)
                     return self.payload(200,v) if v else self.payload(404,{'error':'Linha não localizada'})
                 if path=='/':path='/index.html'
-                if path not in ('/index.html','/app.js','/style.css','/sw.js','/manifest.webmanifest','/icon-192.png','/icon-512.png'):
+                if path not in ('/index.html','/app.js','/style.css','/hub-parity.css','/sw.js','/manifest.webmanifest','/icon-192.png','/icon-512.png'):
                     return self.payload(404,{'error':'Não encontrado'})
                 file=ROOT/'static'/path.lstrip('/')
                 raw=file.read_bytes()
-                mime={'/index.html':'text/html','/app.js':'application/javascript','/style.css':'text/css', '/sw.js':'application/javascript','/manifest.webmanifest':'application/manifest+json','/icon-192.png':'image/png','/icon-512.png':'image/png'}[path]
+                mime={'/index.html':'text/html','/app.js':'application/javascript','/style.css':'text/css','/hub-parity.css':'text/css', '/sw.js':'application/javascript','/manifest.webmanifest':'application/manifest+json','/icon-192.png':'image/png','/icon-512.png':'image/png'}[path]
                 return self.respond(200,raw,mime if mime=='image/png' else mime+'; charset=utf-8')
             except (BrokenPipeError,ConnectionResetError):pass
             except Exception as exc:
