@@ -627,7 +627,7 @@ function renderRouteResults(data){
         const estimate=hint.rideRangeMinutes?.join('–')||'?';
         let timing='';
         if(window.earliestArrival){
-          timing='Chegada provável dentro da faixa '+routeClock(window.earliestArrival)+
+          timing='Faixa de planejamento aproximada, não previsão: chegada entre '+routeClock(window.earliestArrival)+
             (window.latestArrival?'–'+routeClock(window.latestArrival):
              ' em diante (espera pelo trem não confirmada)');
         }else if(window.conservativeDeparture){
