@@ -31,9 +31,9 @@ function makeFetch({badCors=false,noGps=false,badHtml=false,badEdition=false,
     if(url.href===SITE+'/externo/catalog/routes.json')
       return asJson([{code:'5102',id:'562055',name:'UFMG/Santo Antônio'}]);
     if(url.href===SITE+'/externo/catalog/scan/index.json')
-      return asJson({schema:1,validThrough:'2026-12-31',tripCount:1200});
+      return asJson({schema:1,validThrough:'20261231',tripCount:1200});
     if(url.href===SITE+'/externo/catalog/manifest.json')
-      return asJson({feedEndDate:badEdition?'2027-01-31':'2026-12-31'});
+      return asJson({feedEndDate:badEdition?'20270131':'20261231'});
     if(url.href===SITE+'/externo/catalog/arrivals/index.json')
       return asJson({schema:1,stopCount:9828});
     if(url.href===SITE+'/externo/_headers')return asText('not found',{status:404});
@@ -63,6 +63,7 @@ test('P18 public audit verifies stage CORS GTFS GPS without writes or offsite ca
   assert.deepEqual(r.failed,[]);
   assert.equal(r.passed,r.total);
   assert.equal(r.details.gtfsRouteId,'562055');
+  assert.equal(r.details.gtfsValidThrough,'20261231');
   assert.equal(r.details.gps.vehiclesObserved,1);
   assert.equal(r.details.gps.freshestFixAgeSeconds,50);
   assert.equal(r.productionSiteChanged,false);
