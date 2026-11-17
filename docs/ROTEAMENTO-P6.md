@@ -4,7 +4,7 @@ Branch: `feat/externo-p6-precisao-20261117` (base: P5). Não há deploy de produ
 
 ## Correções efetivamente implementadas
 
-- Índice GTFS schema 2 preserva **pickup_type** e **drop_off_type** em cada passagem de cada viagem. Não oferecer embarque/desembarque quando a operadora proíbe ou exige serviço especial.
+- Índice GTFS schema 3 preserva **pickup_type** e **drop_off_type** em cada passagem de cada viagem. Não oferecer embarque/desembarque quando a operadora proíbe ou exige serviço especial.
 - O mecanismo explora todas as 326 linhas presentes no índice ao longo da pesquisa, sem o corte inicial arbitrário em 135 rotas; a consulta do dia 18/11/2026 alcançou 3 rodadas sem atingir o limite global de paradas examinadas.
 - Otimizações de seleção de viagem e rótulos de dominância entre rodadas, mantendo chegada, caminhada e número de embarques como objetivos separados.
 - Quando a busca poda rótulos por proteção de recursos, retorna `status: partial` (não promete solução global ótima).
@@ -39,3 +39,11 @@ Sem a instância local, o site mantém caminhada aproximada, explicitamente iden
 3. Incorporar GTFS-RT pareado a `trip_id` quando a SUMOB fornecer identificadores compatíveis.
 4. Dados metroviários de partidas efetivas antes de sugerir integrações ônibus + metrô como temporalmente válidas.
 5. Atualização automática do GTFS e versionamento transacional do catálogo em produção.
+
+## Otimização posterior ao perfil
+
+- Catálogo no formato JSON array comprimido por linha (schema 3), com uma decodificação por arquivo, em vez de centenas de milhares de decodificações por viagem.
+- Cache de vizinhança de pontos para evitar repetir milhões de cálculos geográficos.
+- Avaliação de dominância antes de construir etapas completas e formatar datas, evitando milhões de conversões desnecessárias.
+- Truncamento de fronteiras Pareto explicitamente marcado como `status: partial`, em vez de indicar resultado comprovadamente ótimo.
+- Os ganhos de desempenho só são considerados confirmados após o benchmark com o índice schema 3 instalado; consultar logs do workflow.
