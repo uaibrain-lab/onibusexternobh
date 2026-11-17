@@ -1068,27 +1068,51 @@ async function freeCall(kind,props={}){
     freeWorker.postMessage({kind,seq,baseUrl:freeBase,...props});
   });
 }
+const geocodeSequence={origin:0,destination:0};
 async function searchRoutePlace(which){
   const q=routeInput(which).value.trim(),area=routeCandidates(which);
-  if(q.length<2){routeStatus('Digite pelo menos 2 caracteres de um ponto ou estação.','warn');return}
-  const coords=q.match(/^(-?\d{1,2}\.\d+)\s*[,;]\s*(-?\d{1,3}\.\d+)$/);
+  const seq=++geocodeSequence[which];
+  if(q.length<2){routeStatus('Digite um ponto, endereço ou local com pelo menos 2 caracteres.','warn');return}
+  const coords=q.match(/^(-?\\d{1,2}\\.\\d+)\\s*[,;]\\s*(-?\\d{1,3}\\.\\d+)$/);
   if(coords){
     setRoutePoint(which,{lat:Number(coords[1]),lng:Number(coords[2]),label:'Coordenadas: '+q});return;
   }
-  area.textContent='Procurando pontos e estações no catálogo…';
-  try{
-    const result=await freeCall('places',{which,query:q});
-    area.replaceChildren();
-    if(!result.items?.length){
-      area.textContent='Não localizado no catálogo. Use Escolher no mapa para marcar um endereço.';
-      return;
-    }
-    for(const p of result.items){
-      const b=document.createElement('button');b.type='button';b.className='row-item';
-      b.textContent=p.label;b.onclick=()=>setRoutePoint(which,p);area.append(b);
-    }
-  }catch(e){if(e.message!=='Consulta substituída')
-    area.textContent='Busca local indisponível: '+e.message+' — use o mapa.'}
+  area.textContent='Buscando pontos e endereços…';
+  // One external geocoding request ONLY after the person's explicit click.
+  // Coordinates of the user are never transmitted; the bias is fixed in BH.
+  const local=freeCall('places',{which,query:q})
+    .then(v=>v.items||[]).catch(()=>[]);
+  const external=q.length>=3&&typeof GeoPlaces!=='undefined'
+    ?GeoPlaces.search(q).then(v=>({items:v})).catch(error=>({items:[],error:error.message}))
+    :Promise.resolve({items:[],error:null});
+  const [stops,places]=await Promise.all([local,external]);
+  if(seq!==geocodeSequence[which])return;
+  area.replaceChildren();
+  const unique=new Set();
+  const combined=[...places.items,...stops].filter(p=>{
+    const key=Number(p.lat).toFixed(5)+','+Number(p.lng).toFixed(5);
+    if(unique.has(key))return false;
+    unique.add(key);return true;
+  }).slice(0,14);
+  if(!combined.length){
+    area.textContent=(places.error?'Busca externa indisponível. ':'')+
+      'Nenhum local confirmado. Experimente o endereço completo ou Escolher no mapa.';
+    return;
+  }
+  for(const p of combined){
+    const button=document.createElement('button');
+    button.type='button';button.className='row-item';
+    const label=document.createElement('span');label.className='name';
+    label.textContent=p.label;
+    button.append(label);
+    button.onclick=()=>setRoutePoint(which,p);
+    area.append(button);
+  }
+  if(places.error){
+    const warn=document.createElement('p');warn.className='hint';
+    warn.textContent='Busca externa indisponível; resultados locais exibidos. '+places.error;
+    area.append(warn);
+  }
 }
 function pickRoutePlace(which){
   state.routePick=which;switchTab('rotas',false);closeSheet();
