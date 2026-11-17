@@ -563,8 +563,9 @@ function renderRouteResults(data){
           title.textContent='Caminhada '+(leg.pathVerified?'':'≈ ')+leg.metersApprox+' m';
           const desc=document.createElement('small');
           desc.textContent=(leg.from==='origin'?'Origem':leg.from==='destination'?'Destino':
-                            'Ponto '+leg.from)+' → '+
-                           (leg.to==='destination'?'Destino':leg.to==='origin'?'Origem':'Ponto '+leg.to)+
+                            leg.fromName||'Ponto '+leg.from)+' → '+
+                           (leg.to==='destination'?'Destino':leg.to==='origin'?'Origem':
+                            leg.toName||'Ponto '+leg.to)+
                            (leg.pathVerified?' · via rede pedestre OSM':' · percurso pelas ruas ainda não verificado');
           txt.append(title,desc);
         }
