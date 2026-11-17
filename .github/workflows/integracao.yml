@@ -31,6 +31,8 @@ jobs:
           node --check static/static-bus.js
           node --check static/live-gps.js
           node --check gps-worker/src/index.mjs
+          node --check gps-worker/src/gtfs-rt.mjs
+          node --check scripts/check_gtfs_rt_free.mjs
           node --check static/static-arrivals.js
           node --check static/route-worker.js
           node --check static/walk-network.js
