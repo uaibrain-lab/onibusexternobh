@@ -1,5 +1,6 @@
 {
   "enabled": false,
-  "endpoint": "",
+  "provider": "gtfs_rt",
+  "endpoint": "https://externo-bh-gps-free.hubufmg.workers.dev/api/gps",
   "refreshSeconds": 45
 }
