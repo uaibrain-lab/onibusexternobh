@@ -9,7 +9,7 @@
 - Ao abrir um ponto, lista de linhas e próximos horários. Mostra até três partidas **da tabela GTFS** por linha e destino; estimativas GPS aparecem com ≈ quando os critérios de confiança são atendidos.
 - Quando um ônibus é selecionado a partir de uma parada, o ponto continua no centro do mapa visível e o zoom mantém um limite de afastamento.
 - Compartilhamento por link `?ponto=<ID>` (não compartilha coordenadas da pessoa).
-- Favoritos de linhas e pontos, com nomes personalizados locais por navegador e edição por diálogo.
+- Favoritos de linhas e pontos, com nomes personalizados locais por navegador e edição por diálogo. Os primeiros cinco pontos favoritos exibem prévia das próximas chegadas, sem precisar abrir cada ponto.
 - Botões e textos preparados prioritariamente para telas de celular; tema claro/escuro sincronizável com o Hub UFMG.
 
 ## Verdade e disponibilidade dos dados

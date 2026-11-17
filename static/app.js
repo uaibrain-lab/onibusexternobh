@@ -155,14 +155,37 @@ function scheduleMapStops(){clearTimeout(mapStopsTimer);mapStopsTimer=setTimeout
 async function loadMapStops(){const seq=++mapStopsSeq;if(state.zoom<12.5){state.mapStops=[];drawSoon();return}const w=$canvas.clientWidth,h=$canvas.clientHeight;if(!w||!h)return;const [cx,cy]=mercator(...state.center,state.zoom);const a=invMercator(cx-(w*.65),cy+(h*.65),state.zoom),b=invMercator(cx+(w*.65),cy-(h*.65),state.zoom);const url=`/api/map-stops?minlat=${a[0]}&minlng=${a[1]}&maxlat=${b[0]}&maxlng=${b[1]}`;try{const data=await api(url);if(seq!==mapStopsSeq)return;state.mapStops=data.items||[];drawSoon()}catch(e){console.warn('Paradas do mapa indisponíveis',e)}}
 async function loadNearbyStops(lat,lng,personal){let data=await api(`/api/nearby-stops?lat=${lat}&lng=${lng}`);state.nearby=data.items||[];$('nearbyHeading').textContent=personal?'Pontos perto de você':'Pontos próximos à UFMG';$('nearbyHint').textContent=personal?'Distâncias aproximadas; sua localização não é armazenada no servidor.':'Sem localização, exibimos os pontos próximos ao campus UFMG.';renderNearbyStops()}
 function renderNearbyStops(){const area=$('nearbyStops');area.replaceChildren();for(const stop of state.nearby){let b=document.createElement('button');b.type='button';b.className='row-item';const n=document.createElement('span');n.className='num';n.textContent='●';const txt=document.createElement('span');txt.className='name';let t=document.createElement('b');t.textContent=stop.name;let d=document.createElement('small');d.textContent=`A ${stop.distanceM} m · ver linhas e chegadas`;txt.append(t,d);b.append(n,txt);b.onclick=()=>focusStop(stop);area.append(b)}if(!state.nearby.length){let e=document.createElement('p');e.className='muted-empty';e.textContent='Nenhum ponto encontrado neste raio.';area.append(e)}}
+const favoritePreviewCache=new Map();
+function favoritePreview(id){
+  const cached=favoritePreviewCache.get(id);
+  if(cached&&Date.now()-cached.when<35000)return Promise.resolve(cached.text);
+  if(cached?.pending)return cached.pending;
+  const pending=api('/api/stop?id='+encodeURIComponent(id)).then(data=>{
+    const next=data.routes.filter(r=>r.nextArrival).slice(0,2);
+    const text=next.length?next.map(r=>{
+      const arrival=r.nextArrival;
+      return r.code+' '+(arrival.type==='gps_estimate'?'≈ ':'')+arrival.minutes+' min';
+    }).join(' · '):'Sem chegadas próximas';
+    favoritePreviewCache.set(id,{when:Date.now(),text});return text;
+  }).catch(()=>{
+    const text='Chegadas indisponíveis';favoritePreviewCache.set(id,{when:Date.now(),text});return text;
+  });
+  favoritePreviewCache.set(id,{when:Date.now(),pending});return pending;
+}
 function renderFavoriteStops(){
   const area=$('favoriteStops');area.replaceChildren();
   if(!favorites.stops.length){let p=document.createElement('p');p.className='muted-empty';p.textContent='Nenhum ponto favorito ainda.';area.append(p);return}
-  for(const id of favorites.stops){
+  for(const [index,id] of favorites.stops.entries()){
     const wrap=document.createElement('div');wrap.className='fav-row';
     const found=state.nearby.find(s=>String(s.id)===id)||state.mapStops.find(s=>String(s.id)===id);
     const name=found?.name||favorites.names[id]||'';
-    const b=document.createElement('button');b.type='button';b.className='row-item';b.textContent=favoriteTitle('stops',id,name);
+    const b=document.createElement('button');b.type='button';b.className='row-item favorite-stop';
+    const title=document.createElement('b');title.textContent=favoriteTitle('stops',id,name);
+    const next=document.createElement('small');next.className='favorite-next';
+    next.textContent=favoritePreviewCache.get(id)?.text||'Consultando chegadas…';
+    b.append(title,next);
+    if(index<5)favoritePreview(id).then(value=>{if(next.isConnected)next.textContent=value});
+    else next.textContent='Toque para ver chegadas';
     b.onclick=async()=>{if(found){focusStop(found)}else{try{const detail=await api('/api/stop?id='+encodeURIComponent(id));focusStop(detail)}catch(e){reportError(e)}}};
     wrap.append(b,editFavoriteButton('stops',id,name),starButton('stops',id));area.append(wrap);
   }
