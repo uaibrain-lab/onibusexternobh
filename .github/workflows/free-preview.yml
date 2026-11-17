@@ -9,6 +9,8 @@ on:
       - scripts/build_static_site.py
       - .github/workflows/free-preview.yml
       - scripts/build_static_scan.py
+      - static/service-worker.js
+      - catalog/scan/index.json
 
 permissions:
   contents: read
@@ -25,6 +27,7 @@ jobs:
       - name: Testes do motor
         run: |
           node --check static/route-worker.js
+          node --check static/service-worker.js
           node --check static/app.js
           node --test tests/test_static_worker.cjs
       - name: Empacotar preview puramente estático
@@ -39,6 +42,7 @@ jobs:
           html=(root/'externo/index.html').read_text(encoding='utf-8')
           assert 'data-app-mode="free-static"' in html
           assert (root/'externo/route-worker.js').is_file()
+          assert (root/'externo/service-worker.js').is_file()
           assert (root/'externo/catalog/metro.json').is_file()
           assert (root/'externo/catalog/scan/index.json').is_file()
           assert any((root/'externo/catalog/scan/out').rglob('08.bin.gz'))
