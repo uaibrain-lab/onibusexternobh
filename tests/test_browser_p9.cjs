@@ -50,6 +50,12 @@ async function check(name,config){
     walks:state.routeResults[0]?.legs?.filter(x=>x.mode==='walk')
        .map(x=>({pathVerified:x.pathVerified,hasGeometry:Array.isArray(x.geometry)}))
   }));
+  const pedestrianManifestStatus=await page.evaluate(async()=>{
+    const r=await fetch('./catalog/pedestrian/index.json');
+    return {status:r.status,url:r.url}
+  });
+  console.log('P9_BROWSER_ROUTE_DIAGNOSTIC',JSON.stringify({
+    name,routing,pedestrianManifestStatus}));
   if(await page.locator('#routeResults').count()){
     assert.ok(routing.confidence?.startsWith('GTFS_scheduled_'),
       'A complete OSM pedestrian graph must be used in the installed P9 build');
