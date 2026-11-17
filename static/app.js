@@ -656,3 +656,11 @@ initRouteDate();routeWhenChanged();
 $('quick-rotas').addEventListener('click',()=>{
   ensureFreeWorker().catch(e=>routeStatus('Catálogo estático indisponível: '+e.message,'warn'));
 });
+
+// P8: cache only public route archives used by this free-static preview.
+if(isStaticOnly&&'serviceWorker' in navigator&&window.isSecureContext){
+  const install=()=>navigator.serviceWorker.register('./service-worker.js',{scope:'./'})
+    .catch(e=>console.warn('Cache offline opcional indisponível',e));
+  if(document.readyState==='complete')install();
+  else window.addEventListener('load',install,{once:true});
+}
