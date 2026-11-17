@@ -118,6 +118,8 @@ test('Worker reports bounded, safe failure categories without leaking upstream d
   const data=await response.json();
   assert.equal(data.error,'GPS_SOURCE_UNAVAILABLE');
   assert.equal(data.reason,expected);
+  if(expected==='PBH_HTTP_ERROR')assert.equal(data.upstreamStatus,403);
+  else assert.equal(data.upstreamStatus,undefined);
   assert.ok(!JSON.stringify(data).includes('restricted'));
  }
 });
