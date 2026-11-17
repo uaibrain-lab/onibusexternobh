@@ -199,8 +199,62 @@ function renderMetroService(){
     area.append(card);
   }
 }
+function bhLocalClock(date=new Date()){
+  const parts=new Intl.DateTimeFormat('en-GB',{timeZone:'America/Sao_Paulo',
+    year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',
+    hour12:false}).formatToParts(date);
+  const value=type=>parts.find(x=>x.type===type)?.value;
+  const day=value('year')+'-'+value('month')+'-'+value('day');
+  const time=value('hour')+':'+value('minute');
+  const weekday=(new Date(day+'T12:00:00Z').getUTCDay()+6)%7;
+  return {day,time,weekday};
+}
+function staticMetroCatalog(raw){
+  const {day,time,weekday}=bhLocalClock();
+  const now=raw.lines.map(line=>{
+    let start=line.hours.start,end=line.hours.end;
+    const alerts=[];
+    for(const e of raw.operations.hoursExceptions||[]){
+      if(e.line===line.id&&e.from<=day&&day<=e.through){
+        end=e.end;alerts.push({text:e.note,url:e.url});
+      }
+    }
+    let frequency=null,note='';
+    if(line.id==='1'){
+      const spec=raw.operations.headways['1'];
+      if(weekday<5){
+        const peak=spec.weekdays.peakWindows.some(([a,b])=>a<=time&&time<b);
+        frequency=peak?spec.weekdays.peakMinutes:spec.weekdays.offPeakMinutes;
+      }else if(weekday===5){
+        const [a,b]=spec.saturday.morningWindow;
+        frequency=a<=time&&time<b?spec.saturday.morningMinutes:spec.saturday.otherMinutes;
+      }else frequency=spec.sundayAndHolidays.minutes;
+    }else note='Intervalo não confirmado. Consulte a concessionária.';
+    for(const e of raw.operations.exceptional||[]){
+      if(e.line===line.id&&e.from<=day&&day<=e.through&&time>=e.after){
+        frequency=e.headwayMinutes;alerts.push({text:e.note,url:e.url});
+      }
+    }
+    const open=start<=time&&time<end;
+    return {...line,service:{
+      lineId:line.id,stationHours:{start,end},stationOpenAtTime:open,
+      typicalHeadwayMinutes:open?frequency:null,
+      note,realtimeAvailable:false,alerts,
+      frequencyOnly:true,predictionType:'frequency'
+    }};
+  });
+  return {...raw,lines:now,fareBRL:raw.operations.fareBRL};
+}
+function distanceCoords(a,b){
+  const r=Math.PI/180;
+  const x=(b[0]-a[0])*r,y=(b[1]-a[1])*r;
+  const v=Math.sin(x/2)**2+Math.cos(a[0]*r)*Math.cos(b[0]*r)*Math.sin(y/2)**2;
+  return Math.round(12742000*Math.asin(Math.min(1,Math.sqrt(Math.max(0,v)))));
+}
 async function loadMetro(){
-  let metro=await api('/api/metro');
+  let metro=isStaticOnly
+    ?staticMetroCatalog(await (await fetch('./catalog/metro.json',{cache:'force-cache'})).json())
+    :await api('/api/metro');
   state.metro=metro;
   renderMetroStations();renderMetroService();drawSoon();
   const fare=document.createElement('p');fare.className='hint';fare.textContent='Tarifa divulgada: R$ '+Number(metro.fareBRL).toFixed(2).replace('.',',')+' · confirme condições e integrações na operadora.';$('metroService').append(fare);
@@ -223,7 +277,10 @@ async function focusMetroStation(id){
   state.selectedMetroStation=id;state.center=[s.lat,s.lng];state.zoom=Math.max(15.5,state.zoom);
   switchTab('metro',true);drawSoon();scheduleMapStops();renderMetroStations();
   const area=$('metroDetail');area.hidden=false;area.textContent='Consultando estação…';
-  const detail=await api('/api/metro/station?id='+encodeURIComponent(id));
+  const detail=isStaticOnly?
+    {...s,services:s.lines.map(n=>state.metro.lines.find(l=>l.id===n)?.service).filter(Boolean),
+     busStops:[]}:
+    await api('/api/metro/station?id='+encodeURIComponent(id));
   if(state.selectedMetroStation!==id)return;
   area.replaceChildren();
   const h=document.createElement('h2');h.textContent=detail.name;area.append(h);
@@ -255,7 +312,10 @@ async function focusMetroStation(id){
   try{$('body').scrollTo({top:0,behavior:'smooth'})}catch(e){}
 }
 async function loadMetroNearby(lat,lng){
-  const data=await api('/api/metro/nearby?lat='+encodeURIComponent(lat)+'&lng='+encodeURIComponent(lng));
+  const data=isStaticOnly
+    ?{items:state.metro.stations.map(s=>({...s,distanceM:distanceCoords([lat,lng],[s.lat,s.lng])}))
+       .filter(s=>s.distanceM<=4000).sort((a,b)=>a.distanceM-b.distanceM).slice(0,12)}
+    :await api('/api/metro/nearby?lat='+encodeURIComponent(lat)+'&lng='+encodeURIComponent(lng));
   const area=$('metroNearby');area.replaceChildren();
   const h=document.createElement('h3');h.textContent='Estações próximas';area.append(h);
   if(!data.items?.length){const p=document.createElement('p');p.className='muted-empty';p.textContent='Nenhuma estação num raio de 4 km.';area.append(p);return}
@@ -270,6 +330,15 @@ setInterval(()=>{if(!document.hidden)loadMetro().catch(e=>console.warn('Metrô i
 // Notícias RSS oficiais — sem declarar que qualquer notícia é uma ocorrência ativa.
 let lastMetroNewsAt=0;
 async function loadMetroNews(){
+  if(isStaticOnly){
+    const area=$('metroNews');area.replaceChildren();
+    const link=document.createElement('a');link.className='metro-news';
+    link.href='https://www.metrobh.com.br/';link.target='_blank';
+    link.rel='noopener noreferrer';
+    link.textContent='Consultar comunicados recentes diretamente no Metrô BH';
+    area.append(link);
+    return;
+  }
   if(Date.now()-lastMetroNewsAt<15*60*1000)return;
   lastMetroNewsAt=Date.now();
   let data;
