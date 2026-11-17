@@ -30,6 +30,7 @@ TRIP_MASK=(1<<20)-1
 BOARD=1<<20
 ALIGHT=1<<21
 MAX_HOUR=48
+DAYS=('monday','tuesday','wednesday','thursday','friday','saturday','sunday')
 
 
 def write_gzip_json(path,obj):
@@ -48,10 +49,12 @@ def build(catalog=None):
     service_ids=sorted(set(index['services']) | {
         sid for exceptions in index['exceptions'].values() for sid in exceptions})
     service_pos={sid:i for i,sid in enumerate(service_ids)}
-    service_meta=[{
-        'id':sid,
-        'calendar':index['services'].get(sid),
-    } for sid in service_ids]
+    service_meta=[]
+    for sid in service_ids:
+        cal=index['services'].get(sid)
+        mask=sum(1<<i for i,day in enumerate(DAYS) if cal and str(cal.get(day))=='1')
+        service_meta.append({'id':sid,'calendar':cal,'group':str(mask)})
+    service_groups={s['id']:s['group'] for s in service_meta}
     work=catalog/'scan'
     tmp=Path(tempfile.mkdtemp(prefix='bh-route-scan-'))
     try:
@@ -59,8 +62,14 @@ def build(catalog=None):
         temp_in=tmp/'reverse'
         temp_out.mkdir()
         temp_in.mkdir()
-        fout=[(temp_out/f'{h:02}.bin').open('wb') for h in range(MAX_HOUR)]
-        fin=[(temp_in/f'{h:02}.bin').open('wb') for h in range(MAX_HOUR)]
+        handles={'out':{},'in':{}}
+        def put(direction,group,hour,payload):
+            key=(group,hour)
+            if key not in handles[direction]:
+                folder=(temp_out if direction=='out' else temp_in)/group
+                folder.mkdir(parents=True,exist_ok=True)
+                handles[direction][key]=(folder/f'{hour:02}.bin').open('wb')
+            handles[direction][key].write(payload)
         trips=[]
         total=0
         malformed=0
@@ -73,6 +82,7 @@ def build(catalog=None):
                         if len(trips)>=TRIP_MASK:
                             raise ValueError('Mais viagens que o limite do esquema binário')
                         trip_num=len(trips)
+                        group=service_groups[service]
                         trips.append([trip_id,code,headsign,service_pos[service]])
                         for a,b in zip(rows,rows[1:]):
                             try:
@@ -92,11 +102,13 @@ def build(catalog=None):
                             except (IndexError,KeyError,ValueError,TypeError,OverflowError):
                                 malformed+=1
                                 continue
-                            fout[depart//3600].write(payload)
-                            fin[arrive//3600].write(payload)
+                            put('out',group,depart//3600,payload)
+                            put('in',group,arrive//3600,payload)
                             total+=1
         finally:
-            for file in fout+fin:file.close()
+            for files in handles.values():
+                for file in files.values():
+                    file.close()
 
         scan_tmp=tmp/'scan'
         (scan_tmp/'out').mkdir(parents=True)
@@ -106,23 +118,22 @@ def build(catalog=None):
             ('out',temp_out,scan_tmp/'out',2,False),
             ('in',temp_in,scan_tmp/'in',3,True)]:
             sizes[direction]={}
-            for hour in range(MAX_HOUR):
-                name=f'{hour:02}.bin'
-                path=source/name
-                if not path.exists() or path.stat().st_size==0:
-                    path.unlink(missing_ok=True)
-                    continue
+            for path in sorted(source.glob('*/*.bin')):
+                group=path.parent.name
+                hour=path.stem
                 raw=path.read_bytes()
                 if len(raw)%PACK.size:
                     raise ValueError('Tamanho do registro de conexão inválido')
                 rows=list(PACK.iter_unpack(raw))
                 del raw
                 rows.sort(key=lambda row:(row[sort_col],row[2 if reverse else 3]),reverse=reverse)
-                output=target/(name+'.gz')
+                dest_dir=target/group
+                dest_dir.mkdir(parents=True,exist_ok=True)
+                output=dest_dir/(hour+'.bin.gz')
                 with gzip.open(output,'wb',compresslevel=6) as stream:
                     for entry in rows:
                         stream.write(PACK.pack(*entry))
-                sizes[direction][f'{hour:02}']={
+                sizes[direction].setdefault(group,{})[hour]={
                     'connections':len(rows),
                     'bytes':output.stat().st_size
                 }
@@ -134,7 +145,7 @@ def build(catalog=None):
              round(float(stops[sid][2]),6)] for sid in stop_ids])
         write_gzip_json(scan_tmp/'trips.json.gz',trips)
         meta={
-            'schema':1,
+            'schema':2,
             'format':'uint32le/5;trip-mask=1048575;pickup-bit=1048576;dropoff-bit=2097152',
             'builtUTC':dt.datetime.now(dt.timezone.utc).isoformat(),
             'source':index['source'],
@@ -144,6 +155,7 @@ def build(catalog=None):
             'services':service_meta,
             'exceptions':index['exceptions'],
             'hours':sizes,
+            'groups':sorted(set(service_groups.values()),key=int),
             'stopCount':len(stop_ids),
             'tripCount':len(trips),
             'connectionCount':total,
@@ -159,7 +171,7 @@ def build(catalog=None):
         print('STATIC_SCAN_BUILD_OK',
               'stops=',len(stop_ids),'trips=',len(trips),
               'connections=',total,'invalid=',malformed,
-              'bytes=',sum(x['bytes'] for cat in sizes.values() for x in cat.values()),
+              'bytes=',sum(x['bytes'] for cat in sizes.values() for group in cat.values() for x in group.values()),
               flush=True)
         return meta
     finally:
