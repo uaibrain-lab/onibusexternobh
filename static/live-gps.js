@@ -1,5 +1,5 @@
 /* Optional free GPS adapter for the static Externo app.
- * Never reports GPS or an ETA unless the official PBH feed responds with
+ * Never reports GPS or an ETA unless an official feed responds with
  * fresh fixes. Does not send passenger coordinates to the Worker.
  */
 'use strict';
@@ -74,7 +74,13 @@ const StaticLive=(()=>{
   async function pollGtfsRealtime(cfg,routeId,line,name){
     const request=new URL(cfg.endpoint);
     request.searchParams.set('source','GTFS_RT');
-    request.searchParams.set('routes',String(routeId));
+    // SUMOB publishes GTFS-RT route_id as the public line code (e.g. "5102"),
+    // while our static GTFS has an internal route ID (e.g. "562055").
+    // Requesting the internal ID would return a valid but empty GPS response.
+    const publicCode=String(line||'').trim();
+    if(!/^[A-Za-z0-9_.:-]{1,70}$/.test(publicCode))
+      return unavailable(line,name,'Linha sem identificador compatível com GPS SUMOB');
+    request.searchParams.set('routes',publicCode);
     let response,data;
     try{
       response=await fetch(request,{mode:'cors',cache:'no-store'});
@@ -87,7 +93,7 @@ const StaticLive=(()=>{
     }
     const now=Date.now(),vehicles=new Map();
     for(const record of data.records){
-      if(String(record.routeId)!==String(routeId))continue;
+      if(String(record.routeId)!==publicCode)continue;
       const timestamp=Date.parse(String(record.lastGpsFixAt||''));
       const latitude=Number(record.latitude),longitude=Number(record.longitude);
       const ageSec=(now-timestamp)/1000;
@@ -108,20 +114,23 @@ const StaticLive=(()=>{
         gpsStatus:ageSec<=120?'recent':ageSec<=300?'delayed':'stale',
         shapeMatch:{status:'unknown'},
         tripId:String(record.tripId||''),
-        note:'Dados GTFS Realtime SUMOB (CC BY 4.0); sentido não confirmado'
+        note:'Posição SUMOB (CC BY 4.0); sentido e previsão não confirmados'
       };
       const previous=vehicles.get(vehicleId);
       if(!previous||timestamp>Date.parse(previous.lastGpsFixAt))
         vehicles.set(vehicleId,vehicle);
     }
     const list=[...vehicles.values()].sort((a,b)=>a.ageSec-b.ageSec);
+    const observationNote=list.length
+      ?'GPS oficial SUMOB (CC BY 4.0) · chegadas por horário programado'
+      :'Sem posições recentes desta linha no feed SUMOB; isso não confirma ausência de ônibus';
     lastStatus={available:true,gpsRecent:list.filter(v=>v.ageSec<=120).length,
       vehiclesKnown:list.length,partial:false,gpsUpdating:false,
       sources:{GTFS_RT:{lastFetchedAt:data.fetchedAt,lastError:null}},
-      note:'Dados de posição: SUMOB (CC BY 4.0) · horários de chegada ainda programados'};
+      note:observationNote};
     return {line,name,available:true,count:list.length,vehicles:list,
       asOf:new Date(now).toISOString(),sources:lastStatus.sources,partial:false,
-      note:lastStatus.note};
+      note:observationNote};
   }
   async function poll(routeId,line,name,version){
     const cfg=await config();
