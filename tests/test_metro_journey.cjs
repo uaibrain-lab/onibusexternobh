@@ -75,10 +75,9 @@ test('metro+bus combinations remain conditional, never scheduled rail departures
      toCoords:[central.lat+0.006,central.lng+0.002],
      departure:'2026-11-17T15:30:00Z',arrival:'2026-11-17T15:48:00Z'}]
  };
- const found=metro.multimodal(catalog,[eldorado.lat,eldorado.lng],
-   [central.lat+0.006,central.lng+0.002],
-   Date.parse('2026-11-17T11:30:00-03:00'),
-   'departAt',[bus]);
+ const found=metro.multimodal(catalog,[bus],
+   [eldorado.lat,eldorado.lng],[central.lat+0.006,central.lng+0.002],
+   Date.parse('2026-11-17T11:30:00-03:00'),'departAt');
  // Every returned option uses an existing exact GTFS bus trip and a
  // separate, clearly estimated metro interval. Empty is allowed if
  // a conservative transfer cannot be confirmed.
