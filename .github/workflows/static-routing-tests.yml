@@ -7,6 +7,7 @@ on:
     paths:
       - static/route-worker.js
       - static/app.js
+      - static/service-worker.js
       - tests/benchmark_static_worker.cjs
       - scripts/build_static_scan.py
       - tests/test_static_worker.cjs
@@ -29,6 +30,7 @@ jobs:
       - name: Validar JS
         run: |
           node --check static/route-worker.js
+          node --check static/service-worker.js
           node --check static/app.js
       - name: Verificar algoritmo CSA com dados GTFS sintéticos
         run: node --test tests/test_static_worker.cjs
