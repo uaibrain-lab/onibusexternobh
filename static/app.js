@@ -7,6 +7,10 @@ const state={routes:[],route:null,geometry:null,fleet:null,pattern:'',selectedVe
   routeOrigin:null,routeDestination:null,routePick:null,routeResults:[],routeSelected:0};
 const $canvas=$('mapCanvas'),ctx=$canvas.getContext('2d');
 const MAX_Z=18,MIN_Z=10;
+// Keep the basemap responsive on long sessions and low-memory devices.
+// A missing tile-cache constant previously raised ReferenceError inside
+// drawTiles(), leaving the map frozen on "Carregando mapa".
+const TILE_CACHE_LIMIT=120;
 function mercator(lat,lng,z){const size=256*2**z;let y=Math.max(-85.0511,Math.min(85.0511,lat));return [(lng+180)/360*size,(1-Math.asinh(Math.tan(y*Math.PI/180))/Math.PI)/2*size]}
 function invMercator(x,y,z){const size=256*2**z;const n=Math.PI-2*Math.PI*y/size;return [180/Math.PI*Math.atan(Math.sinh(n)),x/size*360-180]}
 function screen(lat,lng){let [cx,cy]=mercator(...state.center,state.zoom),[px,py]=mercator(lat,lng,state.zoom);return [px-cx+$canvas.clientWidth/2,py-cy+$canvas.clientHeight/2]}
