@@ -43,3 +43,13 @@
 - Conferir celular pequeno, tablet, desktop, iframe, safe-area e rolagem sem conflito entre painel e mapa.
 - Verificar sincronização de favoritos e busca de paradas conforme decisões de produto posteriores.
 - Criar staging no Hub, sem editar o Interno ou substituir outros arquivos existentes em produção.
+
+
+## P3 — padrão de abertura / parada / previsão
+
+- Abrir com **Pontos**; nenhuma linha é selecionada automaticamente. Centro inicial do Interno: `[-19.8695, -43.9675]`, zoom 15.
+- Mostrar paradas clicáveis no mapa. Ao clicar, mostrar as linhas que atendem o ponto, seus destinos e próximo horário programado do GTFS, claramente identificado como **horário da tabela, não ETA GPS**.
+- Solicitar permissão de localização por botão/consentimento explícito. Sem permissão, continuar com campus UFMG.
+- Persistir favoritos locais de linhas e paradas.
+- Futuro: ETA baseado em TripUpdates ou GPS confiavelmente pareado a sentido, trajeto e sequência de paradas, sempre distinto do horário de tabela.
+- Para iframe: `allow="geolocation"`, same-origin ou política de enquadramento adequada, tema via `hub-theme`.
