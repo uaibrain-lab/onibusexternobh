@@ -543,6 +543,11 @@ async function plan(params,seq) {
   const pedestrianCheck=await verifyPedestrianOptions(rankedOptions,ctx,preference);
   const itineraries=pedestrianCheck.options;
   const hints=await metroHints(origin,destination,requested,mode);
+  if(self.__MetroJourney?.multimodal&&metro){
+    const feederHints=self.__MetroJourney.multimodal(
+      metro,itineraries,origin,destination,requested,mode);
+    hints.push(...feederHints);
+  }
   return {
     status:ctx.partial?'partial':'ok',mode,preference,
     requestedAt:stamp(requested),itineraries,metroHints:hints,
