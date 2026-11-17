@@ -70,6 +70,7 @@ async function main(){
       ms:Math.round(performance.now()-start),
       networkMB:Math.round((transferred-before)/1048576*100)/100,
       downloadedFiles:downloads,scanned:result.stats.connectionsScanned,
+      partialReasons:result.stats.partialReasons,
       firstLines:result.itineraries[0]?.legs.filter(x=>x.mode==='bus').map(x=>x.line)
     }));
   }
