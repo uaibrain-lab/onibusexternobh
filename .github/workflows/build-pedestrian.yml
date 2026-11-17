@@ -67,7 +67,11 @@ jobs:
         run: |
           node --check static/pedestrian.js
           node --check static/route-worker.js
+          node --check static/metro-journeys.js
+          node --check static/catalog-api.js
           node --test tests/test_pedestrian.cjs
+          node --test tests/test_metro_journey.cjs
+          node --test tests/test_static_catalog.cjs
       - name: Publicar somente grafo versionado na branch P9
         run: |
           git config user.name "github-actions[bot]"
