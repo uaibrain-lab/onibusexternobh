@@ -6,6 +6,7 @@ on:
       - feat/externo-p9-caminhadas-metro-gratis-20261117
     paths:
       - static/**
+      - catalog/pedestrian/index.json
       - scripts/build_static_site.py
       - tests/**
       - .github/workflows/test-p9.yml
