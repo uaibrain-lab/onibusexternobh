@@ -71,6 +71,12 @@ if ($source.enabled -ne $false) {
 if ($LASTEXITCODE -ne 0) { throw "WORKER_SINTAXE_FALHOU" }
 & node --check "static/live-gps.js"
 if ($LASTEXITCODE -ne 0) { throw "ADAPTADOR_SINTAXE_FALHOU" }
+& node --check "static/app.js"
+if ($LASTEXITCODE -ne 0) { throw "APP_SINTAXE_FALHOU" }
+# Regression: P17 published successfully but canvas failed on first tile
+# because TILE_CACHE_LIMIT was undefined. Gate every future stage deploy.
+& node --test "tests/test_p20_map_layout.cjs"
+if ($LASTEXITCODE -ne 0) { throw "MAPA_LAYOUT_P20_TESTES_FALHARAM" }
 if ($ReutilizarBuild) {
     Write-Host "P17_REUTILIZANDO_BUILD_EXISTENTE: conferindo integridade do pacote"
 } else {
