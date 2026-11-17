@@ -153,3 +153,25 @@ body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif}
 
 /* Texto acessivel para leitores de tela, sem introduzir um segundo painel. */
 .sr-only{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
+
+/* Falha dos tiles: igual ao Interno, nunca esconder pontos e trajetos. */
+#map{background:#e6ecf2}
+html[data-theme="dark"] #map{background:#28323c}
+.map-basemap-notice{
+  position:fixed;
+  z-index:490;
+  top:calc(67px + env(safe-area-inset-top,0px));
+  left:50%;
+  transform:translateX(-50%);
+  max-width:min(380px,calc(100vw - 130px));
+  padding:8px 10px;
+  border-radius:10px;
+  background:var(--bg);
+  color:var(--ink);
+  border:1px solid var(--line);
+  font-size:12px;
+  text-align:center;
+  box-shadow:var(--sh);
+  pointer-events:none;
+}
+.map-basemap-notice[hidden]{display:none}
