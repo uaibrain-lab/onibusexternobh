@@ -65,6 +65,7 @@ class TransitEngine:
         self.sources={name:{'lastFetchedAt':None,'lastError':None,'responseRecords':0}
                       for name in FEEDS}
         self.last_attempt_monotonic=0.
+        self.refresh_in_progress=False
         # Aggregate coverage only: no passenger identifiers or exact user coordinates.
         self.eta_coverage=collections.Counter()
         self.eta_coverage_started=now_brt()
@@ -175,29 +176,55 @@ class TransitEngine:
             self.vehicles[key]=prior
 
     def refresh(self, force=False):
+        """Download outside the state lock; concurrent users read the last snapshot.
+
+        The first caller may wait for PBH. Other callers are never held hostage
+        by a slow remote response, and only one polling cycle runs at a time.
+        """
         with self.lock:
-            if not force and self.last_attempt_monotonic and time.monotonic()-self.last_attempt_monotonic<self.ttl:
+            if self.refresh_in_progress:
                 return
+            if (not force and self.last_attempt_monotonic and
+                    time.monotonic()-self.last_attempt_monotonic<self.ttl):
+                return
+            self.refresh_in_progress=True
             self.last_attempt_monotonic=time.monotonic()
-            changed=False
+        try:
+            # Network I/O happens with NO engine state lock held.
+            responses={}
             for name,url in FEEDS.items():
                 try:
                     records=self.fetcher(url)
-                    fetched=now_brt()
-                    ignored=self._parse(name,records,fetched)
-                    self.sources[name]={'lastFetchedAt':iso(fetched),
-                                        'lastError':None,'responseRecords':len(records),
-                                        'discarded':ignored}
-                    changed=True
+                    responses[name]=(records,now_brt(),None)
                 except Exception as exc:
-                    self.sources[name]['lastError']=f'{type(exc).__name__}: {str(exc)[:160]}'
-            # Prevent persistent storage from indefinitely accumulating old vehicles.
-            cutoff=now_brt()-dt.timedelta(minutes=30)
-            for key,val in list(self.vehicles.items()):
-                if (parse_iso(val['lastGpsFixAt']) or cutoff-dt.timedelta(seconds=1))<cutoff:
-                    del self.vehicles[key]
-            if changed:
-                self._save()
+                    responses[name]=(None,None,exc)
+            with self.lock:
+                changed=False
+                for name,(records,fetched,error) in responses.items():
+                    if error is not None:
+                        self.sources[name]['lastError']=(
+                            f'{type(error).__name__}: {str(error)[:160]}')
+                        continue
+                    try:
+                        ignored=self._parse(name,records,fetched)
+                        self.sources[name]={'lastFetchedAt':iso(fetched),
+                            'lastError':None,'responseRecords':len(records),
+                            'discarded':ignored}
+                        changed=True
+                    except Exception as exc:
+                        # A malformed feed must not erase the last good positions.
+                        self.sources[name]['lastError']=(
+                            f'{type(exc).__name__}: {str(exc)[:160]}')
+                cutoff=now_brt()-dt.timedelta(minutes=30)
+                for key,val in list(self.vehicles.items()):
+                    fix=parse_iso(val.get('lastGpsFixAt'))
+                    if fix is None or fix<cutoff:
+                        del self.vehicles[key]
+                if changed:
+                    self._save()
+        finally:
+            with self.lock:
+                self.refresh_in_progress=False
 
     def status(self):
         self.refresh()
@@ -213,13 +240,15 @@ class TransitEngine:
         return [{'code':r['code'],'name':r['name'],'id':r['id'],
                  'patternCount':len(r['patterns'])} for r in self.routes]
 
-    def route_geometry(self,code,pattern_id=None):
+    def route_geometry(self,code,pattern_id=None,stop_id=None):
         route=self.route_by_code.get(str(code))
         if route is None:return None
         patterns=[self.pattern_by_id[x] for x in route['patterns']]
         info={'code':route['code'],'name':route['name'],'patterns':[
             {'id':p['id'],'shapeId':p['shape'],'headsign':p['headsign'],
-             'stops':len(p['stops']),'tripCount':p['tripCount']}
+             'stops':len(p['stops']),'tripCount':p['tripCount'],
+             'direction':p.get('direction',''),
+             **({'servesStop':str(stop_id) in p['stops']} if stop_id else {})}
             for p in patterns]}
         if pattern_id:
             p=self.pattern_by_id.get(pattern_id)
