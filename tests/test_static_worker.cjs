@@ -109,7 +109,7 @@ function setup(grouped=false){
     if(error)throw Error(error.message);
     return output.slice();
   };
-  return {origin,destination,output,run,fetched,manifest};
+  return {origin,destination,output,run,fetched,manifest,fileMap};
 }
 test('initializes static gzip index and finds local stop names',async()=>{
   const t=setup();
