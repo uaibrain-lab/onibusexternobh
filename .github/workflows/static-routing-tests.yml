@@ -1,13 +1,14 @@
-name: P7 - Testes do roteador gratuito no navegador
+name: P8 - Testes do roteador gratuito no navegador
 
 on:
   push:
     branches:
-      - feat/externo-p7-rotas-estaticas-gratuitas-20261117
+      - feat/externo-p8-precisao-atualizacao-gratuita-20261117
     paths:
       - static/route-worker.js
       - static/app.js
       - tests/benchmark_static_worker.cjs
+      - scripts/build_static_scan.py
       - tests/test_static_worker.cjs
       - .github/workflows/static-routing-tests.yml
       - catalog/scan/index.json
@@ -43,7 +44,7 @@ jobs:
             print('Catálogo ainda em geração; testes sintéticos já executados.')
           else:
             data=json.loads(p.read_text(encoding='utf-8'))
-            assert data['schema']==1
+            assert data['schema'] in (1,2)
             assert data['tripCount']>=100000
             assert data['connectionCount']>=6000000
             print('STATIC_ROUTER_INDEX_OK',data['connectionCount'])
