@@ -43,6 +43,24 @@ jobs:
           from transit.planner import JourneyPlanner
           p=JourneyPlanner(Path('catalog'))
           assert p.ready, p.failure
+          from transit.binary_trips import BinaryTripTable
+          from transit.planner import _JSON_LOADS
+          import gzip
+          assert p.index['schema']==3
+          assert len(p.index['binaryFiles'])==len(p.index['files'])
+          codes=sorted(p.files)
+          for code in [codes[0],codes[len(codes)//4],codes[len(codes)//2],codes[-1]]:
+            packed=p._trips(code)
+            assert isinstance(packed,BinaryTripTable),code
+            with gzip.open(Path('catalog')/p.files[code],'rb') as legacy:
+              unpacked=[_JSON_LOADS(line) for line in legacy]
+            assert len(packed)==len(unpacked),(code,len(packed),len(unpacked))
+            for idx in set([0,len(unpacked)//2,len(unpacked)-1]):
+              trip_id,service,headsign,stops=packed[idx]
+              ref=unpacked[idx]
+              assert (trip_id,service,headsign)==tuple(ref[:3]),(code,idx)
+              assert [list(row) for row in stops]==ref[3],(code,idx)
+          print('UBR3_REAL_EQUIVALENCE_OK',4,'routes',flush=True)
           if p.walking.ready:
             print('WALK_NETWORK_REAL',len(p.walking.points),'nodes')
             nearest=p.nearby(-19.8695,-43.9675,radius=550,limit=25)
