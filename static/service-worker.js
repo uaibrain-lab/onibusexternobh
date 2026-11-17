@@ -3,14 +3,16 @@
  * No predownload of 100+ MB: store at most 16 used hourly GTFS shards.
  */
 'use strict';
-const SHELL='externo-p9-shell-v1',SHARDS='externo-p9-gtfs-hours-v1';
+const SHELL='externo-unificado-shell-v1',SHARDS='externo-unificado-hours-v1',ARRIVALS='externo-unificado-arrivals-v1';
 const MAX_SHARDS=16;
 const scope=new URL(self.registration.scope);
 const base=scope.pathname.endsWith('/')?scope.pathname:scope.pathname+'/';
 const shellPaths=[
-  base,base+'index.html',base+'app.js',base+'style.css',
-  base+'route-worker.js',base+'static-bus.js',base+'walk-network.js',base+'metro-timing.js',
-  base+'catalog/metro.json',base+'catalog/scan/index.json'
+  base,base+'index.html',base+'app.js',base+'style.css',base+'hub-parity.css',
+  base+'route-worker.js',base+'static-bus.js',base+'static-arrivals.js',base+'walk-network.js',base+'metro-timing.js',
+  base+'manifest.webmanifest',base+'icon-192.png',base+'icon-512.png',
+  base+'catalog/metro.json',base+'catalog/scan/index.json',
+  base+'catalog/arrivals/index.json',base+'catalog/arrivals/calendar.json'
 ];
 self.addEventListener('install',event=>{
   event.waitUntil((async()=>{
@@ -23,7 +25,7 @@ self.addEventListener('activate',event=>{
   event.waitUntil((async()=>{
     const names=await caches.keys();
     await Promise.all(names.filter(n=>
-      n.startsWith('externo-p')&&!([SHELL,SHARDS].includes(n)))
+      (n.startsWith('externo-p')||n.startsWith('externo-unificado'))&&![SHELL,SHARDS,ARRIVALS].includes(n))
       .map(n=>caches.delete(n)));
     await self.clients.claim();
   })());
@@ -43,8 +45,8 @@ async function networkFirst(request,cacheName) {
     throw error;
   }
 }
-async function boundedCache(request){
-  const cache=await caches.open(SHARDS);
+async function boundedCache(request,cacheName=SHARDS,limit=MAX_SHARDS){
+  const cache=await caches.open(cacheName);
   const cached=await cache.match(request);
   if(cached)return cached;
   const response=await fetch(request);
@@ -52,8 +54,8 @@ async function boundedCache(request){
   try{
     await cache.put(request,response.clone());
     const keys=await cache.keys();
-    if(keys.length>MAX_SHARDS){
-      await Promise.all(keys.slice(0,keys.length-MAX_SHARDS).map(req=>cache.delete(req)));
+    if(keys.length>limit){
+      await Promise.all(keys.slice(0,keys.length-limit).map(req=>cache.delete(req)));
     }
   }catch(e){
     // Limited mobile storage should never prevent a route that was downloaded.
@@ -69,6 +71,9 @@ self.addEventListener('fetch',event=>{
   if(/^catalog\/scan\/(out|in)\/\d+\/\d{2}\.bin\.gz$/.test(relative)||
      /^catalog\/scan\/(out|in)\/\d{2}\.bin\.gz$/.test(relative)){
     event.respondWith(boundedCache(request));return;
+  }
+  if(/^catalog\/arrivals\/[0-9a-f]{2}\.json\.gz$/.test(relative)){
+    event.respondWith(boundedCache(request,ARRIVALS,16));return;
   }
   if(relative==='catalog/walk/graph.json.gz'){
     // Large OSM graph is fetched only when a route requests it, not at install.
