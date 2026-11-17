@@ -28,6 +28,13 @@ def build(target=None):
     if (manifest.get('schema') not in (1,2) or manifest.get('tripCount',0)<1000 or
         manifest.get('connectionCount',0)<10000):
         raise ValueError('Índice estático incompleto ou de versão incompatível')
+    # Route searches and point arrivals MUST share one official GTFS edition.
+    # A partial refresh cannot publish mismatched stops or stale stop times.
+    source=json.loads((catalog/'manifest.json').read_text(encoding='utf-8'))
+    if (str(source.get('feedEndDate'))!=str(manifest.get('validThrough')) or
+        int(source.get('stops',0))!=int(manifest.get('stopCount',-1)) or
+        int(source.get('trips',0))!=int(manifest.get('tripCount',-1))):
+        raise ValueError('GTFS inconsistente entre índices de rotas e horários por parada')
     if not (catalog/'metro.json').is_file():
         raise FileNotFoundError('Catálogo do metrô ausente.')
     if target.exists():
