@@ -4,12 +4,16 @@ import argparse, json, mimetypes, pathlib, threading, urllib.parse, webbrowser
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from transit.engine import TransitEngine
 from transit.metro import MetroCatalog
+from transit.planner import JourneyPlanner, PlannerError
+from transit.geocode import PlaceSearch
 
 ROOT=pathlib.Path(__file__).resolve().parent
 
 def run(host='127.0.0.1',port=8765,open_browser=False):
     engine=TransitEngine(ROOT)
     metro=MetroCatalog(ROOT/'catalog')
+    planner=JourneyPlanner(ROOT/'catalog',metro)
+    places=PlaceSearch()
     class Handler(BaseHTTPRequestHandler):
         protocol_version='HTTP/1.1'
         def respond(self,status,raw,content_type):
@@ -35,6 +39,17 @@ def run(host='127.0.0.1',port=8765,open_browser=False):
                     path=path[len('/externo'):]
                 elif path=='/externo':
                     path='/'
+                if path=='/api/plan/status':
+                    return self.payload(200,{'ready':planner.ready,'reason':planner.failure,
+                                             'source':'GTFS trips / scheduled'})
+                if path=='/api/places':
+                    try:
+                        v=places.search(qs.get('q',[''])[0])
+                    except ValueError as exc:
+                        return self.payload(400,{'error':str(exc)})
+                    except Exception:
+                        return self.payload(503,{'error':'Busca de endereços indisponível'})
+                    return self.payload(200,v)
                 if path=='/api/metro':
                     return self.payload(200,metro.listing())
                 if path=='/api/metro/news':
@@ -87,6 +102,34 @@ def run(host='127.0.0.1',port=8765,open_browser=False):
             except (BrokenPipeError,ConnectionResetError):pass
             except Exception as exc:
                 try:self.payload(500,{'error':'Erro interno','detail':type(exc).__name__})
+                except (BrokenPipeError,ConnectionResetError):pass
+        def do_POST(self):
+            try:
+                path=urllib.parse.urlsplit(self.path).path
+                if path.startswith('/externo/api/'):
+                    path=path[len('/externo'):]
+                if path!='/api/plan':
+                    return self.payload(404,{'error':'Não encontrado'})
+                length=int(self.headers.get('Content-Length','0'))
+                if length<2 or length>4096:
+                    return self.payload(413,{'error':'Corpo de requisição inválido'})
+                payload=json.loads(self.rfile.read(length))
+                if not isinstance(payload,dict):
+                    return self.payload(400,{'error':'Dados inválidos'})
+                try:
+                    result=planner.plan(payload.get('origin'),
+                                        payload.get('destination'),
+                                        payload.get('at'),
+                                        payload.get('mode','departAt'),
+                                        payload.get('preference','fastest'))
+                    return self.payload(200,result)
+                except (PlannerError,ValueError) as exc:
+                    return self.payload(400,{'error':str(exc)})
+            except (BrokenPipeError,ConnectionResetError):pass
+            except (ValueError,TypeError,json.JSONDecodeError):
+                self.payload(400,{'error':'JSON inválido'})
+            except Exception as exc:
+                try:self.payload(500,{'error':'Falha ao planejar','detail':type(exc).__name__})
                 except (BrokenPipeError,ConnectionResetError):pass
         def log_message(self,fmt,*args):
             # Suppress full request lines: /api/nearby-stops carries user coordinates.
