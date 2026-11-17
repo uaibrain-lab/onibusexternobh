@@ -15,9 +15,11 @@ from build_static_arrivals import build as build_arrivals
 ROOT=Path(__file__).resolve().parents[1]
 GB=1024**3
 MAX_BYTES=350*1024*1024
+STAGING_HOST='externo-bh-hml-uaibrain.pages.dev'
+STAGING_ENDPOINT='https://externo-bh-gps-free.hubufmg.workers.dev/api/gps'
 
 
-def build(target=None):
+def build(target=None, gps_staging=False):
     target=Path(target) if target else ROOT/'dist'
     catalog=ROOT/'catalog'
     scan=catalog/'scan'
@@ -56,6 +58,41 @@ def build(target=None):
         '<script src="./static-arrivals.js" defer></script>\n'
         '<script src="./live-gps.js" defer></script>\n'
         '<script src="./static-bus.js" defer></script>\n'+loader,1)
+    if gps_staging:
+        # Only the explicit *staging build output* enables live telemetry.
+        # Never mutate static/gps-config.json or the Firebase Hub.
+        raw_config=json.loads((static/'gps-config.json').read_text(encoding='utf-8'))
+        if raw_config.get('enabled') is not False:
+            raise ValueError('Configuração fonte GPS deve permanecer desativada')
+        config_stage={'enabled':True,'provider':'gtfs_rt',
+                      'endpoint':STAGING_ENDPOINT,'refreshSeconds':45}
+        (public/'gps-config.json').write_text(
+            json.dumps(config_stage,ensure_ascii=False,indent=2)+'\\n',
+            encoding='utf-8')
+        html=html.replace('<head>', '<head>\\n<meta name="robots" content="noindex,nofollow,noarchive">',1)
+        html=html.replace('data-app-mode="free-static"',
+                          'data-app-mode="free-static" data-gps-homologacao="true"',1)
+        html=html.replace('<title>Externo — Hub UFMG · Protótipo</title>',
+                          '<title>Externo BH · Homologação GPS SUMOB</title>',1)
+        heading='<div class="sheet-identity"><strong>Externo</strong><span>BELO HORIZONTE</span></div>'
+        if heading not in html:
+            raise ValueError('Marcador do título do Externo mudou')
+        html=html.replace(heading,heading.replace('BELO HORIZONTE','BELO HORIZONTE · GPS EM TESTE'),1)
+        notice='<div class="notice-top" role="note">'
+        if notice not in html:
+            raise ValueError('Marcador do aviso GPS não localizado')
+        html=html.replace(notice,notice+'HOMOLOGAÇÃO: GPS experimental SUMOB. Sem ETA validado. ',1)
+        # Cloudflare Pages static directives exist ONLY in the isolated build.
+        (target/'_redirects').write_text('/ /externo/ 302\\n',encoding='utf-8')
+        (target/'_headers').write_text(
+            '/*\\n  X-Robots-Tag: noindex, nofollow, noarchive\\n'
+            '  X-Content-Type-Options: nosniff\\n'
+            '  Referrer-Policy: strict-origin-when-cross-origin\\n'
+            '/externo/gps-config.json\\n'
+            '  Cache-Control: no-store, max-age=0\\n',
+            encoding='utf-8')
+        if STAGING_HOST not in ('externo-bh-hml-uaibrain.pages.dev',):
+            raise ValueError('O domínio de homologação deve ser explícito')
     (public/'index.html').write_text(html,encoding='utf-8')
     (public/'catalog').mkdir(exist_ok=True)
     shutil.copy2(catalog/'metro.json',public/'catalog'/'metro.json')
@@ -109,6 +146,9 @@ def build(target=None):
           'bytes=',total,'megabytes=',round(total/1048576,2),
           'validThrough=',manifest['validThrough'])
     print('PREVIEW_FOLDER',public)
+    print('GPS_STAGING_BUILD=',str(gps_staging).lower())
+    if gps_staging:
+        print('STAGING_ONLY_HOST=https://'+STAGING_HOST+'/externo/')
     print('NO_DEPLOY_PERFORMED')
     return target
 
@@ -116,5 +156,7 @@ def build(target=None):
 if __name__=='__main__':
     p=argparse.ArgumentParser()
     p.add_argument('--output',default=None)
+    p.add_argument('--gps-staging',action='store_true',
+                   help='ATENÇÃO: ativa GPS SOMENTE em dist/ para projeto Cloudflare Pages isolado')
     args=p.parse_args()
-    build(args.output)
+    build(args.output,gps_staging=args.gps_staging)
