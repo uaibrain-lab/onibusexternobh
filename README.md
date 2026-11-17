@@ -1,3 +1,17 @@
+# P7 — Roteamento gratuito no navegador (17/11/2026)
+
+**O planejador de ônibus agora roda no navegador, sem servidor pago.** O catálogo GTFS oficial é convertido pelo GitHub Actions em arquivos estáticos horários comprimidos. As viagens são calculadas por um Web Worker, com saída programada ou chegada planejada, até duas baldeações, respeito às restrições oficiais de embarque/desembarque e alternativas por tempo, caminhada e transferências.
+
+**Hospedagem prevista:** Firebase Hosting Spark (sem Cloud Functions/Blaze), sujeita à franquia gratuita de 10 GB/mês de transferência. **Nenhuma publicação de produção foi realizada.**
+
+**Preview estático:** `py -3 scripts/build_static_site.py`, depois `py -3 -m http.server 8765 --directory dist`; abrir `http://127.0.0.1:8765/externo/`. O preview estático exibe **Rotas e Metrô**, não as telas P2/P3 de consulta GPS que continuam dependentes do backend anterior.
+
+**Resultado testado:** 6.577.312 conexões, seis alternativas reais nos trajetos de referência, 5,43 s para partida e 3,05 s para chegada, medidos em runner GitHub sem latência de internet. Os resultados ainda sinalizam `partial` quando há poda de rótulos. Caminhadas não usam rede de pedestres validada, e metrô não participa de horários calculados.
+
+**Detalhes e limites:** [Roteamento P7 — Hospedagem Gratuita](docs/ROTEAMENTO-P7-HOSPEDAGEM-GRATUITA.md).
+
+---
+
 # Externo — Hub UFMG · P5 (planejador de viagens, protótipo)
 
 **P5 em desenvolvimento; sem deploy.** Nova aba **Rotas**, com origem/destino por mapa, GPS ou endereço, horários de partida/chegada, comparação de itinerários reais do GTFS e transferências. Possibilidades com metrô são apenas indicativas até existir programação metroviária verificável.

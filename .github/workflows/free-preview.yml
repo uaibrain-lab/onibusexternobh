@@ -1,0 +1,63 @@
+name: P7 - Preview hospedável sem cobrança
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/externo-p7-rotas-estaticas-gratuitas-20261117
+    paths:
+      - scripts/build_static_site.py
+      - .github/workflows/free-preview.yml
+
+permissions:
+  contents: read
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Testes do motor
+        run: |
+          node --check static/route-worker.js
+          node --check static/app.js
+          node --test tests/test_static_worker.cjs
+      - name: Empacotar preview puramente estático
+        run: |
+          python scripts/build_static_site.py
+          python - <<'PY'
+          from pathlib import Path
+          import json
+          root=Path('dist')
+          data=json.loads((root/'firebase.json').read_text(encoding='utf-8'))
+          assert data['hosting']['public']=='.'
+          html=(root/'externo/index.html').read_text(encoding='utf-8')
+          assert 'data-app-mode="free-static"' in html
+          assert (root/'externo/route-worker.js').is_file()
+          assert (root/'externo/catalog/metro.json').is_file()
+          assert (root/'externo/catalog/scan/index.json').is_file()
+          assert (root/'externo/catalog/scan/out/08.bin.gz').is_file()
+          print('FREE_SITE_PACKAGE_OK')
+          PY
+      - name: Smoke-test HTTP de arquivos públicos
+        run: |
+          python -m http.server 8765 --directory dist >/tmp/p7-http.log 2>&1 &
+          export HTTP_PID=$!
+          trap 'kill "$HTTP_PID" 2>/dev/null || true' EXIT
+          sleep 2
+          curl -fsS http://127.0.0.1:8765/externo/ | grep -q 'data-app-mode="free-static"'
+          curl -fsS http://127.0.0.1:8765/externo/catalog/scan/index.json >/dev/null
+          curl -fsS http://127.0.0.1:8765/externo/route-worker.js >/dev/null
+          echo "FREE_STATIC_HTTP_OK"
+      - name: Disponibilizar preview para homologação (não publica)
+        uses: actions/upload-artifact@v4
+        with:
+          name: externo-p7-estatico-homologacao
+          path: dist/
+          retention-days: 3
+          compression-level: 0
+          if-no-files-found: error

@@ -92,12 +92,27 @@ def run(host='127.0.0.1',port=8765,open_browser=False):
                     code=qs.get('route',[''])[0]
                     v=engine.fleet(code)
                     return self.payload(200,v) if v else self.payload(404,{'error':'Linha não localizada'})
+                # Apenas arquivos públicos de catálogo no servidor local.
+                # Não há acesso por path traversal, nem hospedagem dinâmica.
+                if path.startswith('/catalog/'):
+                    rel=urllib.parse.unquote(path[len('/catalog/'):])
+                    base=(ROOT/'catalog').resolve()
+                    file=(base/rel).resolve()
+                    if ('\\' in rel or not rel or '..' in pathlib.PurePosixPath(rel).parts or
+                        base not in file.parents or
+                        file.suffix not in ('.gz','.json') or
+                        not file.is_file()):
+                        return self.payload(404,{'error':'Arquivo não encontrado'})
+                    kind='application/json; charset=utf-8' if file.suffix=='.json' else 'application/octet-stream'
+                    return self.respond(200,file.read_bytes(),kind)
                 if path=='/':path='/index.html'
-                if path not in ('/index.html','/app.js','/style.css'):
+                if path not in ('/index.html','/app.js','/style.css','/route-worker.js'):
                     return self.payload(404,{'error':'Não encontrado'})
                 file=ROOT/'static'/path.lstrip('/')
                 raw=file.read_bytes()
-                mime={'/index.html':'text/html','/app.js':'application/javascript','/style.css':'text/css'}[path]
+                mime={'/index.html':'text/html','/app.js':'application/javascript',
+                      '/route-worker.js':'application/javascript',
+                      '/style.css':'text/css'}[path]
                 return self.respond(200,raw,mime+'; charset=utf-8')
             except (BrokenPipeError,ConnectionResetError):pass
             except Exception as exc:

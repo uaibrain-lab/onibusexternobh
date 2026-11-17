@@ -1,0 +1,84 @@
+#!/usr/bin/env python3
+"""Build a genuinely static, no-cost Hosting preview at dist/externo/.
+
+Does NOT deploy or alter any existing Firebase project. The output contains
+the free browser journey planner and static Metro catalog; legacy bus-fleet
+screens still require a later static/API migration and are hidden here.
+"""
+from __future__ import annotations
+import argparse
+import json
+from pathlib import Path
+import shutil
+
+ROOT=Path(__file__).resolve().parents[1]
+GB=1024**3
+MAX_BYTES=350*1024*1024
+
+
+def build(target=None):
+    target=Path(target) if target else ROOT/'dist'
+    catalog=ROOT/'catalog'
+    scan=catalog/'scan'
+    info=scan/'index.json'
+    if not info.exists():
+        raise FileNotFoundError('Catálogo binário ausente; execute build_static_scan.py primeiro.')
+    manifest=json.loads(info.read_text(encoding='utf-8'))
+    if (manifest.get('schema')!=1 or manifest.get('tripCount',0)<1000 or
+        manifest.get('connectionCount',0)<10000):
+        raise ValueError('Índice estático incompleto ou de versão incompatível')
+    if not (catalog/'metro.json').is_file():
+        raise FileNotFoundError('Catálogo do metrô ausente.')
+    if target.exists():
+        shutil.rmtree(target)
+    public=target/'externo'
+    public.mkdir(parents=True)
+    static=ROOT/'static'
+    for name in ('app.js','style.css','route-worker.js'):
+        shutil.copy2(static/name,public/name)
+    html=(static/'index.html').read_text(encoding='utf-8')
+    anchor='<html lang="pt-BR">'
+    if anchor not in html:
+        raise ValueError('Marcador de HTML para modo estático não localizado')
+    html=html.replace(anchor,'<html lang="pt-BR" data-app-mode="free-static">',1)
+    (public/'index.html').write_text(html,encoding='utf-8')
+    (public/'catalog').mkdir(exist_ok=True)
+    shutil.copy2(catalog/'metro.json',public/'catalog'/'metro.json')
+    shutil.copytree(scan,public/'catalog'/'scan')
+    # Firebase CLI may run from dist/; public is that directory ('.').
+    # Deploy package at /externo/ on a free Firebase Hosting site.
+    config={
+        'hosting':{
+            'public':'.',
+            'ignore':['firebase.json','**/.*','**/node_modules/**'],
+            'headers':[
+              {'source':'/externo/catalog/scan/**',
+               'headers':[{'key':'Cache-Control',
+                           'value':'public, max-age=86400'}]},
+              {'source':'/externo/catalog/scan/index.json',
+               'headers':[{'key':'Cache-Control',
+                           'value':'no-cache, max-age=0'}]},
+              {'source':'/externo/route-worker.js',
+               'headers':[{'key':'Cache-Control',
+                           'value':'no-cache, max-age=0'}]}
+            ]
+        }
+    }
+    (target/'firebase.json').write_text(
+        json.dumps(config,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+    total=sum(p.stat().st_size for p in public.rglob('*') if p.is_file())
+    if total>MAX_BYTES:
+        raise ValueError('Pacote excedeu limite conservador de 350 MiB')
+    print('FREE_STATIC_PREVIEW_OK','files=',len(list(public.rglob('*'))),
+          'bytes=',total,'megabytes=',round(total/1048576,2),
+          'validThrough=',manifest['validThrough'])
+    print('PREVIEW_FOLDER',public)
+    print('NO_DEPLOY_PERFORMED')
+    return target
+
+
+if __name__=='__main__':
+    p=argparse.ArgumentParser()
+    p.add_argument('--output',default=None)
+    args=p.parse_args()
+    build(args.output)
