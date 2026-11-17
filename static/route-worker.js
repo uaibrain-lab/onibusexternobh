@@ -320,8 +320,8 @@ async function ensureWalkingGraph(){
   walkLoad=(async()=>{
     try{
       const url=new URL('../walk/graph.json.gz',root).href;
-      const resp=await fetch(url,{cache:'force-cache'});
-      if(!resp.ok){walkGraphStatus='missing';return null}
+      // One request only: the graph is ~6 MB compressed. A preliminary
+      // existence GET would double the paid-by-traffic Hosting bandwidth.
       const bytes=await loadBinary(url);
       const value=JSON.parse(new TextDecoder().decode(bytes));
       walkGraph=new WalkGraph.Network(value);
