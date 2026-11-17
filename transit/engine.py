@@ -66,6 +66,7 @@ class TransitEngine:
                       for name in FEEDS}
         self.last_attempt_monotonic=0.
         self.refresh_in_progress=False
+        self._background_refresh_queued=False
         # Aggregate coverage only: no passenger identifiers or exact user coordinates.
         self.eta_coverage=collections.Counter()
         self.eta_coverage_started=now_brt()
@@ -226,8 +227,33 @@ class TransitEngine:
             with self.lock:
                 self.refresh_in_progress=False
 
-    def status(self):
-        self.refresh()
+    def refresh_in_background(self):
+        """Start at most one due GPS poll, without delaying a passenger request."""
+        with self.lock:
+            if self.refresh_in_progress or self._background_refresh_queued:
+                return False
+            if (self.last_attempt_monotonic and
+                    time.monotonic()-self.last_attempt_monotonic<self.ttl):
+                return False
+            self._background_refresh_queued=True
+
+        def collect():
+            try:
+                self.refresh()
+            finally:
+                with self.lock:
+                    self._background_refresh_queued=False
+
+        try:
+            threading.Thread(target=collect,daemon=True,name='bh-gps-refresh').start()
+        except Exception:
+            with self.lock:
+                self._background_refresh_queued=False
+            raise
+        return True
+
+    def status(self,poll=True):
+        if poll:self.refresh()
         with self.lock:
             reference=now_brt()
             recent=sum(0<=(reference-parse_iso(v['lastGpsFixAt'])).total_seconds()<=120
@@ -348,12 +374,12 @@ class TransitEngine:
         return [{'id':sid,'name':other[0], 'lat':other[1], 'lng':other[2],
                  'distanceM':round(distance)} for distance,sid,other in scored[:limit]]
 
-    def stop_detail(self,stop_id,at=None):
+    def stop_detail(self,stop_id,at=None,poll=True):
         item=self.stops.get(str(stop_id))
         if not item:return None
         # Never hold the state lock while requesting external feed URLs.
         # The normal TTL shares the response across all stop lookups.
-        self.refresh()
+        if poll:self.refresh()
         now=at or now_brt()
         forecasts=self.timetable.next_by_direction(str(stop_id),now)
         routes=[]
@@ -412,8 +438,8 @@ class TransitEngine:
                     'gpsCoverage':round(counts.get('gpsEstimates',0)/lines,4) if lines else None,
                     'accuracyVerified':False}
 
-    def fleet(self,code):
-        self.refresh()
+    def fleet(self,code,poll=True):
+        if poll:self.refresh()
         with self.lock:
             route=self.route_by_code.get(str(code))
             if route is None:return None
