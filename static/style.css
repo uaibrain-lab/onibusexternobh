@@ -56,3 +56,9 @@ html[data-theme="dark"]{color-scheme:dark;--bg:#14181f;--bg2:#1e242d;--ink:#f5f7
 #metroNearby:empty{display:none}
 #metroNearby{margin-bottom:12px}
 @media(max-width:400px){.quick-tabs{gap:3px}.quick-tabs button{font-size:11px;padding:7px 8px}.sheet-identity span{font-size:9px}}
+
+
+.metro-forecast-link{display:block;margin:12px 0;padding:10px 12px;background:var(--bg);border:1px solid var(--line);border-radius:10px;font-size:12px;font-weight:700;color:var(--ink);text-decoration:none}
+.metro-forecast-link:focus-visible,.metro-forecast-link:hover{outline:2px solid #8655b7}
+.metro-news{display:block;text-decoration:none;color:var(--ink);background:var(--bg2);border-radius:10px;border-left:3px solid #8655b7;padding:10px 12px;font-size:12px;line-height:1.5}
+.metro-news:hover{text-decoration:underline}
