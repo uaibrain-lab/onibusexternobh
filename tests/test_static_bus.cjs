@@ -59,5 +59,5 @@ test('does not disguise unavailable GPS as an empty fleet',async()=>{
  const fleet=await t.api('/api/fleet?route=2020');
  assert.equal(fleet.available,false);
  assert.equal(fleet.count,null);
- assert.deepEqual(fleet.vehicles,[]);
+ assert.equal(fleet.vehicles.length,0);
 });
