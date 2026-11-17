@@ -7,17 +7,34 @@
 <meta name="theme-color" content="#ffffff">
 <meta name="description" content="Linhas e pontos de ônibus, estações e horários habituais do Metrô BH. Dados PBH/SUMOB e Metrô BH.">
 <title>Externo — Hub UFMG · Protótipo</title>
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="icon" href="./icon-192.png" type="image/png">
 <link rel="stylesheet" href="./style.css">
+<link rel="stylesheet" href="./hub-parity.css">
+<script>
+(()=>{
+  const root=document.documentElement;
+  root.dataset.embedded=window.parent===window?'false':'true';
+  let theme=matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light';
+  try{if(window.parent!==window&&window.parent.location.origin===location.origin){
+    const inherited=window.parent.document.documentElement.dataset.theme;
+    if(inherited==='light'||inherited==='dark')theme=inherited;
+  }}catch(e){/* Not same origin */}
+  root.dataset.theme=theme;
+})();
+</script>
 </head>
 <body>
 <main id="map" aria-label="Mapa dos ônibus externos de Belo Horizonte">
-  <canvas id="mapCanvas" aria-label="Mapa interativo com as posições dos ônibus"></canvas>
+  <canvas id="mapCanvas" aria-label="Mapa de pontos, linhas e transporte público" aria-describedby="mapAccessibleHelp"></canvas>
+  <p class="sr-only" id="mapAccessibleHelp">Para selecionar uma parada sem usar o mapa, consulte a aba Pontos e faça uma busca.</p>
   <div class="map-controls" role="group" aria-label="Controles do mapa">
     <button id="zoomIn" title="Aproximar" aria-label="Aproximar mapa">+</button>
     <button id="zoomOut" title="Afastar" aria-label="Afastar mapa">−</button>
     <button id="recenter" title="Recentrar em Belo Horizonte" aria-label="Recentrar mapa">◎</button>
   </div>
   <div id="mapToast" class="map-toast" role="status" aria-live="polite">Carregando mapa…</div>
+  <div id="mapBasemapNotice" class="map-basemap-notice" role="status" hidden>Mapa-base indisponível. Pontos e rotas permanecem visíveis.</div>
   <div class="attribution">Dados: PBH/SUMOB · © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a></div>
 </main>
 <div id="top"><button class="fab" id="loc" type="button" title="Localizar-me no mapa" aria-label="Localizar-me no mapa">⌖ <span>Perto de mim</span></button></div>
@@ -61,7 +78,7 @@
       <button id="goLine" type="button" class="btn primary">Consultar linha</button>
       <div class="line-heading"><div class="line-title" id="lineTitle">Selecione uma linha</div><button type="button" id="lineFavorite" class="fav-btn" aria-label="Favoritar linha" hidden>☆</button></div>
       <div class="stats"><div><strong id="vTotal">—</strong><small>Veículos encontrados</small></div><div><strong id="vRecent">—</strong><small>GPS recente (até 2 min)</small></div></div>
-      <div class="block"><label for="patternInput"><strong>Percurso de referência</strong></label><select id="patternInput"><option value="">Sem traçado</option></select><p class="hint">O percurso selecionado é uma variante ilustrativa do GTFS. Ele não é atribuído automaticamente aos ônibus.</p></div>
+      <div class="block"><label for="patternInput"><strong>Sentido e percurso</strong></label><select id="patternInput" aria-describedby="patternHint"><option value="">Escolha o sentido</option></select><p class="hint" id="patternHint">A variante com mais viagens é exibida primeiro. Você pode trocar o sentido ou escolher um percurso alternativo.</p></div>
       <div class="block vehicles-block"><div class="flexhead"><b>Ônibus da linha</b><button id="refresh" type="button" class="subtle">Atualizar</button></div><div id="vehicleList" class="vehicle-list"><p class="muted">Selecione uma linha.</p></div></div>
       <div class="block"><h3>Linhas disponíveis</h3><label class="srch" for="allLineSearch"><span aria-hidden="true">⌕</span><input id="allLineSearch" placeholder="Filtrar todas as linhas" aria-label="Filtrar todas as linhas" type="search"></label><div id="allLineList" class="list-rows"></div></div>
     </section>
