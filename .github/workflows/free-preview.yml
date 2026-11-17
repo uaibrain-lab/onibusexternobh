@@ -1,14 +1,16 @@
-name: P8 - Preview hospedável sem cobrança
+name: P9 - Preview hospedável sem cobrança
 
 on:
   workflow_dispatch:
   push:
     branches:
-      - feat/externo-p8-precisao-atualizacao-gratuita-20261117
+      - feat/externo-p9-multimodal-gratuito-20261117
     paths:
       - scripts/build_static_site.py
       - .github/workflows/free-preview.yml
       - scripts/build_static_scan.py
+      - static/static-bus.js
+      - static/app.js
       - static/service-worker.js
       - catalog/scan/index.json
 
@@ -29,6 +31,7 @@ jobs:
           node --check static/route-worker.js
           node --check static/service-worker.js
           node --check static/app.js
+          node --check static/static-bus.js
           node --test tests/test_static_worker.cjs
       - name: Empacotar preview puramente estático
         run: |
@@ -42,6 +45,11 @@ jobs:
           html=(root/'externo/index.html').read_text(encoding='utf-8')
           assert 'data-app-mode="free-static"' in html
           assert (root/'externo/route-worker.js').is_file()
+          assert (root/'externo/static-bus.js').is_file()
+          assert 'static-bus.js' in html
+          assert (root/'externo/catalog/routes.json').is_file()
+          assert (root/'externo/catalog/stops.json').is_file()
+          assert (root/'externo/catalog/patterns.json').is_file()
           assert (root/'externo/service-worker.js').is_file()
           assert (root/'externo/catalog/metro.json').is_file()
           assert (root/'externo/catalog/scan/index.json').is_file()
