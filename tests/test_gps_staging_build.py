@@ -32,6 +32,7 @@ class StagingBuildTests(unittest.TestCase):
             '<title>Externo — Hub UFMG · Protótipo</title></head><body>'
             '<div class="sheet-identity"><strong>Externo</strong>'
             '<span>BELO HORIZONTE</span></div>'
+            '<div class="source-pill" aria-live="polite"></div>'
             '<div class="notice-top" role="note">Aviso original</div>'
             '<script src="./app.js" defer></script></body></html>'
         )
@@ -89,6 +90,8 @@ class StagingBuildTests(unittest.TestCase):
         self.assertIn('data-gps-homologacao="true"', html)
         self.assertIn('noindex,nofollow,noarchive', html)
         self.assertIn('GPS EM TESTE', html)
+        self.assertIn('gps-staging-label', html)
+        self.assertIn('GPS em homologação', html)
         self.assertIn('HOMOLOGAÇÃO: GPS experimental SUMOB', html)
         self.assertEqual((output / '_redirects').read_text(encoding='utf-8'),
                          '/ /externo/ 302\n')
