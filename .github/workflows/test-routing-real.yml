@@ -1,9 +1,9 @@
-name: Validacao real do planejador (P5)
+name: Validação real do planejador (P6)
 
 on:
   push:
     branches:
-      - feat/externo-p5-planejador-20261117
+      - feat/externo-p6-precisao-20261117
     paths:
       - transit/planner.py
       - tests/test_planner.py
@@ -34,6 +34,7 @@ jobs:
           from transit.planner import JourneyPlanner
           p=JourneyPlanner(Path('catalog'))
           assert p.ready, p.failure
+          assert p.index['schema']==3
           pairs=[
             ({'lat':-19.8695,'lng':-43.9675},{'lat':-19.918,'lng':-43.938},
              'departAt','fastest'),

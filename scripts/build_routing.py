@@ -15,6 +15,7 @@ import hashlib
 import io
 import json
 import pathlib
+import shutil
 import sqlite3
 import sys
 import tempfile
@@ -65,7 +66,7 @@ def build(archive, output=None):
         db.execute('PRAGMA synchronous=OFF')
         db.execute('PRAGMA journal_mode=OFF')
         db.execute('CREATE TABLE trips(id TEXT PRIMARY KEY, code TEXT, service TEXT, destination TEXT)')
-        db.execute('CREATE TABLE times(trip TEXT, seq INTEGER, stop TEXT, arrive INTEGER, depart INTEGER)')
+        db.execute('CREATE TABLE times(trip TEXT, seq INTEGER, stop TEXT, arrive INTEGER, depart INTEGER, pickup INTEGER, dropoff INTEGER)')
         db.execute('CREATE INDEX trips_code ON trips(code)')
         meta_rows = []
         for trip in read('trips.txt'):
@@ -93,13 +94,22 @@ def build(archive, output=None):
                     continue
             except (ValueError, TypeError, KeyError):
                 continue
-            batch.append((r['trip_id'], seq, r['stop_id'], arr, dep))
+            # GTFS pickup_type/drop_off_type: 1 forbids boarding/alighting.
+            # Types 2/3 are conditional services and are conservatively
+            # excluded from automatic public itineraries.
+            try:
+                pickup = int(r.get('pickup_type') or 0)
+                dropoff = int(r.get('drop_off_type') or 0)
+            except (TypeError, ValueError):
+                pickup, dropoff = 1, 1
+            batch.append((r['trip_id'], seq, r['stop_id'], arr, dep,
+                          pickup, dropoff))
             if len(batch) == 25000:
-                db.executemany('INSERT INTO times VALUES (?,?,?,?,?)', batch)
+                db.executemany('INSERT INTO times VALUES (?,?,?,?,?,?,?)', batch)
                 total_rows += len(batch)
                 batch.clear()
         if batch:
-            db.executemany('INSERT INTO times VALUES (?,?,?,?,?)',batch)
+            db.executemany('INSERT INTO times VALUES (?,?,?,?,?,?,?)',batch)
             total_rows += len(batch)
         db.commit()
         db.execute('CREATE INDEX times_trip_seq ON times(trip, seq)')
@@ -119,15 +129,19 @@ def build(archive, output=None):
         files = {}
         trip_count = 0
         outdir = output / 'routing'
+        if outdir.exists():
+            shutil.rmtree(outdir)
         outdir.mkdir(parents=True, exist_ok=True)
         route_list = sorted(set(route_codes.values()))
         for code in route_list:
-            filename = hashlib.sha256(code.encode('utf-8')).hexdigest()[:16] + '.jsonl.gz'
+            filename = hashlib.sha256(code.encode('utf-8')).hexdigest()[:16] + '.json.gz'
             dest = outdir / filename
             count = 0
             with gzip.open(dest, 'wt', encoding='utf-8', compresslevel=6) as out:
+                out.write('[')
+                first_written=True
                 query = '''SELECT t.id, t.service, t.destination,
-                                  s.stop, s.arrive, s.depart
+                                  s.stop, s.arrive, s.depart, s.pickup, s.dropoff
                            FROM trips t JOIN times s ON s.trip=t.id
                            WHERE t.code=?
                            ORDER BY t.id, s.seq'''
@@ -136,12 +150,15 @@ def build(archive, output=None):
                 meta = None
                 invalid_trip = False
                 def write_trip():
-                    nonlocal count
+                    nonlocal count, first_written
                     if not invalid_trip and len(stops) >= 2:
+                        if not first_written:
+                            out.write(',')
                         out.write(json.dumps([meta[0], meta[1], meta[2], stops],
-                                             ensure_ascii=False,separators=(',',':'))+'\n')
+                                             ensure_ascii=False,separators=(',',':')))
+                        first_written=False
                         count += 1
-                for trip_id, service, headsign, stop, arr, dep in db.execute(query,(code,)):
+                for trip_id, service, headsign, stop, arr, dep, pickup, dropoff in db.execute(query,(code,)):
                     if trip_id != previous_id:
                         if previous_id is not None:
                             write_trip()
@@ -154,9 +171,10 @@ def build(archive, output=None):
                     if stop not in gtfs_stops:
                         invalid_trip = True
                     if not invalid_trip:
-                        stops.append([stop,arr,dep])
+                        stops.append([stop,arr,dep,pickup,dropoff])
                 if meta is not None:
                     write_trip()
+                out.write(']')
             if count:
                 files[code] = 'routing/' + filename
                 trip_count += count
@@ -168,14 +186,14 @@ def build(archive, output=None):
         dates = [s['start_date'] for s in services.values()] + list(exceptions.keys())
         ends = [s['end_date'] for s in services.values()] + list(exceptions.keys())
         index = {
-            'schema':1, 'builtUTC':dt.datetime.now(dt.timezone.utc).isoformat(),
+            'schema':3, 'builtUTC':dt.datetime.now(dt.timezone.utc).isoformat(),
             'source':'https://s3.amazonaws.com/mobilibus-uploads/gtfs/GTFSBHTRANS.zip',
             'timezone':'America/Sao_Paulo', 'validFrom':min(dates) if dates else None,
             'validThrough':max(ends) if ends else None,
             'services':services, 'exceptions':exceptions, 'files':files,
             'tripCount':trip_count, 'stopTimeRows':total_rows,
             'stops':len(gtfs_stops), 'stopRouteMappings':len(stop_routes),
-            'notes':'Horários de tabela; posições GPS não estão vinculadas a trip_id.',
+            'notes':'Horários de tabela; inclui regras de pickup/dropoff; GPS não está vinculado a trip_id.',
         }
         path = output / 'routing-index.json'
         path.write_text(json.dumps(index,ensure_ascii=False,separators=(',',':')),encoding='utf-8')

@@ -381,11 +381,15 @@ function renderRouteResults(data){
     routeStatus('O catálogo detalhado de viagens ainda não está instalado. Execute a geração oficial no GitHub.','warn');
   }else if(data.status==='out_of_calendar'){
     routeStatus(data.message+' Válido de '+data.validFrom+' até '+data.validThrough+'.','warn');
+  }else if(data.status==='walking_unavailable'){
+    routeStatus('O roteador de ruas não confirmou uma caminhada viável. Nenhuma conexão não verificada foi apresentada.','warn');
   }else if(!data.itineraries?.length){
     routeStatus('Nenhum trajeto de ônibus encontrado nesta janela. Experimente outro horário, origem ou destino.','warn');
   }else{
     routeStatus((data.status==='partial'?'Busca limitada por desempenho; ':'')+
-      data.itineraries.length+' itinerário(s) programado(s). Caminhadas são estimativas, não percursos por rua.',
+      data.itineraries.length+' itinerário(s) programado(s). '+(data.pedestrianRouting==='local_osm'
+       ?'Caminhadas conferidas no grafo de pedestres OSM local.'
+       :'Caminhadas aproximadas; os percursos pelas ruas ainda não foram verificados.'),
       data.status==='partial'?'warn':'info');
   }
   for(const [index,trip] of (data.itineraries||[]).entries()){
@@ -396,8 +400,9 @@ function renderRouteResults(data){
     clock.textContent=routeClock(trip.departure)+' → '+routeClock(trip.arrival)+' · '+trip.durationMinutes+' min';
     const detail=document.createElement('small');
     const buses=trip.legs.filter(x=>x.mode==='bus');
+    const verified=trip.confidence==='scheduled_gtfs_with_osm_pedestrian_paths';
     detail.textContent=buses.map(x=>x.line).join(' + ')+' · '+trip.walkMetersApprox+
-      ' m a pé (estimativa) · '+trip.transfers+' baldeação(ões)';
+      (verified?' m a pé (vias OSM)':' m a pé (aprox.)')+' · '+trip.transfers+' baldeação(ões)';
     select.append(clock,detail);
     select.onclick=()=>{state.routeSelected=index;renderRouteResults(data);focusSelectedRoute(trip)};
     container.append(select);
@@ -415,12 +420,12 @@ function renderRouteResults(data){
                            routeClock(leg.arrival)+' — '+leg.toName;
           txt.append(title,desc);
         }else{
-          title.textContent='Caminhada ≈ '+leg.metersApprox+' m';
+          title.textContent='Caminhada '+(leg.pathVerified?'':'≈ ')+leg.metersApprox+' m';
           const desc=document.createElement('small');
           desc.textContent=(leg.from==='origin'?'Origem':leg.from==='destination'?'Destino':
                             'Ponto '+leg.from)+' → '+
                            (leg.to==='destination'?'Destino':leg.to==='origin'?'Origem':'Ponto '+leg.to)+
-                           ' · percurso pelas ruas ainda não verificado';
+                           (leg.pathVerified?' · via rede pedestre OSM':' · percurso pelas ruas ainda não verificado');
           txt.append(title,desc);
         }
         item.append(icon,txt);legs.append(item);
