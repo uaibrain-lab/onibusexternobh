@@ -32,7 +32,10 @@ async function networkFirst(request,cacheName) {
   const cache=await caches.open(cacheName);
   try{
     const response=await fetch(request);
-    if(response.ok)await cache.put(request,response.clone());
+    if(response.ok){
+      try{await cache.put(request,response.clone())}
+      catch(e){/* QuotaExceededError must not block a valid online response. */}
+    }
     return response;
   }catch(error){
     const hit=await cache.match(request,{ignoreSearch:request.url?.includes('/index.json')});
@@ -46,10 +49,14 @@ async function boundedCache(request){
   if(cached)return cached;
   const response=await fetch(request);
   if(!response.ok)return response;
-  await cache.put(request,response.clone());
-  const keys=await cache.keys();
-  if(keys.length>MAX_SHARDS){
-    await Promise.all(keys.slice(0,keys.length-MAX_SHARDS).map(req=>cache.delete(req)));
+  try{
+    await cache.put(request,response.clone());
+    const keys=await cache.keys();
+    if(keys.length>MAX_SHARDS){
+      await Promise.all(keys.slice(0,keys.length-MAX_SHARDS).map(req=>cache.delete(req)));
+    }
+  }catch(e){
+    // Limited mobile storage should never prevent a route that was downloaded.
   }
   return response;
 }
