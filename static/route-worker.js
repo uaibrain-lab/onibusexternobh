@@ -12,6 +12,8 @@
 // The original timetable engine remains usable if the graph has not been built.
 try{if(typeof importScripts==='function')importScripts('./pedestrian.js')}
 catch(e){console.warn('Grafo pedestre não instalado',e)}
+try{if(typeof importScripts==='function')importScripts('./metro-journeys.js')}
+catch(e){console.warn('Estimador metroviário indisponível',e)}
 let pedestrian=null;
 const HOUR=3600000, MIN=60000, DAY=86400000, MAX_HOURS=5;
 const TRIP_MASK=(1<<20)-1,BOARD=1<<20,ALIGHT=1<<21;
@@ -405,7 +407,7 @@ async function verifyPedestrianOptions(options,ctx,preference){
       :order(a,b)||a.walkMetersApprox-b.walkMetersApprox);
   return {options:pool.slice(0,6),verified:true};
 }
-async function metroHints(origin,destination,at){
+async function metroHints(origin,destination,at,mode='departAt'){
   try{
     if(!metro){
       const path=new URL('../metro.json',root).href;
@@ -415,6 +417,9 @@ async function metroHints(origin,destination,at){
     }
     const near=(p)=>metro.stations.filter(s=>s.active&&distance(p,[s.lat,s.lng])<=1050)
       .sort((a,b)=>distance(p,[a.lat,a.lng])-distance(p,[b.lat,b.lng])).slice(0,3);
+    if(self.__MetroJourney){
+      return self.__MetroJourney.suggest(metro,origin,destination,at,mode);
+    }
     const day=bhDay(at);
     const clock=new Intl.DateTimeFormat('en-GB',{timeZone:cityTZ,
       hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date(at));
@@ -537,7 +542,7 @@ async function plan(params,seq) {
   const rankedOptions=ranked(ctx,preference);
   const pedestrianCheck=await verifyPedestrianOptions(rankedOptions,ctx,preference);
   const itineraries=pedestrianCheck.options;
-  const hints=await metroHints(origin,destination,requested);
+  const hints=await metroHints(origin,destination,requested,mode);
   return {
     status:ctx.partial?'partial':'ok',mode,preference,
     requestedAt:stamp(requested),itineraries,metroHints:hints,
