@@ -80,3 +80,25 @@ test('OPTIONS only permits approved origin and GET is read only',async()=>{
  const post=await handleGpsRequest(request('/api/gps?source=CONVENCIONAL&nls=120',{method:'POST'}),{cache:null,now:NOW});
  assert.equal(post.status,405);
 });
+
+test('same NL query uses normalized per-POP cache without repeating PBH fetch',async()=>{
+ const {handleGpsRequest}=await mod;
+ const items=new Map();
+ const cache={
+   match:async key=>items.get(key.url)||null,
+   put:async(key,response)=>{items.set(key.url,response)}
+ };
+ let downloads=0;
+ const options={cache,now:NOW,fetchFn:async()=>{
+   downloads++;
+   return new Response(JSON.stringify(FEED),{status:200});
+ }};
+ const req=request('/api/gps?source=CONVENCIONAL&nls=120');
+ const first=await handleGpsRequest(req,options);
+ const second=await handleGpsRequest(req,{...options,now:NOW+5000});
+ assert.equal(first.status,200);
+ assert.equal(second.status,200);
+ assert.equal(downloads,1);
+ assert.equal((await second.json()).records.length,1);
+ assert.ok([...items.keys()].some(url=>url.includes('/__gps_cache/filtered/')));
+});
