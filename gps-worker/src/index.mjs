@@ -141,8 +141,19 @@ export async function handleGpsRequest(request,{fetchFn=fetch,cache=globalThis.c
     }
     return reply(data,200,origin);
   }catch(error){
-    // No raw PBH errors or bodies leak to the public browser.
-    return reply({available:false,error:'GPS_SOURCE_UNAVAILABLE'},503,origin);
+    // Report only a fixed diagnostic category, not arbitrary upstream
+    // exception text, response bodies, URLs, or infrastructure internals.
+    const message=String(error?.message||'');
+    let reason='WORKER_PROCESSING_ERROR';
+    if(/^PBH_HTTP_[0-9]{3}$/.test(message))reason='PBH_HTTP_ERROR';
+    else if(message==='PBH_TOO_LARGE')reason='PBH_RESPONSE_TOO_LARGE';
+    else if(message==='PBH_NON_ARRAY')reason='PBH_FORMAT_UNEXPECTED';
+    else if(message==='GPS_TOO_MANY_MATCHES')reason='GPS_RESULT_LIMIT';
+    else if(error instanceof SyntaxError)reason='PBH_INVALID_JSON';
+    else if(error?.name==='TimeoutError'||error?.name==='AbortError')
+      reason='PBH_TIMEOUT';
+    else if(error instanceof TypeError)reason='PBH_NETWORK_ERROR';
+    return reply({available:false,error:'GPS_SOURCE_UNAVAILABLE',reason},503,origin);
   }
 }
 export default {fetch(request,env,ctx){return handleGpsRequest(request,{ctx});}};
