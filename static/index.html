@@ -87,12 +87,12 @@
     </section>
     <section id="rotasPane" hidden aria-label="Planejamento de rotas para ônibus e metrô">
       <h2>Planejar viagem</h2>
-      <p class="notice">Trajetos de ônibus baseados em viagens e horários programados da PBH. Caminhadas aproximadas; metrô indicado separadamente enquanto não houver tabela de viagens verificável.</p>
+      <p class="notice">Roteamento gratuito executado no seu navegador, com arquivos GTFS oficiais e sem enviar origem/destino a servidores de cálculo. Horários programados, não GPS. Caminhadas aproximadas e metrô informativo até existirem dados temporais verificáveis.</p>
       <div class="route-place">
         <label for="routeOriginInput"><strong>Origem</strong></label>
-        <input id="routeOriginInput" type="search" placeholder="Endereço, lugar ou ponto no mapa" autocomplete="off" aria-label="Local de partida">
+        <input id="routeOriginInput" type="search" placeholder="Nome do ponto, estação ou lat,lng" autocomplete="off" aria-label="Local de partida">
         <div class="route-place-actions">
-          <button id="routeOriginSearch" type="button" class="subtle">Buscar endereço</button>
+          <button id="routeOriginSearch" type="button" class="subtle">Buscar ponto</button>
           <button id="routeOriginMap" type="button" class="subtle">Escolher no mapa</button>
           <button id="routeOriginLocation" type="button" class="subtle">Minha localização</button>
         </div>
@@ -100,9 +100,9 @@
       </div>
       <div class="route-place">
         <label for="routeDestinationInput"><strong>Destino</strong></label>
-        <input id="routeDestinationInput" type="search" placeholder="Endereço, lugar ou ponto no mapa" autocomplete="off" aria-label="Local de destino">
+        <input id="routeDestinationInput" type="search" placeholder="Nome do ponto, estação ou lat,lng" autocomplete="off" aria-label="Local de destino">
         <div class="route-place-actions">
-          <button id="routeDestinationSearch" type="button" class="subtle">Buscar endereço</button>
+          <button id="routeDestinationSearch" type="button" class="subtle">Buscar ponto</button>
           <button id="routeDestinationMap" type="button" class="subtle">Escolher no mapa</button>
         </div>
         <div id="routeDestinationResults" class="list-rows" aria-live="polite"></div>
@@ -137,7 +137,7 @@
       <div id="routePlanStatus" class="notice" role="status" aria-live="polite">Selecione origem e destino para começar.</div>
       <div id="routeResults" class="list-rows" aria-live="polite"></div>
       <div id="routeMetroHints" class="list-rows"></div>
-      <p class="hint">Busca de endereços com OpenStreetMap/Nominatim apenas após pressionar Buscar; sem autocompletar. Dados © OpenStreetMap contributors. Não há previsão GPS de ônibus vinculada à viagem nesta versão.</p>
+      <p class="hint">Pesquisa gratuita no catálogo local de pontos, por coordenadas ou selecionando diretamente no mapa. Ainda não há busca completa por endereço: use o mapa para indicar qualquer rua ou imóvel. Dados de ônibus © PBH/SUMOB. Horários de tabela não são GPS.</p>
     </section>
     <footer class="side-footer"><div id="lastPoll">Aguardando coleta</div><div>Fonte: Prefeitura de Belo Horizonte · protótipo não oficial.</div></footer>
   </div>
