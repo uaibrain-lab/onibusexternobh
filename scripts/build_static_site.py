@@ -35,7 +35,7 @@ def build(target=None):
     public.mkdir(parents=True)
     static=ROOT/'static'
     for name in ('app.js','style.css','route-worker.js','service-worker.js',
-                 'catalog-api.js','pedestrian.js'):
+                 'catalog-api.js','pedestrian.js','metro-journeys.js'):
         shutil.copy2(static/name,public/name)
     html=(static/'index.html').read_text(encoding='utf-8')
     anchor='<html lang="pt-BR">'
