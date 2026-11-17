@@ -116,3 +116,11 @@ html[data-app-mode="free-static"] .quick-tabs button{min-width:64px;font-size:12
 
 html[data-app-mode="free-static"] #refresh{display:none}
 html[data-app-mode="free-static"] .stats small{font-size:11px}
+
+/* P17: unmistakable stage marker, never rendered by the default build.
+   Keep compact for narrow mobile viewports. */
+html[data-gps-homologacao="true"] .gps-staging-label{
+  flex:0 0 auto;white-space:nowrap;font-size:9px;font-weight:750;
+  letter-spacing:.04em;line-height:1;padding:4px 6px;border-radius:6px;
+  color:var(--ink);background:var(--bg2);border:1px solid var(--line)
+}
