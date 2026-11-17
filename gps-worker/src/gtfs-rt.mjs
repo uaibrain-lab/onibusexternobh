@@ -89,7 +89,7 @@ export function parseVehiclePositions(buffer,requestedRoutes,now=Date.now()){
       fields(bytes,a,b,(h,wire,start,end)=>{
         if(h===1&&wire===2)version=string(bytes,start,end);
       });
-      if(!/^[12]\\.\\d{1,3}$/.test(version))invalid();
+      if(!/^[12]\.\d{1,3}$/.test(version))invalid();
       headerPresent=true;return;
     }
     if(f!==2||w!==2)return;
