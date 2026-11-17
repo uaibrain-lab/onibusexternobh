@@ -1073,7 +1073,7 @@ async function searchRoutePlace(which){
   const q=routeInput(which).value.trim(),area=routeCandidates(which);
   const seq=++geocodeSequence[which];
   if(q.length<2){routeStatus('Digite um ponto, endereço ou local com pelo menos 2 caracteres.','warn');return}
-  const coords=q.match(/^(-?\\d{1,2}\\.\\d+)\\s*[,;]\\s*(-?\\d{1,3}\\.\\d+)$/);
+  const coords=q.match(/^(-?\d{1,2}\\.\d+)\\s*[,;]\\s*(-?\d{1,3}\\.\d+)$/);
   if(coords){
     setRoutePoint(which,{lat:Number(coords[1]),lng:Number(coords[2]),label:'Coordenadas: '+q});return;
   }
