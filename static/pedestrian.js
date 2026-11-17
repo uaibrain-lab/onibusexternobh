@@ -18,7 +18,7 @@ class Heap {
  get size(){return this.q.length}
 }
 class PedestrianNetwork {
- constructor(root,fetcher=fetch){
+ constructor(root,fetcher=(...args)=>fetch(...args)){
    this.root=root.endsWith('/')?root:root+'/';this.fetcher=fetcher;
    this.meta=null;this.known=null;this.cache=new Map();this.pending=new Map();
  }
