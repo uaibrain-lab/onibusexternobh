@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#ffffff">
-<meta name="description" content="Linhas, pontos e posições de ônibus municipais de Belo Horizonte. Dados oficiais PBH/SUMOB.">
+<meta name="description" content="Linhas e pontos de ônibus, estações e horários habituais do Metrô BH. Dados PBH/SUMOB e Metrô BH.">
 <title>Externo — Hub UFMG · Protótipo</title>
 <link rel="stylesheet" href="./style.css">
 </head>
@@ -34,6 +34,7 @@
     <div class="quick-tabs" role="group" aria-label="O que consultar">
       <button type="button" id="quick-pontos" class="on" aria-pressed="true">Pontos</button>
       <button type="button" id="quick-linhas" aria-pressed="false">Linhas</button>
+      <button type="button" id="quick-metro" aria-pressed="false">Metrô</button>
     </div>
     <button type="button" class="sheet-toggle" id="sheet-toggle" aria-label="Expandir lista" aria-expanded="false" aria-controls="body">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
@@ -62,6 +63,25 @@
       <div class="block"><label for="patternInput"><strong>Percurso de referência</strong></label><select id="patternInput"><option value="">Sem traçado</option></select><p class="hint">O percurso selecionado é uma variante ilustrativa do GTFS. Ele não é atribuído automaticamente aos ônibus.</p></div>
       <div class="block vehicles-block"><div class="flexhead"><b>Ônibus da linha</b><button id="refresh" type="button" class="subtle">Atualizar</button></div><div id="vehicleList" class="vehicle-list"><p class="muted">Selecione uma linha.</p></div></div>
       <div class="block"><h3>Linhas disponíveis</h3><label class="srch" for="allLineSearch"><span aria-hidden="true">⌕</span><input id="allLineSearch" placeholder="Filtrar todas as linhas" aria-label="Filtrar todas as linhas" type="search"></label><div id="allLineList" class="list-rows"></div></div>
+    </section>
+    <section id="metroPane" hidden aria-label="Estações e linhas de metrô em Belo Horizonte">
+      <div class="metro-title"><h2>Metrô BH</h2><span class="metro-tag">Linhas 1 e 2</span></div>
+      <p class="notice">Estações em operação, intervalos habituais e avisos oficiais. <strong>Não há GPS nem previsão individual de chegada dos trens nesta versão.</strong> Confira a operação em <a href="https://www.metrobh.com.br/va-de-metro/" target="_blank" rel="noopener noreferrer">Metrô BH</a>.</p>
+      <section id="metroDetail" class="stop-detail" hidden aria-live="polite"></section>
+      <label for="metroLineSelect"><strong>Visualizar linha</strong></label>
+      <select id="metroLineSelect" aria-label="Selecionar linha de metrô">
+        <option value="">Todas as linhas em operação</option>
+        <option value="1">Linha 1 — Laranja</option>
+        <option value="2">Linha 2 — Roxa</option>
+      </select>
+      <div id="metroService" class="metro-service" aria-live="polite"></div>
+      <button type="button" id="metroNearMe" class="subtle metro-near">⌖ Estações próximas de mim</button>
+      <div id="metroNearby" class="list-rows"></div>
+      <label class="srch" for="metroSearch"><span aria-hidden="true">⌕</span><input id="metroSearch" type="search" placeholder="Buscar estação de metrô" autocomplete="off" aria-label="Buscar estação de metrô"></label>
+      <div id="metroStations" class="list-rows" aria-live="polite"></div>
+      <p class="hint">Os segmentos no mapa são esquemáticos, ligando estações. Não representam o desenho exato dos trilhos nem indicam acesso de pedestres.</p>
+      <h3>Ampliação da Linha 2</h3><p id="metroPlanned" class="muted info-small"></p>
+      <p class="hint">O atendimento da Linha 2 inclui somente Nova Suíça e Amazonas nesta etapa. Estações futuras não são sugeridas como locais de embarque.</p>
     </section>
     <footer class="side-footer"><div id="lastPoll">Aguardando coleta</div><div>Fonte: Prefeitura de Belo Horizonte · protótipo não oficial.</div></footer>
   </div>
