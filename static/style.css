@@ -35,3 +35,13 @@ html[data-theme="dark"]{color-scheme:dark;--bg:#14181f;--bg2:#1e242d;--ink:#f5f7
 @media(max-width:759px){.location-prompt{top:calc(62px + env(safe-area-inset-top,0px));max-height:38vh;overflow:auto}}
 
 .line-heading{display:flex;align-items:center;justify-content:space-between;gap:10px}.line-heading .line-title{flex:1}
+
+/* P6: focused arrivals. Other lists reappear after "Voltar para pontos". */
+#pontosPane.has-open-stop > :not(#stopDetail){display:none!important}
+.stop-head{align-items:center}
+.stop-head > div{min-width:0;flex:1}
+.stop-back{flex:none;background:var(--bg);border:1px solid var(--line);border-radius:50%;height:36px;width:36px;font-size:28px;line-height:1;color:var(--ink)}
+.stop-back:hover,.stop-back:focus-visible{background:var(--line)}
+.stop-detail{margin-bottom:6px}
+.stop-detail .route-arrival{min-height:62px;touch-action:manipulation}
+.stop-detail .route-arrival .eta{font-variant-numeric:tabular-nums}
