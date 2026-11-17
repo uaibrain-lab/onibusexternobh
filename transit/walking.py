@@ -57,7 +57,13 @@ class WalkingGraph:
     def _cell(lat,lng):
         return int(math.floor(lat*CELL_SIZE)),int(math.floor(lng*CELL_SIZE))
 
+    @functools.lru_cache(maxsize=30000)
     def snap(self,lat,lng,max_distance=DEFAULT_MAX_SNAP_M):
+        """Exact nearest OSM node, accelerated by a local planar prefilter.
+
+        Cached stops are immutable coordinates from GTFS. The final accepted
+        distance is computed using the original great-circle distance.
+        """
         if not self.ready:
             return None
         lat=float(lat)
@@ -65,12 +71,23 @@ class WalkingGraph:
         if not math.isfinite(lat) or not math.isfinite(lng):
             return None
         x,y=self._cell(lat,lng)
-        span=max(1,int(math.ceil(max_distance/75))+1)
+        # CELL_SIZE=1000 => cells ~111m N/S and ~104m E/W in BH.
+        # For the default 65m snap radius, only the 9 surrounding
+        # cells can intersect the search circle.
+        span=max(1,int(math.ceil(max_distance/100)))
+        north_scale=111195.0
+        east_scale=north_scale*math.cos(math.radians(lat))
+        limit=(max_distance+1.5)**2
         best=None
         for dx in range(-span,span+1):
             for dy in range(-span,span+1):
                 for idx in self.grid.get((x+dx,y+dy),()):
-                    d=distance_m((lat,lng),self.points[idx])
+                    nlat,nlng=self.points[idx]
+                    ey=(lat-nlat)*north_scale
+                    ex=(lng-nlng)*east_scale
+                    if ex*ex+ey*ey>limit:
+                        continue
+                    d=distance_m((lat,lng),(nlat,nlng))
                     if d<=max_distance and (best is None or d<best[1]):
                         best=(idx,d)
         return best
