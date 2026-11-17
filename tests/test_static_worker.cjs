@@ -210,11 +210,9 @@ test('shard inconsistency returns error rather than an invented route',async()=>
   await t.run('init',1);
   // Manifest declares 2 connections in 07; now corrupt the length contract.
   t.manifest.hours.out['31']['07'].connections=300;
-  const output=await t.run('plan',2,{params:{
+  await assert.rejects(async()=>t.run('plan',2,{params:{
     origin:{lat:t.origin[0],lng:t.origin[1]},
     destination:{lat:t.destination[0],lng:t.destination[1]},
     at:'2026-11-17T07:50:00-03:00',mode:'departAt'
-  }});
-  assert.ok(output.some(m=>m.kind==='error'&&
-    m.message.includes('Dados GTFS inconsistentes')));
+  }}),/Dados GTFS inconsistentes/);
 });
