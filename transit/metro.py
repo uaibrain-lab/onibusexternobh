@@ -8,6 +8,11 @@ from __future__ import annotations
 import datetime as dt
 import json
 import math
+import threading
+import time
+import urllib.parse
+import urllib.request
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from .matcher import distance_m
@@ -23,6 +28,11 @@ class MetroCatalog:
             raise ValueError('Versão desconhecida do catálogo de metrô')
         self.stations = {s['id']: s for s in self.data['stations']}
         self.lines = {line['id']: line for line in self.data['lines']}
+        self._news_lock = threading.Lock()
+        self._news_data = []
+        self._news_fetched = None
+        self._news_attempt = 0.
+        self._news_error = None
         for line in self.lines.values():
             if any(sid not in self.stations for sid in line['stations']):
                 raise ValueError('Estação desconhecida na linha ' + line['id'])
@@ -165,4 +175,48 @@ class MetroCatalog:
                        'distanceType': 'straight_line'}
                       for m, s in ranked[:max(1, min(int(limit), 30))]],
             'count': len(ranked), 'distanceNote': 'Distância em linha reta, não caminhada.'
+        }
+
+
+    def news(self, fetcher=None, ttl=1800):
+        """RSS oficial; comunicados informativos, NÃO alertas em tempo real."""
+        source = 'https://www.metrobh.com.br/feed/'
+        with self._news_lock:
+            if not self._news_attempt or time.monotonic() - self._news_attempt >= ttl:
+                self._news_attempt = time.monotonic()
+                try:
+                    if fetcher:
+                        body = fetcher(source)
+                    else:
+                        req = urllib.request.Request(
+                            source, headers={'User-Agent': 'HubUFMG-Externo-metro/0.4 (RSS reader)'})
+                        with urllib.request.urlopen(req, timeout=8) as response:
+                            body = response.read(512 * 1024 + 1)
+                    if not isinstance(body, (bytes, bytearray)) or len(body) > 512 * 1024:
+                        raise ValueError('RSS excede limite permitido')
+                    doc = ET.fromstring(body)
+                    posts = []
+                    for item in doc.findall('./channel/item'):
+                        title = (item.findtext('title') or '').strip()
+                        link = (item.findtext('link') or '').strip()
+                        host = urllib.parse.urlsplit(link)
+                        if host.scheme != 'https' or host.hostname not in ('www.metrobh.com.br', 'metrobh.com.br'):
+                            continue
+                        if title:
+                            posts.append({'title': title[:240], 'url': link,
+                                          'published': (item.findtext('pubDate') or '').strip()[:90]})
+                        if len(posts) >= 6:
+                            break
+                    if not posts:
+                        raise ValueError('RSS sem comunicados oficiais reconhecidos')
+                    self._news_data = posts
+                    self._news_fetched = dt.datetime.now(BRT).isoformat(timespec='seconds')
+                    self._news_error = None
+                except (OSError, ValueError, ET.ParseError, TimeoutError) as exc:
+                    self._news_error = type(exc).__name__
+        return {
+            'items': list(self._news_data), 'fetchedAt': self._news_fetched,
+            'source': source, 'status': 'stale' if self._news_error and self._news_data
+                                     else 'unavailable' if self._news_error else 'ok',
+            'note': 'Comunicados oficiais recentes, não incidências ativas nem previsões de trens.'
         }
