@@ -14,6 +14,7 @@ const BUFFER=45000,WALK_SPEED=1.15,WALK_FACTOR=1.35,MAX_RIDES=3;
 const MAX_SCANNED=2100000,MAX_LABELS=8,MAX_ONBOARD=8;
 const cityTZ='America/Sao_Paulo';
 try{importScripts('./walk-network.js')}catch(e){/* optional; no fabricated graph */}
+try{importScripts('./metro-timing.js')}catch(e){/* old rail hints remain available */}
 let walkGraph=null,walkLoad=null,walkGraphStatus='not_loaded';
 let root='',meta=null,stops=null,trips=null,grid=null,stopLines=null,metro=null;
 let currentSeq=0;
@@ -408,7 +409,7 @@ function ranked(ctx,preference,limit=6) {
   });
   return options.slice(0,limit);
 }
-async function metroHints(origin,destination,at){
+async function metroHints(origin,destination,at,railHintMode='departAt'){
   try{
     if(!metro){
       const path=new URL('../metro.json',root).href;
@@ -429,11 +430,17 @@ async function metroHints(origin,destination,at){
         for(const e of metro.operations.hoursExceptions||[])
           if(e.line===line.id&&e.from<=day&&day<=e.through)end=e.end;
         if(clock<line.hours.start||clock>=end)continue;
+        const timings=typeof RailWindows!=='undefined'
+          ?RailWindows.window(metro,line,a,b,at,railHintMode||'departAt',
+            distance(origin,[a.lat,a.lng]),distance(destination,[b.lat,b.lng]))
+          :null;
         hints.push({mode:'metro',line:line.id,fromStation:a.name,toStation:b.name,
           fromStationId:a.id,toStationId:b.id,
           stationCount:Math.abs(line.stations.indexOf(a.id)-line.stations.indexOf(b.id)),
-          status:'requires_timetable',
-          note:'Metrô sem partidas verificadas: possibilidade informativa, não comparável às viagens GTFS.'});
+          status:timings?'historical_range_estimate':'requires_timetable',
+          timing:timings,
+          note:timings?'Faixa temporal ilustrativa baseada em benchmark histórico da operadora e frequência típica. Não é uma partida garantida nem rota comparável ao GTFS.':
+          'Metrô sem grade de partidas verificável: possibilidade informativa, não comparável às viagens GTFS.'});
       }
     return hints.slice(0,4);
   }catch(e){return []}
@@ -548,7 +555,7 @@ async function plan(params,seq) {
       a.walkMetersApprox-b.walkMetersApprox||a.transfers-b.transfers);
     itineraries=itineraries.slice(0,6);
   }
-  const hints=await metroHints(origin,destination,requested);
+  const hints=await metroHints(origin,destination,requested,mode);
   return {
     status:graph&&!itineraries.length&&ctx.finals.length?'walking_unavailable':
       ctx.partial?'partial':'ok',mode,preference,
