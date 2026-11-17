@@ -605,15 +605,27 @@ function renderRouteResults(data){
     area.append(container);
   }
   if(data.metroHints?.length){
-    const h=document.createElement('h3');h.textContent='Possibilidades com metrô (sem horário calculado)';
+    const h=document.createElement('h3');h.textContent='Possibilidades com metrô — horários NÃO confirmados';
     rail.append(h);
     for(const hint of data.metroHints){
       const card=document.createElement('div');card.className='metro-hint';
       const strong=document.createElement('strong');strong.textContent='Linha '+hint.line+
         ': '+hint.fromStation+' → '+hint.toStation;
-      const p=document.createElement('p');p.textContent='Passa por '+hint.stationCount+
-        ' trecho(s) entre estações. Frequência e horários de partida ainda não validados para esta viagem; não comparável às opções de ônibus.';
-      card.append(strong,p);rail.append(card);
+      const p=document.createElement('p');
+      p.textContent=hint.note||'Trajeto por metrô sem programação confirmada.';
+      card.append(strong,p);
+      if(hint.timing){
+        const range=document.createElement('p');range.className='info-small';
+        range.textContent='Faixa temporal ilustrativa: '+hint.timing.travelWindowMinutes[0]+
+          '–'+hint.timing.travelWindowMinutes[1]+' min (inclui acesso aproximado), '+
+          'intervalo habitual de até '+hint.timing.headwayMinutes+
+          ' min; NÃO são partidas ou chegadas garantidas.';
+        const ref=document.createElement('a');
+        ref.href=hint.timing.reference;ref.target='_blank';ref.rel='noopener noreferrer';
+        ref.textContent='Referência histórica da operadora';
+        card.append(range,ref);
+      }
+      rail.append(card);
     }
   }
   if(data.itineraries?.length)focusSelectedRoute(data.itineraries[0]);
