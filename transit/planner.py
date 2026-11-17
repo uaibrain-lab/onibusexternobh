@@ -27,8 +27,8 @@ WEEKDAYS = ('monday','tuesday','wednesday','thursday','friday','saturday','sunda
 WALK_SPEED_M_S = 1.15
 WALK_FACTOR = 1.35
 MAX_RIDES = 3
-MAX_ROUTE_SCANS = 135
-MAX_STOP_SCANS = 1900000
+MAX_STOP_SCANS = 4000000
+MAX_TRANSFER_LABELS = 22000
 HORIZON_SECONDS = 5 * 3600
 TRANSFER_BUFFER_SECONDS = 45
 
@@ -58,7 +58,7 @@ class JourneyPlanner:
             return
         try:
             self.index = json.loads(index_path.read_text('utf-8'))
-            if self.index['schema'] != 1:
+            if self.index['schema'] not in (1, 2):
                 raise ValueError('Versão de índice não suportada')
             self.stops = json.loads((self.catalog/'routing-stops.json').read_text('utf-8'))
             self.stop_routes = json.loads((self.catalog/'routing-stop-routes.json').read_text('utf-8'))
@@ -141,8 +141,23 @@ class JourneyPlanner:
         try:
             with gzip.open(self.catalog/name,'rt',encoding='utf-8') as file:
                 return tuple(json.loads(line) for line in file)
-        except (OSError,ValueError):
-            return ()
+        except (OSError,ValueError) as exc:
+            raise PlannerError('Falha ao ler o índice da linha '+str(code)) from exc
+
+    @functools.lru_cache(maxsize=24)
+    def _trip_stop_index(self, code):
+        """Inverted stop->trip offsets for this route.
+
+        Prevents scanning the full city's stop_times in each search round.
+        The immutable route shard stays the source of truth for trips,
+        service dates, and the exact stop sequence.
+        """
+        by_stop = collections.defaultdict(list)
+        for i, (_, _, _, stops) in enumerate(self._trips(code)):
+            # Preserve each trip only once per stop, even on loop services.
+            for sid in {row[0] for row in stops}:
+                by_stop[sid].append(i)
+        return {sid: tuple(indices) for sid, indices in by_stop.items()}
 
     def _insert(self,labels,label,backward=False):
         current=labels.setdefault(label.stop,[])
@@ -178,12 +193,15 @@ class JourneyPlanner:
     def _transfer(self,labels,backward):
         # Transfer only between very nearby stop coordinates; not a street route.
         seed=[x for values in labels.values() for x in values]
-        # Avoid explosive footpath expansion in busy terminals.
-        for old in seed[:18000]:
+        # Mark any bounded expansion as incomplete; never silently claim
+        # to have found the optimal journey after pruning transfers.
+        if len(seed) > MAX_TRANSFER_LABELS:
+            raise PlannerError('Expansão de transferências excedeu o limite de segurança')
+        for old in seed:
             stop=self.stops.get(old.stop)
             if not stop:
                 continue
-            for meters,sid in self.nearby(float(stop[1]),float(stop[2]),radius=165,limit=9):
+            for meters,sid in self.nearby(float(stop[1]),float(stop[2]),radius=165,limit=40):
                 if sid==old.stop or meters<2:
                     continue
                 seconds=self._walk_time(meters)+TRANSFER_BUFFER_SECONDS
@@ -197,21 +215,23 @@ class JourneyPlanner:
         next_labels={}
         counts=collections.Counter(code for sid in prior for code in self.stop_routes.get(sid,())
                                     if code in self.files)
-        routes=[code for code,count in counts.most_common(MAX_ROUTE_SCANS)]
-        if len(counts)>len(routes):
-            stats['limited']=True
+        # Explore EVERY candidate line. No arbitrary top-135 truncation.
+        # The inverted stop->trip index makes this tractable.
+        routes=sorted(counts,key=lambda code:(-counts[code],code))
+        stats['candidateRoutes']=len(routes)
         q_day=dt.datetime.fromtimestamp(search_ts,BRT).date()
         days=[q_day-dt.timedelta(days=1),q_day,q_day+dt.timedelta(days=1)]
         for code in routes:
             rows=self._trips(code)
-            for trip_id,service,headsign,stops in rows:
+            by_stop=self._trip_stop_index(code)
+            indices=set()
+            for sid in prior:
+                indices.update(by_stop.get(sid,()))
+            stats['candidateTrips']=stats.get('candidateTrips',0)+len(indices)
+            for idx in sorted(indices):
+                trip_id,service,headsign,stops=rows[idx]
                 eligible_days=[day for day in days if self._valid(service,day)]
                 if not eligible_days:
-                    continue
-                # Fast rejection: the trip must overlap the requested time
-                # window and contain a stop already reachable in this round.
-                # Otherwise scanning every stop of the city's timetable is wasteful.
-                if not any(stop[0] in prior for stop in stops):
                     continue
                 for day in eligible_days:
                     midnight=dt.datetime.combine(day,dt.time.min,BRT).timestamp()
@@ -225,11 +245,50 @@ class JourneyPlanner:
                             continue
                     candidates=[]
                     entries=reversed(stops) if backward else iter(stops)
-                    for sid,arr,dep in entries:
+                    for row in entries:
+                        sid,arr,dep=row[:3]
+                        # 0=regular. 1=not available; 2/3=require arrangements
+                        # not supported by this app, so never promise boarding.
+                        pickup = int(row[3]) if len(row)>3 else 0
+                        dropoff = int(row[4]) if len(row)>4 else 0
                         stats['stopScans']+=1
                         if stats['stopScans']>MAX_STOP_SCANS:
                             stats['limited']=True
                             return next_labels
+                        epoch=midnight+(dep if backward else arr)
+                        # You can alight only where the trip's stop_times allow it.
+                        if (pickup if backward else dropoff)==0:
+                            for earlier,board_sid,board_epoch in candidates:
+                                if sid==board_sid:
+                                    continue
+                                if backward and epoch<search_ts-HORIZON_SECONDS:
+                                    continue
+                                if not backward and epoch>search_ts+HORIZON_SECONDS:
+                                    continue
+                                if backward:
+                                    edge=self._edge_bus(code,trip_id,headsign,sid,board_sid,
+                                                        midnight+dep,board_epoch)
+                                else:
+                                    edge=self._edge_bus(code,trip_id,headsign,board_sid,sid,
+                                                        board_epoch,midnight+arr)
+                                node=Label(sid,epoch,earlier.walked,earlier.rides+1,earlier,edge)
+                                self._insert(next_labels,node,backward)
+                        # You can board only where the same trip permits boarding.
+                        if sid in prior and (dropoff if backward else pickup)==0:
+                            for label in prior[sid]:
+                                departure=midnight+dep
+                                arrival=midnight+arr
+                                feasible=(label.time>=arrival+TRANSFER_BUFFER_SECONDS
+                                          if backward else departure>=label.time+TRANSFER_BUFFER_SECONDS)
+                                valid_horizon=(departure>=search_ts-HORIZON_SECONDS if backward
+                                               else departure<=search_ts+HORIZON_SECONDS)
+                                if feasible and valid_horizon:
+                                    candidates.append((label,sid,arrival if backward else departure))
+                                    candidates.sort(key=lambda e:(e[0].walked,
+                                                   -e[0].time if backward else e[0].time))
+                                    if len(candidates)>4:
+                                        candidates=candidates[:4]
+        return next_labels
                         epoch=midnight+(dep if backward else arr)
                         for earlier,board_sid,board_epoch in candidates:
                             if sid==board_sid:
@@ -378,7 +437,7 @@ class JourneyPlanner:
                   else self._edge_walk('origin',sid,meters,search_ts,t))
             self._insert(prior,Label(sid,t,meters*WALK_FACTOR,0,None,edge),backward)
         candidates=[]
-        stats={'stopScans':0,'limited':False,'rounds':0}
+        stats={'stopScans':0,'limited':False,'rounds':0,'candidateRoutes':0,'candidateTrips':0}
         for rides in range(MAX_RIDES):
             if not prior:
                 break
