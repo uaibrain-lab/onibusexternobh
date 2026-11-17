@@ -176,7 +176,8 @@ export async function handleGpsRequest(request,{fetchFn=fetch,cache=globalThis.c
     }
     const data={available:true,source,
       fetchedAt:new Date(now).toISOString(),records:result.records,
-      ...(rt?{attribution:'Superintendência de Mobilidade Urbana de Belo Horizonte (SUMOB)',license:'CC BY 4.0'}:{})};
+      ...(rt?{feedEntities:result.sourceEntities,
+        attribution:'Superintendência de Mobilidade Urbana de Belo Horizonte (SUMOB)',license:'CC BY 4.0'}:{})};
     if(cache){
       const put=cache.put(key,new Response(JSON.stringify(data),{
         headers:{'Content-Type':'application/json',
