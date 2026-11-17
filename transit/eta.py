@@ -95,6 +95,12 @@ class GpsArrivalEstimator:
             # once. Otherwise shape identification cannot confirm service.
             if not patterns or any(p['stops'].count(stop_id)!=1 for p in patterns):
                 continue
+            # The same shape may serve distinct trip headsigns. A geometry
+            # match alone then cannot tell the passenger which destination the
+            # bus is actually displaying; refuse a direction-specific ETA.
+            destinations={str(p.get('headsign') or '').strip() for p in patterns}
+            if len(destinations)!=1 or not next(iter(destinations)):
+                continue
             stop_frac=self.stop_progress(sid,stop_id)
             if stop_frac is None:
                 continue
@@ -122,7 +128,7 @@ class GpsArrivalEstimator:
             fixes.sort()
             if len({t for t, _ in fixes}) < 3:
                 continue
-            # A recent fix cannot validate a speed inferred across a long gap.
+            # A fresh fix cannot rescue a velocity derived from a long radio gap.
             if (when - fixes[-1][0]).total_seconds() > 45:
                 continue
             start=fixes[0];end=fixes[-1]
@@ -130,7 +136,8 @@ class GpsArrivalEstimator:
             advance=end[1]-start[1]
             if duration<35 or duration>240 or advance<90:
                 continue
-            # Reject large GPS jumps, backwards travel, and discontinuous fixes.
+            # Reject GPS jumps, backwards travel and discontinuous observations.
+            # A distant gap must never be interpreted as a continuous speed.
             inconsistent=False
             for a,b in zip(fixes,fixes[1:]):
                 elapsed=(b[0]-a[0]).total_seconds()

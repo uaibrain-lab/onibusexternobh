@@ -42,11 +42,14 @@ class TransitEngine:
         self.matcher=ShapeMatcher(self.shapes,self.patterns)
         self.eta=GpsArrivalEstimator(self.matcher,self.patterns,self.stops)
         self.stop_routes=collections.defaultdict(set)
+        self.stop_directions=collections.defaultdict(set)
         for p in self.patterns:
             route=self.route_by_id.get(p['route'])
             if route:
                 for stop in p['stops']:
                     self.stop_routes[stop].add(route['code'])
+                    if p.get('headsign'):
+                        self.stop_directions[stop].add((route['code'],p['headsign']))
         # Lazy import to avoid circular dependency with shared BRT helpers.
         from .timetable import Timetable
         self.timetable=Timetable(self.catalog)
@@ -57,7 +60,7 @@ class TransitEngine:
         self.sources={name:{'lastFetchedAt':None,'lastError':None,'responseRecords':0}
                       for name in FEEDS}
         self.last_attempt_monotonic=0.
-        # Aggregated ETA coverage only; no passenger coordinates are tracked.
+        # Aggregate coverage only: no passenger identifiers or exact user coordinates.
         self.eta_coverage=collections.Counter()
         self.eta_coverage_started=now_brt()
         self._restore()
@@ -261,21 +264,48 @@ class TransitEngine:
                  for sid,e in self.stops.items() if a<=e[1]<=c and b<=e[2]<=d]
         return {'items':visible[:limit],'total':len(visible),'truncated':len(visible)>limit}
 
+    def alternative_stops(self, stop_id, radius_m=100, limit=3):
+        """Nearby stops with different advertised headsigns for shared lines.
+
+        Geographic proximity does NOT prove the platform or side of the road.
+        Passenger receives candidate stops to inspect, never an invented side.
+        """
+        stop_id=str(stop_id)
+        point=self.stops.get(stop_id)
+        if point is None:return []
+        directions=self.stop_directions.get(stop_id,set())
+        if not directions:return []
+        scored=[]
+        for sid,other in self.stops.items():
+            if sid==stop_id:continue
+            shared=self.stop_routes.get(sid,set()) & self.stop_routes.get(stop_id,set())
+            if not shared:continue
+            alt_dir=self.stop_directions.get(sid,set())
+            distinct=any(code in shared and not any(code==cc and head==hh for cc,hh in directions)
+                         for code,head in alt_dir)
+            if not distinct:continue
+            distance=distance_m((point[1],point[2]),(other[1],other[2]))
+            if distance>radius_m:continue
+            scored.append((distance,sid,other))
+        scored.sort(key=lambda x:x[0])
+        return [{'id':sid,'name':other[0], 'lat':other[1], 'lng':other[2],
+                 'distanceM':round(distance)} for distance,sid,other in scored[:limit]]
+
     def stop_detail(self,stop_id,at=None):
         item=self.stops.get(str(stop_id))
         if not item:return None
-        # Reuse the shared cached feeds; never claim a fresh HTTP poll is a new GPS fix.
+        # Never hold the state lock while requesting external feed URLs.
+        # The normal TTL shares the response across all stop lookups.
         self.refresh()
         now=at or now_brt()
-        forecasts=self.timetable.next_by_line(str(stop_id),now)
+        forecasts=self.timetable.next_by_direction(str(stop_id),now)
         routes=[]
         with self.lock:
+            # Aggregate without retaining which stop a user opened.
             if (now-self.eta_coverage_started).total_seconds()>3600:
                 self.eta_coverage.clear()
                 self.eta_coverage_started=now
             self.eta_coverage['stopQueries']+=1
-            # Build the route index once per lookup instead of scanning all
-            # vehicles repeatedly for each bus line serving this stop.
             by_route=collections.defaultdict(list)
             for vehicle in self.vehicles.values():
                 for rid in vehicle.get('routeIds',[]):
@@ -284,21 +314,35 @@ class TransitEngine:
                 route=self.route_by_code.get(code)
                 if not route:continue
                 gps=self.eta.estimate(route,str(stop_id),by_route.get(route['id'],()),now)
-                arrival=gps or forecasts.get(code)
-                self.eta_coverage['linesChecked']+=1
-                self.eta_coverage['gpsEstimates' if gps else 'timetableFallbacks' if arrival else 'unavailable']+=1
-                routes.append({'code':code,'name':route['name'],
-                               'nextArrival':arrival})
+                # Each GTFS headsign is a distinct passenger-facing direction.
+                # A GPS estimate may replace only the matching headsign, never
+                # the earliest timetable entry for a different destination.
+                directions={dest:forecast for (line,dest),forecast in forecasts.items() if line==code}
+                if gps:
+                    direction=str(gps.get('destination') or '').strip()
+                    if direction:
+                        directions[direction]=gps
+                    else:
+                        gps=None
+                if not directions:
+                    directions={'':None}
+                for direction,arrival in directions.items():
+                    self.eta_coverage['linesChecked']+=1
+                    self.eta_coverage['gpsEstimates' if arrival and arrival.get('type')=='gps_estimate' else 'timetableFallbacks' if arrival else 'unavailable']+=1
+                    routes.append({'code':code,'name':route['name'],
+                                   'destination':direction,
+                                   'nextArrival':arrival})
         routes.sort(key=lambda x:(x['nextArrival'] is None,
                                  x['nextArrival']['minutes'] if x['nextArrival'] else 10**10,
                                  x['code']))
         return {'id':str(stop_id),'name':item[0],'lat':item[1],'lng':item[2],
                 'routes':routes,'asOf':iso(now),
                 'forecastSource':('GPS + GTFS scheduled' if any(r['nextArrival'] and r['nextArrival']['type']=='gps_estimate' for r in routes) else 'GTFS scheduled (not GPS)'),
+                'alternatives':self.alternative_stops(stop_id),
                 'timetableAvailable':self.timetable.error is None and self.timetable.calendar is not None}
 
     def eta_coverage_summary(self):
-        """Coverage counts only; accuracy needs independently observed arrivals."""
+        """Diagnostic counters only, not a measure of real-world ETA error."""
         with self.lock:
             counts=dict(self.eta_coverage)
             lines=counts.get('linesChecked',0)
