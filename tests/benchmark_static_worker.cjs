@@ -21,6 +21,8 @@ async function main(){
     let rel;
     if(parsed.pathname.endsWith('/catalog/metro.json'))
       rel=path.resolve('catalog/metro.json');
+    else if(parsed.pathname.endsWith('/catalog/walk/graph.json.gz'))
+      rel=path.resolve('catalog/walk/graph.json.gz');
     else {
       const suffix=parsed.pathname.split('/catalog/scan/')[1];
       if(!suffix||suffix.includes('..'))return new Response('not found',{status:404});
@@ -71,6 +73,8 @@ async function main(){
       networkMB:Math.round((transferred-before)/1048576*100)/100,
       downloadedFiles:downloads,scanned:result.stats.connectionsScanned,
       partialReasons:result.stats.partialReasons,
+      pedestrianRouting:result.pedestrianRouting,
+      walkingNetworkStatus:result.walkingNetworkStatus,
       firstLines:result.itineraries[0]?.legs.filter(x=>x.mode==='bus').map(x=>x.line)
     }));
   }
