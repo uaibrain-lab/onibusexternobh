@@ -31,7 +31,8 @@ test('P17 staging: SUMOB GPS position on bus tab, safe fallback and mobile viewp
   const stage=await page.locator('html').getAttribute('data-gps-homologacao');
   test.skip(stage!=='true','This spec requires explicit --gps-staging build');
   await expect(page.locator('html')).toHaveAttribute('data-app-mode','free-static');
-  await expect(page.locator('.sheet-identity')).toContainText('GPS EM TESTE');
+  await expect(page.locator('.gps-staging-label')).toBeVisible();
+  await expect(page.locator('.gps-staging-label')).toHaveText('TESTE');
   const config=await page.evaluate(async()=>{
     const response=await fetch('./gps-config.json',{cache:'no-store'});
     return response.json();
