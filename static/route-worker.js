@@ -11,7 +11,7 @@
 const HOUR=3600000, MIN=60000, DAY=86400000, MAX_HOURS=5;
 const TRIP_MASK=(1<<20)-1,BOARD=1<<20,ALIGHT=1<<21;
 const BUFFER=45000,WALK_SPEED=1.15,WALK_FACTOR=1.35,MAX_RIDES=3;
-const MAX_SCANNED=2100000,MAX_LABELS=8,MAX_ONBOARD=8;
+const MAX_SCANNED=2100000,MAX_LABELS=12,MAX_ONBOARD=12;
 const cityTZ='America/Sao_Paulo';
 try{importScripts('./walk-network.js')}catch(e){/* optional; no fabricated graph */}
 try{importScripts('./metro-timing.js')}catch(e){/* old rail hints remain available */}
