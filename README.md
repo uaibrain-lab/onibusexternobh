@@ -1,3 +1,14 @@
+# P6 — precisão do planejador (desenvolvimento, sem deploy)
+
+A P6 gera um índice GTFS municipal por viagem e um **grafo offline de pedestres com dados © OpenStreetMap contributors**, evitando baldeações por distância em linha reta quando a rede está disponível. Respeita calendário, `pickup_type`, `drop_off_type`, horários após 24h e consulta por data de partida ou chegada.
+
+**Limitações:** não são previsões GPS dos ônibus; a caminhada OSM não garante acessos aos pontos nem acessibilidade; o metrô ainda não possui horários verificados para roteamento conjunto. Desempenho de busca continua em otimização; nenhum merge na `main` nem publicação no Hub.
+
+- [Documentação e critérios de precisão](docs/ROTEADOR-P6-PRECISAO.md)
+- [PR P6 em rascunho](https://github.com/uaibrain-lab/onibusexternobh/pull/8)
+
+---
+
 # Externo — Hub UFMG · P5 (planejador de viagens, protótipo)
 
 **P5 em desenvolvimento; sem deploy.** Nova aba **Rotas**, com origem/destino por mapa, GPS ou endereço, horários de partida/chegada, comparação de itinerários reais do GTFS e transferências. Possibilidades com metrô são apenas indicativas até existir programação metroviária verificável.
