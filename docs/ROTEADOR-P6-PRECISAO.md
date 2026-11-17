@@ -16,7 +16,10 @@
 - Validade publicada no GTFS até 31/12/2026; viagens com horários após meia-noite respeitam o dia de serviço.
 - Antes da rede OSM e da otimização: consulta P5 frequentemente parcial com 5–10 segundos.
 - P6, **antes do grafo de pedestres**, com busca ampliada: benchmark BH (UFMG → Centro, 18/11/2026): `departAt/fastest` 23,53 segundos e `arriveBy/leastTransfers` 15,55 segundos, seis itinerários, sem limites explícitos alcançados. Desempenho ainda não adequado para uma experiência móvel instantânea.
-- Com o grafo OSM, exige-se novo benchmark e inspeção da cobertura de acessos. **Não** prometer benefício até os testes reais confirmarem.
+- Grafo OSM efetivamente gerado e validado: **365.931 nós**, **402.052 arestas**, **5.447.766 bytes** comprimidos. No teste de cobertura da UFMG, **19 dos 20 pontos** próximos puderam ser conectados à malha caminhável (o nó/entrada exato ainda não foi homologado em campo).
+- Benchmark com grafo OSM, parser JSON rápido opcional e caches otimizados: **18,12 segundos** para `departAt/fastest` e **14,43 segundos** para `arriveBy/leastTransfers` na primeira medição; seis alternativas nas duas buscas, sem corte explícito. Continua lento para mobile.
+- Uma tentativa com cache GTFS aumentado para 64 linhas chegou a **905 MiB de pico de RAM**, economizando pouco tempo. O cache foi reduzido novamente; RAM e latência precisam ser revalidadas antes de hospedar.
+- A aceleração de leitura via `orjson==3.13.0` é **opcional**, open source; sem ela o projeto continua rodando com o parser JSON da biblioteca padrão. Para instalar no Python do backend local: `py -3 -m pip install orjson==3.13.0`.
 
 ## Limitações remanescentes
 
