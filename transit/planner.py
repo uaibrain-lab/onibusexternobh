@@ -147,7 +147,7 @@ class JourneyPlanner:
         except (OSError,ValueError):
             return ()
 
-    def _insert(self,labels,label,backward=False):
+    def _insert(self,labels,label,backward=False,stats=None):
         current=labels.setdefault(label.stop,[])
         for other in current:
             if (other.time>=label.time if backward else other.time<=label.time) and other.walked<=label.walked+1:
@@ -157,6 +157,7 @@ class JourneyPlanner:
             and label.walked<=other.walked+1)]
         current.append(label)
         if len(current)>5:
+            if stats is not None: stats['truncatedLabels']=True
             best_time=lambda l:-l.time if backward else l.time
             current.sort(key=lambda l:(best_time(l)+l.walked*.15,l.walked))
             del current[5:]
@@ -168,7 +169,7 @@ class JourneyPlanner:
         return (a.time>=b.time if backward else a.time<=b.time) and (
             a.walked<=b.walked+0.01 and a.rides<=b.rides)
 
-    def _insert_global(self,history,label,backward):
+    def _insert_global(self,history,label,backward,stats=None):
         prior=history.setdefault(label.stop,[])
         if any(self._dominates(old,label,backward) for old in prior):
             return False
@@ -177,6 +178,7 @@ class JourneyPlanner:
         # Keep representative Pareto labels. Huge fan-out in terminal areas
         # otherwise produces exponential combinations of redundant options.
         if len(prior)>12:
+            if stats is not None: stats['truncatedLabels']=True
             prior.sort(key=lambda x:(((-x.time if backward else x.time)-
                                       (0 if backward else 0)) / 60+
                                       x.walked/60+x.rides*25,
@@ -200,7 +202,7 @@ class JourneyPlanner:
                 'departure':self._iso(depart),'arrival':self._iso(arrive),
                 'prediction':'GTFS scheduled'}
 
-    def _transfer(self,labels,backward,history):
+    def _transfer(self,labels,backward,history,stats):
         # Transfer only between very nearby stop coordinates; not a street route.
         seed=[x for values in labels.values() for x in values]
         # Avoid explosive footpath expansion in busy terminals.
@@ -218,8 +220,8 @@ class JourneyPlanner:
                 node=Label(sid,t,old.walked+meters*WALK_FACTOR,old.rides,old,edge)
                 if not any(self._dominates(other,node,backward)
                            for other in history.get(sid,())):
-                    if self._insert(labels,node,backward):
-                        self._insert_global(history,node,backward)
+                    if self._insert(labels,node,backward,stats):
+                        self._insert_global(history,node,backward,stats)
 
     def _scan_round(self,prior,search_ts,backward,stats,history):
         next_labels={}
@@ -279,8 +281,8 @@ class JourneyPlanner:
                             node=Label(sid,epoch,earlier.walked,earlier.rides+1,earlier,edge)
                             if not any(self._dominates(old,node,backward)
                                        for old in history.get(sid,())):
-                                if self._insert(next_labels,node,backward):
-                                    self._insert_global(history,node,backward)
+                                if self._insert(next_labels,node,backward,stats):
+                                    self._insert_global(history,node,backward,stats)
                         # Add board possibilities after dropping at this stop.
                         # A trip cannot be entered where boarding is forbidden.
                         # In backward search, the reachable stop is an ALIGHTING stop.
@@ -472,15 +474,15 @@ class JourneyPlanner:
         search_ts=at_dt.timestamp()
         starts=self.nearby(*(destination if backward else origin),radius=1050,limit=22)
         prior={}
+        stats={'stopScans':0,'limited':False,'truncatedLabels':False,'rounds':0}
         for meters,sid in starts:
             delay=self._walk_time(meters)
             t=search_ts-delay if backward else search_ts+delay
             edge=(self._edge_walk(sid,'destination',meters,t,search_ts) if backward
                   else self._edge_walk('origin',sid,meters,search_ts,t))
-            self._insert(prior,Label(sid,t,meters*WALK_FACTOR,0,None,edge),backward)
+            self._insert(prior,Label(sid,t,meters*WALK_FACTOR,0,None,edge),backward,stats)
         candidates=[]
         history={sid:list(labels) for sid,labels in prior.items()}
-        stats={'stopScans':0,'limited':False,'rounds':0}
         for rides in range(MAX_RIDES):
             if not prior:
                 break
@@ -490,7 +492,7 @@ class JourneyPlanner:
                 candidates.extend(self._collect(gained,origin,destination,search_ts,backward))
             if stats['limited']:
                 break
-            self._transfer(gained,backward,history)
+            self._transfer(gained,backward,history,stats)
             prior=gained
         if preference=='leastWalking':
             key=lambda x:(x['walkMetersApprox'],x['durationMinutes'],x['transfers'])
@@ -521,7 +523,7 @@ class JourneyPlanner:
             if len(unique)>=12:
                 break
         return {'status': 'walking_unavailable' if walk_unavailable else
-                          'partial' if stats['limited'] else 'ok',
+                          'partial' if stats['limited'] or stats['truncatedLabels'] else 'ok',
                 'mode':mode,'preference':preference,'requestedAt':at_dt.isoformat(),
                 'itineraries':list(unique.values())[:6],
                 'metroHints':self._metro_hints(origin,destination,at_dt),
