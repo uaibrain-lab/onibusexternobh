@@ -15,6 +15,7 @@ import hashlib
 import io
 import json
 import pathlib
+import shutil
 import sqlite3
 import sys
 import tempfile
@@ -128,13 +129,17 @@ def build(archive, output=None):
         files = {}
         trip_count = 0
         outdir = output / 'routing'
+        if outdir.exists():
+            shutil.rmtree(outdir)
         outdir.mkdir(parents=True, exist_ok=True)
         route_list = sorted(set(route_codes.values()))
         for code in route_list:
-            filename = hashlib.sha256(code.encode('utf-8')).hexdigest()[:16] + '.jsonl.gz'
+            filename = hashlib.sha256(code.encode('utf-8')).hexdigest()[:16] + '.json.gz'
             dest = outdir / filename
             count = 0
             with gzip.open(dest, 'wt', encoding='utf-8', compresslevel=6) as out:
+                out.write('[')
+                first_written=True
                 query = '''SELECT t.id, t.service, t.destination,
                                   s.stop, s.arrive, s.depart, s.pickup, s.dropoff
                            FROM trips t JOIN times s ON s.trip=t.id
@@ -145,10 +150,13 @@ def build(archive, output=None):
                 meta = None
                 invalid_trip = False
                 def write_trip():
-                    nonlocal count
+                    nonlocal count, first_written
                     if not invalid_trip and len(stops) >= 2:
+                        if not first_written:
+                            out.write(',')
                         out.write(json.dumps([meta[0], meta[1], meta[2], stops],
-                                             ensure_ascii=False,separators=(',',':'))+'\n')
+                                             ensure_ascii=False,separators=(',',':')))
+                        first_written=False
                         count += 1
                 for trip_id, service, headsign, stop, arr, dep, pickup, dropoff in db.execute(query,(code,)):
                     if trip_id != previous_id:
@@ -166,6 +174,7 @@ def build(archive, output=None):
                         stops.append([stop,arr,dep,pickup,dropoff])
                 if meta is not None:
                     write_trip()
+                out.write(']')
             if count:
                 files[code] = 'routing/' + filename
                 trip_count += count
@@ -177,7 +186,7 @@ def build(archive, output=None):
         dates = [s['start_date'] for s in services.values()] + list(exceptions.keys())
         ends = [s['end_date'] for s in services.values()] + list(exceptions.keys())
         index = {
-            'schema':2, 'builtUTC':dt.datetime.now(dt.timezone.utc).isoformat(),
+            'schema':3, 'builtUTC':dt.datetime.now(dt.timezone.utc).isoformat(),
             'source':'https://s3.amazonaws.com/mobilibus-uploads/gtfs/GTFSBHTRANS.zip',
             'timezone':'America/Sao_Paulo', 'validFrom':min(dates) if dates else None,
             'validThrough':max(ends) if ends else None,
