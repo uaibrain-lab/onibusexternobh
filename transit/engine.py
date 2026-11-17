@@ -6,6 +6,7 @@ from __future__ import annotations
 import collections, datetime as dt, json, math, os, pathlib, tempfile, threading, time, urllib.request
 from .matcher import ShapeMatcher, distance_m
 from .eta import GpsArrivalEstimator
+from .catalog_store import resolve_catalog
 
 BRT=dt.timezone(dt.timedelta(hours=-3))
 FEEDS={'CONVENCIONAL':'https://temporeal.pbh.gov.br/?param=D',
@@ -27,12 +28,16 @@ def parse_hr(s):
 class TransitEngine:
     def __init__(self, root, fetcher=None, ttl=35):
         self.root=pathlib.Path(root)
-        self.catalog=self.root/'catalog'
+        self.catalog=resolve_catalog(self.root/'catalog')
         self.state_file=self.root/'state'/'vehicles.json'
         self.routes=json.loads((self.catalog/'routes.json').read_text(encoding='utf8'))
         self.route_by_code={r['code']:r for r in self.routes}
         self.route_by_id={r['id']:r for r in self.routes}
         self.stops=json.loads((self.catalog/'stops.json').read_text(encoding='utf8'))
+        # Roughly 1.1km cells at BH latitude; queries only visit adjacent cells.
+        self.stop_grid=collections.defaultdict(list)
+        for sid, entry in self.stops.items():
+            self.stop_grid[(math.floor(entry[1]/.01),math.floor(entry[2]/.01))].append((sid,entry))
         self.shapes=json.loads((self.catalog/'shapes.json').read_text(encoding='utf8'))
         self.patterns=json.loads((self.catalog/'patterns.json').read_text(encoding='utf8'))
         self.pattern_by_id={p['id']:p for p in self.patterns}
@@ -241,28 +246,51 @@ class TransitEngine:
             if len(found)>=n:break
         return {'items':found,'truncated':len(found)>=n,'query':query}
 
+    def _viewport_candidates(self, a, b, c, d):
+        """Spatial buckets for static stops, falling back for huge world bounds."""
+        row0,row1=math.floor(a/.01),math.floor(c/.01)
+        col0,col1=math.floor(b/.01),math.floor(d/.01)
+        if (row1-row0+1)*(col1-col0+1)>1200:
+            return self.stops.items()
+        return ((sid,entry) for row in range(row0,row1+1)
+                for col in range(col0,col1+1)
+                for sid,entry in self.stop_grid.get((row,col),()))
+
     def nearby_stops(self,lat,lng,limit=15,radius_m=2500):
-        """Return nearest stops; never request or store user's coordinates upstream."""
-        lat=float(lat);lng=float(lng)
-        if not (-90<=lat<=90 and -180<=lng<=180):raise ValueError('invalid coordinate')
+        """Return nearest stops; never store caller coordinates or contact PBH."""
+        lat=float(lat);lng=float(lng);radius_m=float(radius_m)
+        if not (-90<=lat<=90 and -180<=lng<=180 and 0<radius_m<=10000):
+            raise ValueError('invalid coordinate or radius')
+        lat_span=radius_m/111320
+        lng_span=min(180,radius_m/(111320*max(.01,math.cos(math.radians(lat)))))
         ranked=[]
-        for sid,entry in self.stops.items():
+        for sid,entry in self._viewport_candidates(lat-lat_span,lng-lng_span,
+                                                    lat+lat_span,lng+lng_span):
             dist=distance_m((lat,lng),(entry[1],entry[2]))
             if dist<=radius_m:
                 ranked.append((dist,sid,entry))
-        ranked.sort(key=lambda x:x[0])
+        ranked.sort(key=lambda x:(x[0],x[1]))
         return {'items':[{'id':sid,'name':e[0],'lat':e[1],'lng':e[2],
                           'distanceM':round(dist)} for dist,sid,e in ranked[:max(1,min(50,int(limit)))]],
                 'count':len(ranked)}
 
     def map_stops(self, minlat,minlng,maxlat,maxlng,limit=550):
-        """Stops in viewport, with cap for efficient rendering in canvas."""
+        """Return bounded viewport stops, nearest viewport center first if capped."""
         a,b,c,d=map(float,(minlat,minlng,maxlat,maxlng))
-        if not (-90<=a<=c<=90 and -180<=b<=d<=180):raise ValueError('invalid bounds')
+        if not (-90<=a<=c<=90 and -180<=b<=d<=180):
+            raise ValueError('invalid bounds')
         limit=max(1,min(750,int(limit)))
-        visible=[{'id':sid,'name':e[0],'lat':e[1],'lng':e[2]}
-                 for sid,e in self.stops.items() if a<=e[1]<=c and b<=e[2]<=d]
-        return {'items':visible[:limit],'total':len(visible),'truncated':len(visible)>limit}
+        visible=[(sid,e) for sid,e in self._viewport_candidates(a,b,c,d)
+                 if a<=e[1]<=c and b<=e[2]<=d]
+        count=len(visible)
+        if count>limit:
+            midlat,midlng=(a+c)/2,(b+d)/2
+            # Deterministic nearby-first cap instead of arbitrary GTFS file order.
+            visible.sort(key=lambda x:((x[1][1]-midlat)**2+((x[1][2]-midlng)
+                *math.cos(math.radians(midlat)))**2,x[0]))
+        return {'items':[{'id':sid,'name':e[0],'lat':e[1],'lng':e[2]}
+                          for sid,e in visible[:limit]],
+                'total':count,'truncated':count>limit}
 
     def alternative_stops(self, stop_id, radius_m=100, limit=3):
         """Nearby stops with different advertised headsigns for shared lines.

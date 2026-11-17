@@ -4,12 +4,14 @@ const state={routes:[],route:null,geometry:null,fleet:null,pattern:'',selectedVe
   center:[-19.8695,-43.9675],zoom:15,markers:[],stopMarkers:[],mapStops:[],selectedStop:null,stopCoordinates:null,nearby:[],userPosition:null,tiles:new Map(),frame:0,drag:null};
 const $canvas=$('mapCanvas'),ctx=$canvas.getContext('2d');
 const MAX_Z=18,MIN_Z=10;
+const MOBILE_DPR_CAP=(navigator.deviceMemory&&navigator.deviceMemory<=3)?1.35:1.75;
+const TILE_CACHE_LIMIT=(navigator.deviceMemory&&navigator.deviceMemory<=3)?72:120;
 function mercator(lat,lng,z){const size=256*2**z;let y=Math.max(-85.0511,Math.min(85.0511,lat));return [(lng+180)/360*size,(1-Math.asinh(Math.tan(y*Math.PI/180))/Math.PI)/2*size]}
 function invMercator(x,y,z){const size=256*2**z;const n=Math.PI-2*Math.PI*y/size;return [180/Math.PI*Math.atan(Math.sinh(n)),x/size*360-180]}
 function screen(lat,lng){let [cx,cy]=mercator(...state.center,state.zoom),[px,py]=mercator(lat,lng,state.zoom);return [px-cx+$canvas.clientWidth/2,py-cy+$canvas.clientHeight/2]}
-function resize(){let dpr=Math.min(window.devicePixelRatio||1,2);$canvas.width=Math.floor($canvas.clientWidth*dpr);$canvas.height=Math.floor($canvas.clientHeight*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);drawSoon();scheduleMapStops()}
+function resize(){let dpr=Math.min(window.devicePixelRatio||1,MOBILE_DPR_CAP);$canvas.width=Math.floor($canvas.clientWidth*dpr);$canvas.height=Math.floor($canvas.clientHeight*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);drawSoon();scheduleMapStops()}
 function drawSoon(){if(!state.frame)state.frame=requestAnimationFrame(()=>{state.frame=0;draw()})}
-function getTile(z,x,y){let n=2**z;if(y<0||y>=n)return null;let key=`${z}/${((x%n)+n)%n}/${y}`;let ent=state.tiles.get(key);if(!ent){let img=new Image();ent={img,ready:false,error:false};state.tiles.set(key,ent);img.onload=()=>{ent.ready=true;drawSoon()};img.onerror=()=>{ent.error=true;drawSoon()};img.src=`https://tile.openstreetmap.org/${z}/${((x%n)+n)%n}/${y}.png`;}if(state.tiles.size>180){for(const k of state.tiles.keys()){if(state.tiles.size<=160)break;state.tiles.delete(k)}}return ent}
+function getTile(z,x,y){let n=2**z;if(y<0||y>=n)return null;let key=`${z}/${((x%n)+n)%n}/${y}`;let ent=state.tiles.get(key);if(!ent){let img=new Image();ent={img,ready:false,error:false};state.tiles.set(key,ent);img.onload=()=>{ent.ready=true;drawSoon()};img.onerror=()=>{ent.error=true;drawSoon()};img.src=`https://tile.openstreetmap.org/${z}/${((x%n)+n)%n}/${y}.png`;}if(state.tiles.size>TILE_CACHE_LIMIT+16){for(const k of state.tiles.keys()){if(state.tiles.size<=TILE_CACHE_LIMIT)break;state.tiles.delete(k)}}return ent}
 function drawTiles(w,h){let z=Math.floor(state.zoom),scale=2**(state.zoom-z),[cx,cy]=mercator(...state.center,z),tx=cx-w/2/scale,ty=cy-h/2/scale;ctx.fillStyle='#d9e4e4';ctx.fillRect(0,0,w,h);let minx=Math.floor(tx/256)-1,maxx=Math.ceil((tx+w/scale)/256)+1,miny=Math.floor(ty/256)-1,maxy=Math.ceil((ty+h/scale)/256)+1;for(let y=miny;y<=maxy;y++)for(let x=minx;x<=maxx;x++){let px=(x*256-tx)*scale,py=(y*256-ty)*scale,tile=getTile(z,x,y);if(tile&&tile.ready){ctx.drawImage(tile.img,px,py,256*scale+.5,256*scale+.5)}else{ctx.fillStyle=((x+y)&1)?'#e8eeea':'#dfe9e6';ctx.fillRect(px,py,256*scale+.5,256*scale+.5);ctx.strokeStyle='#cddad7';ctx.strokeRect(px,py,256*scale,256*scale)}}}
 function draw(){const w=$canvas.clientWidth,h=$canvas.clientHeight;if(!w||!h)return;ctx.clearRect(0,0,w,h);drawTiles(w,h);  state.stopMarkers=[];
   const bucketSize=state.zoom<14?62:state.zoom<15.5?48:state.zoom<17?34:0;
@@ -42,7 +44,7 @@ function draw(){const w=$canvas.clientWidth,h=$canvas.clientHeight;if(!w||!h)ret
 function diffSeconds(iso){if(!iso)return Infinity;let t=Date.parse(iso);return Number.isFinite(t)?Math.max(0,Math.floor((Date.now()-t)/1000)):Infinity}
 function fmtAge(n){if(!Number.isFinite(n))return 'desconhecido';if(n<60)return `${n}s`;if(n<3600)return `${Math.floor(n/60)}min ${String(n%60).padStart(2,'0')}s`;return `${Math.floor(n/3600)}h ${Math.floor(n%3600/60)}min`}
 function fmtTime(iso){try{return new Intl.DateTimeFormat('pt-BR',{hour:'2-digit',minute:'2-digit',second:'2-digit',timeZone:'America/Sao_Paulo'}).format(new Date(iso))}catch(e){return '—'}}
-async function api(path){const base=location.pathname.startsWith('/externo')?'/externo':'';let r=await fetch(base+path,{cache:'no-store'});if(!r.ok)throw Error(`HTTP ${r.status}`);return r.json()}
+async function api(path,options={}){const base=location.pathname.startsWith('/externo')?'/externo':'';let r=await fetch(base+path,{cache:'no-store',...options});if(!r.ok)throw Error(`HTTP ${r.status}`);return r.json()}
 function statusLed(ok,label){$('sourceLed').className='dot '+(ok?'ok':'bad');$('sourceText').textContent=label}
 function updateStatus(obj){
   const errors=Object.values(obj.sources||{}).filter(x=>x.lastError);
@@ -184,9 +186,41 @@ function editFavoriteButton(kind,id,title){const b=document.createElement('butto
 
 function toggleFavorite(kind,id){id=String(id);let arr=favorites[kind];favorites[kind]=arr.includes(id)?arr.filter(v=>v!==id):[...arr,id];saveFavorites();renderFavoriteStops();renderFavoriteLines();if(state.route){$('lineFavorite').textContent=favorites.routes.includes(state.route.code)?'★':'☆';$('lineFavorite').setAttribute('aria-pressed',String(favorites.routes.includes(state.route.code)))}if(state.selectedStop)renderStopFavoriteButton()}
 function starButton(kind,id){let b=document.createElement('button');b.type='button';b.className='fav-btn';const current=favorites[kind].includes(String(id));b.textContent=current?'★':'☆';b.title=current?'Remover favorito':'Adicionar aos favoritos';b.setAttribute('aria-label',b.title);b.setAttribute('aria-pressed',String(current));b.onclick=e=>{e.stopPropagation();toggleFavorite(kind,id)};return b}
-let mapStopsTimer=0,mapStopsSeq=0;
-function scheduleMapStops(){clearTimeout(mapStopsTimer);mapStopsTimer=setTimeout(loadMapStops,180)}
-async function loadMapStops(){const seq=++mapStopsSeq;if(state.zoom<12.5){state.mapStops=[];drawSoon();return}const w=$canvas.clientWidth,h=$canvas.clientHeight;if(!w||!h)return;const [cx,cy]=mercator(...state.center,state.zoom);const a=invMercator(cx-(w*.65),cy+(h*.65),state.zoom),b=invMercator(cx+(w*.65),cy-(h*.65),state.zoom);const url=`/api/map-stops?minlat=${a[0]}&minlng=${a[1]}&maxlat=${b[0]}&maxlng=${b[1]}`;try{const data=await api(url);if(seq!==mapStopsSeq)return;state.mapStops=data.items||[];drawSoon()}catch(e){console.warn('Paradas do mapa indisponíveis',e)}}
+let mapStopsTimer=0,mapStopsSeq=0,mapStopsController=null,mapStopsCoverage=null;
+function scheduleMapStops(){
+  clearTimeout(mapStopsTimer);
+  const seq=++mapStopsSeq;
+  // An old view must not overwrite the current one after rapid panning.
+  if(mapStopsController){mapStopsController.abort();mapStopsController=null;}
+  mapStopsTimer=setTimeout(()=>loadMapStops(seq),220);
+}
+async function loadMapStops(seq=mapStopsSeq){
+  if(state.zoom<12.5){state.mapStops=[];mapStopsCoverage=null;drawSoon();return}
+  const w=$canvas.clientWidth,h=$canvas.clientHeight;
+  if(!w||!h||document.hidden)return;
+  const [cx,cy]=mercator(...state.center,state.zoom);
+  // Viewport plus a buffer: short pans reuse already loaded stops.
+  const visSW=invMercator(cx-w*.51,cy+h*.51,state.zoom);
+  const visNE=invMercator(cx+w*.51,cy-h*.51,state.zoom);
+  const visible=[visSW[0],visSW[1],visNE[0],visNE[1]];
+  if(mapStopsCoverage&&!mapStopsCoverage.truncated){
+    const box=mapStopsCoverage.bounds;
+    if(visible[0]>=box[0]&&visible[1]>=box[1]&&visible[2]<=box[2]&&visible[3]<=box[3])return;
+  }
+  const a=invMercator(cx-w*.82,cy+h*.82,state.zoom);
+  const b=invMercator(cx+w*.82,cy-h*.82,state.zoom);
+  const bounds=[a[0],a[1],b[0],b[1]];
+  const controller=new AbortController();mapStopsController=controller;
+  const url=`/api/map-stops?minlat=${bounds[0]}&minlng=${bounds[1]}&maxlat=${bounds[2]}&maxlng=${bounds[3]}`;
+  try{
+    const data=await api(url,{signal:controller.signal});
+    if(seq!==mapStopsSeq||controller.signal.aborted)return;
+    state.mapStops=data.items||[];
+    mapStopsCoverage={bounds,truncated:!!data.truncated};
+    drawSoon();
+  }catch(e){if(e.name!=='AbortError')console.warn('Paradas do mapa indisponíveis',e)}
+  finally{if(mapStopsController===controller)mapStopsController=null}
+}
 async function loadNearbyStops(lat,lng,personal){let data=await api(`/api/nearby-stops?lat=${lat}&lng=${lng}`);state.nearby=data.items||[];$('nearbyHeading').textContent=personal?'Pontos perto de você':'Pontos próximos à UFMG';$('nearbyHint').textContent=personal?'Distâncias aproximadas; sua localização não é armazenada no servidor.':'Sem localização, exibimos os pontos próximos ao campus UFMG.';renderNearbyStops()}
 function renderNearbyStops(){const area=$('nearbyStops');area.replaceChildren();for(const stop of state.nearby){let b=document.createElement('button');b.type='button';b.className='row-item';const n=document.createElement('span');n.className='num';n.textContent='●';const txt=document.createElement('span');txt.className='name';let t=document.createElement('b');t.textContent=stop.name;let d=document.createElement('small');d.textContent=`A ${stop.distanceM} m · ver linhas e chegadas`;txt.append(t,d);b.append(n,txt);b.onclick=()=>focusStop(stop);area.append(b)}if(!state.nearby.length){let e=document.createElement('p');e.className='muted-empty';e.textContent='Nenhum ponto encontrado neste raio.';area.append(e)}}
 const favoritePreviewCache=new Map();
@@ -295,8 +329,8 @@ if(data.alternatives?.length){
 const note=document.createElement('p');note.className='stop-forecast-note';note.textContent=data.routes.some(r=>r.nextArrival?.type==='gps_estimate')?'≈ GPS estimado. Outros horários seguem a tabela.':(data.timetableAvailable?'Horários da tabela; podem variar.':'Sem horários disponíveis.');area.append(note);renderFavoriteStops();drawSoon()}
 
 switchTab('pontos');renderStops();
-window.addEventListener('resize',resize);document.addEventListener('visibilitychange',()=>{if(!document.hidden)refresh().catch(reportError)});
-resize();loadRoutes().catch(reportError);setInterval(()=>{if(document.hidden)return;tickVehicleAges();drawSoon()},1000);setInterval(()=>refresh().catch(reportError),35000);setInterval(()=>{if(!document.hidden&&state.selectedStop)openStopDetail(state.selectedStop,true).catch(reportError)},35000);
+window.addEventListener('resize',resize);document.addEventListener('visibilitychange',()=>{if(!document.hidden){drawSoon();scheduleMapStops();refresh().catch(reportError)}});
+resize();loadRoutes().catch(reportError);setInterval(()=>{if(document.hidden)return;tickVehicleAges();if(state.fleet?.vehicles?.length)drawSoon()},15000);setInterval(()=>refresh().catch(reportError),35000);setInterval(()=>{if(!document.hidden&&state.selectedStop)openStopDetail(state.selectedStop,true).catch(reportError)},35000);
 
 // P8 PWA: cache only the static app shell, never GPS APIs or map tiles.
 if('serviceWorker' in navigator && (location.protocol==='https:' || ['localhost','127.0.0.1'].includes(location.hostname))

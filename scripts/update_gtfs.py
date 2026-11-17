@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Validate and stage a complete official BH GTFS catalog (stdlib only).
 
-Dry-run is the default. --apply replaces local catalog files after validation
-and keeps an on-disk backup on failure. Not a production hot-reload mechanism.
+Dry-run is the default. --apply activates a fully validated, immutable
+catalog version with a single atomic pointer switch on next server restart.
 No GPS data, user coordinates, map tiles, or third-party reports are copied.
 """
 from __future__ import annotations
@@ -15,12 +15,16 @@ import io
 import json
 import os
 from pathlib import Path
+import re
+import sys
 import shutil
 import tempfile
 import urllib.request
 import zipfile
 
 ROOT=Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path: sys.path.insert(0,str(ROOT))
+from transit.catalog_store import atomic_pointer, resolve_catalog, version_directory, REQUIRED as CATALOG_REQUIRED
 OFFICIAL='https://s3.amazonaws.com/mobilibus-uploads/gtfs/GTFSBHTRANS.zip'
 OUTPUTS=('routes.json','stops.json','shapes.json','patterns.json',
          'gps-nl-map.json','manifest.json','timetable.json.gz','timetable-calendar.json')
@@ -192,22 +196,90 @@ def apply_staging(staging, catalog):
             raise
 
 
+def _digest(path):
+    h=hashlib.sha256()
+    with Path(path).open('rb') as stream:
+        for chunk in iter(lambda:stream.read(1024*1024),b''):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def stage_and_activate(staging, catalog, archive):
+    """Install an immutable complete snapshot, then atomically change one pointer.
+
+    All eight files are copied to a private directory before publication.
+    A running server keeps its original resolved directory until restart.
+    Legacy root/catalog files remain valid for rollback without another backup.
+    """
+    catalog=Path(catalog)
+    staging=Path(staging)
+    if not all((staging/name).is_file() for name in OUTPUTS):
+        raise ValueError('Candidato GTFS incompleto')
+    meta=load_json(staging/'manifest.json')
+    ver=re.sub(r'[^a-zA-Z0-9_.-]','-',str(meta.get('gtfsVersion') or 'gtfs'))[:35].strip('.-') or 'gtfs'
+    version=f'{ver}-{_digest(archive)[:12]}'
+    dest=version_directory(catalog,version)
+    root=dest.parent
+    root.mkdir(parents=True,exist_ok=True)
+    if not dest.exists():
+        temp=Path(tempfile.mkdtemp(prefix='.candidate-',dir=root))
+        try:
+            for name in OUTPUTS:
+                shutil.copy2(staging/name,temp/name)
+            if not all((temp/name).is_file() and (temp/name).stat().st_size>0 for name in CATALOG_REQUIRED):
+                raise ValueError('Snapshot incompleto após cópia')
+            # One directory rename publishes only the fully validated snapshot.
+            os.replace(temp,dest)
+        finally:
+            if temp.exists(): shutil.rmtree(temp)
+    else:
+        # Same original archive digest: a previously installed snapshot is immutable.
+        # gzip timestamps and generatedAtUTC are not byte-stable across builds.
+        if not all((dest/name).is_file() and (dest/name).stat().st_size>0 for name in OUTPUTS):
+            raise ValueError('Versão anterior com mesmo hash está incompleta')
+    pointer=catalog/'active.json'
+    previous=json.loads(pointer.read_text('utf8')).get('active') if pointer.exists() else None
+    if previous == version:
+        return {'active':version,'previous':json.loads(pointer.read_text('utf8')).get('previous'),'changed':False}
+    state=atomic_pointer(catalog,version,previous)
+    return {**state,'changed':True}
+
+
+def rollback(catalog):
+    catalog=Path(catalog)
+    pointer=catalog/'active.json'
+    if not pointer.exists():
+        raise ValueError('Nenhuma versão ativada para reverter')
+    current=json.loads(pointer.read_text('utf8'))
+    previous=current.get('previous')
+    if previous is None:
+        # Existing root/catalog (the original installation) is preserved.
+        pointer.unlink()
+        return {'active':'legacy','previous':current['active']}
+    state=atomic_pointer(catalog,previous,current['active'])
+    return state
+
+
 def main(argv=None):
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--archive',help='Arquivo GTFS local; omitir para baixar fonte oficial')
     p.add_argument('--catalog',type=Path,default=ROOT/'catalog')
-    p.add_argument('--apply',action='store_true',help='Instalar os arquivos após validação completa')
+    p.add_argument('--apply',action='store_true',help='Ativar snapshot completo em nova versão, sem alterar catálogo em uso')
+    p.add_argument('--rollback',action='store_true',help='Restaurar versão anterior (reiniciar servidor)')
     args=p.parse_args(argv)
     if not args.catalog.is_dir():raise SystemExit('Catálogo original não encontrado')
+    if args.rollback:
+        print(json.dumps({'rollback':rollback(args.catalog),'restartRequired':True},ensure_ascii=False))
+        return
     with tempfile.TemporaryDirectory(prefix='gtfs-candidate-') as tmp:
         temp=Path(tmp);archive=Path(args.archive) if args.archive else temp/'gtfs.zip'
         if not args.archive:download(OFFICIAL,archive)
-        meta=build(archive,temp/'candidate',args.catalog)
+        meta=build(archive,temp/'candidate',resolve_catalog(args.catalog))
         print(json.dumps({'validated':True,'applyRequested':args.apply,
                           'gtfsVersion':meta['gtfsVersion'],'routes':meta['routes'],
                           'stops':meta['stops'],'trips':meta['trips']},ensure_ascii=False))
         if args.apply:
-            apply_staging(temp/'candidate',args.catalog)
-            print('Catálogo local atualizado. Reinicie o servidor antes de usar os novos dados.')
+            changed=stage_and_activate(temp/'candidate',args.catalog,archive)
+            print(json.dumps({'activation':changed,'restartRequired':True},ensure_ascii=False))
 
 if __name__=='__main__':main()
