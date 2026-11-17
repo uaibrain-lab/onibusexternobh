@@ -82,6 +82,7 @@ def build(archive, output=None):
 
         batch = []
         total_rows = 0
+        max_service_seconds=0
         for r in read('stop_times.txt'):
             if not r.get('stop_id'):
                 continue
@@ -97,6 +98,7 @@ def build(archive, output=None):
                     continue
             except (ValueError, TypeError, KeyError):
                 continue
+            max_service_seconds=max(max_service_seconds,arr,dep)
             batch.append((r['trip_id'], seq, r['stop_id'], arr, dep, pickup, dropoff))
             if len(batch) == 25000:
                 db.executemany('INSERT INTO times VALUES (?,?,?,?,?,?,?)', batch)
@@ -178,6 +180,7 @@ def build(archive, output=None):
             'validThrough':max(ends) if ends else None,
             'services':services, 'exceptions':exceptions, 'files':files,
             'tripCount':trip_count, 'stopTimeRows':total_rows,
+            'maxServiceSeconds':max_service_seconds,
             'stops':len(gtfs_stops), 'stopRouteMappings':len(stop_routes),
             'notes':'Horários da tabela, pickup_type/drop_off_type respeitados; GPS não pareado a trip_id.',
         }
