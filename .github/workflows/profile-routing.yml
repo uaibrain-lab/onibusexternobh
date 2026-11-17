@@ -21,6 +21,7 @@ jobs:
         with:
           python-version: '3.11'
       - name: Instalar aceleração JSON opcional
-        run: python -m pip install --only-binary=:all: 'orjson==3.13.0'
+        run: |
+          python -m pip install --only-binary=:all: "orjson==3.13.0"
       - name: Perfil CPU (dois cenários reais)
         run: timeout 340 python -u scripts/profile_routing.py
