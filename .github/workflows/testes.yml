@@ -20,7 +20,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Testes offline
-        run: python -m unittest discover -s tests -v
-      - name: Compilar módulos
-        run: python -m compileall -q server.py transit tests
+      - name: Testes offline (após importação da P2)
+        run: |
+          if [ -f server.py ] && [ -d tests ]; then
+            python -m unittest discover -s tests -v
+            python -m compileall -q server.py transit tests
+          else
+            echo "Aguardando importação do código P2; repositório ainda em preparação."
+          fi
