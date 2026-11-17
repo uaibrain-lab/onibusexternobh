@@ -3,14 +3,14 @@
  * No predownload of 100+ MB: store at most 16 used hourly GTFS shards.
  */
 'use strict';
-const SHELL='externo-p8-shell-v1',SHARDS='externo-p8-gtfs-hours-v1';
+const SHELL='externo-p9-shell-v1',SHARDS='externo-p9-gtfs-hours-v1';
 const MAX_SHARDS=16;
 const scope=new URL(self.registration.scope);
 const base=scope.pathname.endsWith('/')?scope.pathname:scope.pathname+'/';
 const shellPaths=[
   base,base+'index.html',base+'app.js',base+'style.css',
-  base+'route-worker.js',base+'catalog/metro.json',
-  base+'catalog/scan/index.json'
+  base+'route-worker.js',base+'static-bus.js',base+'walk-network.js',
+  base+'catalog/metro.json',base+'catalog/scan/index.json'
 ];
 self.addEventListener('install',event=>{
   event.waitUntil((async()=>{
@@ -68,6 +68,10 @@ self.addEventListener('fetch',event=>{
   const relative=url.pathname.slice(base.length);
   if(/^catalog\/scan\/(out|in)\/\d+\/\d{2}\.bin\.gz$/.test(relative)||
      /^catalog\/scan\/(out|in)\/\d{2}\.bin\.gz$/.test(relative)){
+    event.respondWith(boundedCache(request));return;
+  }
+  if(relative==='catalog/walk/graph.json.gz'){
+    // Large OSM graph is fetched only when a route requests it, not at install.
     event.respondWith(boundedCache(request));return;
   }
   if(shellPaths.includes(url.pathname)){
