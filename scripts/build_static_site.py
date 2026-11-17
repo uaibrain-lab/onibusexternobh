@@ -67,9 +67,9 @@ def build(target=None, gps_staging=False):
         config_stage={'enabled':True,'provider':'gtfs_rt',
                       'endpoint':STAGING_ENDPOINT,'refreshSeconds':45}
         (public/'gps-config.json').write_text(
-            json.dumps(config_stage,ensure_ascii=False,indent=2)+'\\n',
+            json.dumps(config_stage,ensure_ascii=False,indent=2)+'\n',
             encoding='utf-8')
-        html=html.replace('<head>', '<head>\\n<meta name="robots" content="noindex,nofollow,noarchive">',1)
+        html=html.replace('<head>', '<head>\n<meta name="robots" content="noindex,nofollow,noarchive">',1)
         html=html.replace('data-app-mode="free-static"',
                           'data-app-mode="free-static" data-gps-homologacao="true"',1)
         html=html.replace('<title>Externo — Hub UFMG · Protótipo</title>',
@@ -83,13 +83,13 @@ def build(target=None, gps_staging=False):
             raise ValueError('Marcador do aviso GPS não localizado')
         html=html.replace(notice,notice+'HOMOLOGAÇÃO: GPS experimental SUMOB. Sem ETA validado. ',1)
         # Cloudflare Pages static directives exist ONLY in the isolated build.
-        (target/'_redirects').write_text('/ /externo/ 302\\n',encoding='utf-8')
+        (target/'_redirects').write_text('/ /externo/ 302\n',encoding='utf-8')
         (target/'_headers').write_text(
-            '/*\\n  X-Robots-Tag: noindex, nofollow, noarchive\\n'
-            '  X-Content-Type-Options: nosniff\\n'
-            '  Referrer-Policy: strict-origin-when-cross-origin\\n'
-            '/externo/gps-config.json\\n'
-            '  Cache-Control: no-store, max-age=0\\n',
+            '/*\n  X-Robots-Tag: noindex, nofollow, noarchive\n'
+            '  X-Content-Type-Options: nosniff\n'
+            '  Referrer-Policy: strict-origin-when-cross-origin\n'
+            '/externo/gps-config.json\n'
+            '  Cache-Control: no-store, max-age=0\n',
             encoding='utf-8')
         if STAGING_HOST not in ('externo-bh-hml-uaibrain.pages.dev',):
             raise ValueError('O domínio de homologação deve ser explícito')
