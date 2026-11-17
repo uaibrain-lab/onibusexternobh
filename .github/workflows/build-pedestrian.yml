@@ -1,0 +1,90 @@
+name: P9 - Grafo caminhavel OSM BH gratuito
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/externo-p9-caminhadas-metro-gratis-20261117
+    paths:
+      - scripts/build_pedestrian.py
+      - .github/workflows/build-pedestrian.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pedestrian-p9-build
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Ferramentas livres de extracao OSM
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y osmium-tool
+          python -m pip install --disable-pip-version-check osmium
+      - name: Obter arquivo OSM gratuito Geofabrik Sudeste
+        run: |
+          curl -fSL --retry 3 --retry-delay 12 --connect-timeout 30 \
+            --max-time 900 \
+            https://download.geofabrik.de/south-america/brazil/sudeste-latest.osm.pbf \
+            -o /tmp/sudeste.osm.pbf
+          test "$(stat -c %s /tmp/sudeste.osm.pbf)" -gt 100000000
+      - name: Extrair BH, Contagem e proximidades mantendo vias completas
+        run: |
+          osmium extract --strategy complete_ways \
+            --bbox=-44.25,-20.17,-43.64,-19.63 \
+            /tmp/sudeste.osm.pbf -o /tmp/bh-pedestre.osm.pbf
+          test "$(stat -c %s /tmp/bh-pedestre.osm.pbf)" -gt 1000000
+      - name: Construir e validar grafo pedestre real
+        run: |
+          python scripts/build_pedestrian.py /tmp/bh-pedestre.osm.pbf catalog/pedestrian
+          python - <<'PY'
+          import gzip,json
+          from pathlib import Path
+          p=Path('catalog/pedestrian')
+          m=json.loads((p/'index.json').read_text(encoding='utf-8'))
+          assert m['nodeCount']>=30000,m
+          assert m['edgeCount']>=50000,m
+          assert len(m['tileNames'])>=50,m
+          first=p/'tiles'/(m['tileNames'][0]+'.json.gz')
+          with gzip.open(first,'rt',encoding='utf-8') as f:
+            nodes=json.load(f)
+          assert nodes and all(len(n)==4 for n in nodes)
+          print('PEDESTRIAN_OSM_VALIDATED',m['nodeCount'],m['edgeCount'],
+                m['compressedBytes'])
+          PY
+      - name: Testar frontend e previas de grafo
+        run: |
+          node --check static/pedestrian.js
+          node --check static/route-worker.js
+          node --test tests/test_pedestrian.cjs
+      - name: Publicar somente grafo versionado na branch P9
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A catalog/pedestrian
+          if git diff --cached --quiet; then
+            echo "Grafo OSM sem alteracoes"
+            exit 0
+          fi
+          git commit -m "data(p9): grafo caminhavel OSM da RMBH"
+          for attempt in $(seq 1 10); do
+            git fetch origin feat/externo-p9-caminhadas-metro-gratis-20261117
+            git rebase origin/feat/externo-p9-caminhadas-metro-gratis-20261117
+            if git push origin HEAD:feat/externo-p9-caminhadas-metro-gratis-20261117; then
+              echo "PEDESTRIAN_OSM_PUBLISHED"
+              exit 0
+            fi
+            sleep 5
+          done
+          exit 1
