@@ -46,6 +46,12 @@ def build(archive, output=None):
                     yield from csv.DictReader(io.TextIOWrapper(stream, encoding='utf-8-sig', newline=''))
             return gen()
 
+        gtfs_stops = {r['stop_id']: [r.get('stop_name',r['stop_id']),
+                                    float(r['stop_lat']), float(r['stop_lon'])]
+                      for r in read('stops.txt') if r.get('stop_id') and
+                      r.get('stop_lat') and r.get('stop_lon')}
+        (output/'routing-stops.json').write_text(
+            json.dumps(gtfs_stops,ensure_ascii=False,separators=(',',':')),encoding='utf-8')
         route_codes = {r['route_id']: r['route_short_name'].strip()
                        for r in read('routes.txt') if r.get('route_short_name')}
         services = {r['service_id']: {k: r[k] for k in ('monday','tuesday','wednesday',
@@ -99,6 +105,17 @@ def build(archive, output=None):
         db.execute('CREATE INDEX times_trip_seq ON times(trip, seq)')
         db.commit()
 
+        stop_routes = collections.defaultdict(set)
+        for code, sid in db.execute('''
+            SELECT DISTINCT t.code, s.stop FROM trips t
+            JOIN times s ON s.trip=t.id
+        '''):
+            if sid in gtfs_stops:
+                stop_routes[sid].add(code)
+        (output/'routing-stop-routes.json').write_text(
+            json.dumps({k:sorted(v) for k,v in stop_routes.items()},
+                       ensure_ascii=False,separators=(',',':')),encoding='utf-8')
+
         files = {}
         trip_count = 0
         outdir = output / 'routing'
@@ -117,9 +134,10 @@ def build(archive, output=None):
                 previous_id = None
                 stops = []
                 meta = None
+                invalid_trip = False
                 def write_trip():
                     nonlocal count
-                    if len(stops) >= 2:
+                    if not invalid_trip and len(stops) >= 2:
                         out.write(json.dumps([meta[0], meta[1], meta[2], stops],
                                              ensure_ascii=False,separators=(',',':'))+'\n')
                         count += 1
@@ -130,12 +148,12 @@ def build(archive, output=None):
                         previous_id = trip_id
                         meta = (trip_id,service,headsign)
                         stops = []
+                        invalid_trip = False
                     if stops and arr < stops[-1][2]:
-                        # Invalid temporal order: discard this trip rather than invent travel.
-                        stops = []
-                        meta = None
-                        # This trip will not be emitted: handled by skip set below.
-                    if meta is not None:
+                        invalid_trip = True
+                    if stop not in gtfs_stops:
+                        invalid_trip = True
+                    if not invalid_trip:
                         stops.append([stop,arr,dep])
                 if meta is not None:
                     write_trip()
@@ -156,6 +174,7 @@ def build(archive, output=None):
             'validThrough':max(ends) if ends else None,
             'services':services, 'exceptions':exceptions, 'files':files,
             'tripCount':trip_count, 'stopTimeRows':total_rows,
+            'stops':len(gtfs_stops), 'stopRouteMappings':len(stop_routes),
             'notes':'Horários de tabela; posições GPS não estão vinculadas a trip_id.',
         }
         path = output / 'routing-index.json'
