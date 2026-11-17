@@ -9,7 +9,8 @@ Default action is LOCAL BUILD + checks; public writes need explicit switches.
 param(
     [switch]$AtualizarWorker,
     [switch]$CriarProjeto,
-    [switch]$Publicar
+    [switch]$Publicar,
+    [switch]$ReutilizarBuild
 )
 $ErrorActionPreference = "Stop"
 $repo = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
@@ -70,10 +71,14 @@ if ($source.enabled -ne $false) {
 if ($LASTEXITCODE -ne 0) { throw "WORKER_SINTAXE_FALHOU" }
 & node --check "static/live-gps.js"
 if ($LASTEXITCODE -ne 0) { throw "ADAPTADOR_SINTAXE_FALHOU" }
-& node --test "tests/test_gtfs_realtime_worker.cjs" "tests/test_gtfs_realtime_adapter.cjs" "tests/test_live_gps_adapter.cjs"
-if ($LASTEXITCODE -ne 0) { throw "TESTES_GPS_FALHARAM" }
-RunPython @("-m", "unittest", "discover", "-s", "tests", "-p", "test_gps_staging_build.py", "-v")
-RunPython @("scripts/build_static_site.py", "--gps-staging")
+if ($ReutilizarBuild) {
+    Write-Host "P17_REUTILIZANDO_BUILD_EXISTENTE: conferindo integridade do pacote"
+} else {
+    & node --test "tests/test_gtfs_realtime_worker.cjs" "tests/test_gtfs_realtime_adapter.cjs" "tests/test_live_gps_adapter.cjs"
+    if ($LASTEXITCODE -ne 0) { throw "TESTES_GPS_FALHARAM" }
+    RunPython @("-m", "unittest", "discover", "-s", "tests", "-p", "test_gps_staging_build.py", "-v")
+    RunPython @("scripts/build_static_site.py", "--gps-staging")
+}
 
 $site = Join-Path $repo "dist\externo"
 $stageCfg = Get-Content -LiteralPath (Join-Path $site "gps-config.json") -Raw | ConvertFrom-Json
@@ -89,6 +94,28 @@ if ($stageCfg.enabled -ne $true -or $stageCfg.provider -ne "gtfs_rt" -or
 $sourceBytesAfter = [Convert]::ToBase64String([IO.File]::ReadAllBytes($sourceConfigPath))
 if ($sourceBytesAfter -ne $sourceBytesBefore) {
     throw "CONFIGURACAO_PUBLICA_FOI_MODIFICADA"
+}
+if ($ReutilizarBuild) {
+    # Do not trust stale/distinct output. The dynamic app and routing code
+    # in the existing package must match the checked-out source exactly.
+    $mirrored = @(
+      "app.js","live-gps.js","static-bus.js","static-arrivals.js",
+      "route-worker.js","walk-network.js","metro-timing.js",
+      "service-worker.js","style.css","hub-parity.css"
+    )
+    foreach ($name in $mirrored) {
+        $src = Join-Path $repo ("static\" + $name)
+        $dst = Join-Path $site $name
+        if (-not (Test-Path -LiteralPath $src) -or
+            -not (Test-Path -LiteralPath $dst)) {
+            throw "PACOTE_REUTILIZADO_INCOMPLETO: $name"
+        }
+        if ((Get-FileHash -LiteralPath $src -Algorithm SHA256).Hash -ne
+            (Get-FileHash -LiteralPath $dst -Algorithm SHA256).Hash) {
+            throw "PACOTE_REUTILIZADO_DESATUALIZADO: $name (refaca sem -ReutilizarBuild)"
+        }
+    }
+    Write-Host "P17_REUSED_BUILD_SOURCE_HASHES_OK"
 }
 $assets = @(Get-ChildItem -LiteralPath (Join-Path $repo "dist") -Recurse -File)
 if ($assets.Count -gt 20000 -or @($assets | Where-Object { $_.Length -gt 25MB }).Count -gt 0) {
@@ -110,15 +137,11 @@ if ($Publicar) {
     if (-not (Get-Command npx.cmd -ErrorAction SilentlyContinue)) {
         throw "NPM_WRANGLER_NAO_ENCONTRADO"
     }
-    # Require real CORS support before publishing a live-GPS staging page.
-    try {
-        $probe = Invoke-WebRequest -UseBasicParsing -TimeoutSec 15 -Uri "$workerBase/api/gps/capabilities" -Headers @{Origin=$expectedOrigin}
-    } catch {
-        throw "WORKER_CORS_HOMOLOGACAO_INDISPONIVEL: publique CORS com -AtualizarWorker"
-    }
-    if ($probe.StatusCode -ne 200 -or
-        [string]$probe.Headers["Access-Control-Allow-Origin"] -ne $expectedOrigin) {
-        throw "WORKER_CORS_ORIGEM_HOMOLOGACAO_NAO_AUTORIZADA"
+    # PowerShell 5.1 Invoke-WebRequest can fail on Workers TLS despite a
+    # successful deploy. Built-in Node fetch reveals HTTP/CORS diagnostics.
+    & node "scripts/check_staging_cors.mjs"
+    if ($LASTEXITCODE -ne 0) {
+        throw "P17_CORS_PROBE_FAILED: veja o diagnostico acima. Nao publique sem CORS confirmado."
     }
     if ($CriarProjeto) {
         Write-Host "CREATING_ONLY_ISOLATED_PAGES_PROJECT=$project"
@@ -131,5 +154,5 @@ if ($Publicar) {
     Write-Host "Confira HTTP 200 no site; nao confunda deploy com validacao funcional."
 } else {
     Write-Host "NO_DEPLOY_PERFORMED"
-    Write-Host "Use -Publicar -CriarProjeto -AtualizarWorker para primeiro deploy (ou remova -CriarProjeto se ja existir)."
+    Write-Host "Primeiro deploy: -Publicar -CriarProjeto (-AtualizarWorker se necessario). Reuse pacote verificado: -ReutilizarBuild."
 }
