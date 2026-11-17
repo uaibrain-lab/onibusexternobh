@@ -53,3 +53,22 @@ jobs:
               assert trip['departure']<=trip['arrival']
               assert any(leg['mode']=='bus' for leg in trip['legs'])
           PY
+      - name: Perfil de desempenho para otimização
+        run: |
+          timeout 150 python - <<'PY'
+          import cProfile,pstats,io
+          from pathlib import Path
+          from transit.planner import JourneyPlanner
+          p=JourneyPlanner(Path('catalog'))
+          profiler=cProfile.Profile()
+          profiler.enable()
+          result=p.plan({'lat':-19.8695,'lng':-43.9675},
+                        {'lat':-19.918,'lng':-43.938},
+                        '2026-11-18T08:00:00-03:00')
+          profiler.disable()
+          data=io.StringIO()
+          pstats.Stats(profiler,stream=data).strip_dirs().sort_stats('cumulative').print_stats(18)
+          print('ROUTING_PROFILE_BEGIN')
+          print(data.getvalue())
+          print('ROUTING_PROFILE_END')
+          PY
