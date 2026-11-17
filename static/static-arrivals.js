@@ -38,21 +38,31 @@ const StaticArrivals=(()=>{
     }
     return JSON.parse(new TextDecoder().decode(raw));
   }
-  async function init(){
-    if(metadata&&calendar)return;
-    const [i,c]=await Promise.all([
-      fetch(new URL('index.json',root),{cache:'no-store'}).then(r=>{
-        if(!r.ok)throw Error('Índice de horários indisponível');
-        return r.json();
-      }),
-      fetch(new URL('calendar.json',root),{cache:'force-cache'}).then(r=>{
-        if(!r.ok)throw Error('Calendário de horários indisponível');
-        return r.json();
-      })
-    ]);
-    if(i.schema!==1||i.buckets!==256||!i.version||!c.services||!c.exceptions)
-      throw Error('Versão de horários incompatível');
-    metadata=i;calendar=c;
+  let initPromise=null;
+  function init(){
+    if(metadata&&calendar)return Promise.resolve();
+    if(initPromise)return initPromise;
+    initPromise=(async()=>{
+      // A point timetable is unusable if it belongs to another GTFS release.
+      const [version,response]=await Promise.all([
+        typeof StaticBus!=='undefined'&&StaticBus.version
+          ?StaticBus.version()
+          :Promise.reject(Error('Manifesto GTFS não disponível')),
+        fetch(new URL('index.json',root),{cache:'no-store'})
+      ]);
+      if(!response.ok)throw Error('Índice de horários indisponível');
+      const i=await response.json();
+      if(i.schema!==1||i.buckets!==256||!i.version||i.version!==version)
+        throw Error('Horários e linhas são de versões GTFS diferentes');
+      const calendarURL=new URL('calendar.json',root);
+      calendarURL.searchParams.set('v',i.version);
+      const calResponse=await fetch(calendarURL,{cache:'force-cache'});
+      if(!calResponse.ok)throw Error('Calendário de horários indisponível');
+      const c=await calResponse.json();
+      if(!c.services||!c.exceptions)throw Error('Calendário GTFS incompatível');
+      metadata=i;calendar=c;
+    })().catch(error=>{initPromise=null;throw error});
+    return initPromise;
   }
   function active(service,day){
     const key=day.replaceAll('-','');
