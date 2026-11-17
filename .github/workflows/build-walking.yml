@@ -1,0 +1,90 @@
+name: Gerar rede caminhável OSM (P6)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/externo-p6-precisao-roteador-20261117
+    paths:
+      - scripts/build_walking.py
+      - transit/walking.py
+      - .github/workflows/build-walking.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: p6-walking-data
+  cancel-in-progress: false
+
+jobs:
+  pedestrian-graph:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Instalar parser e ferramenta OSM
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends osmium-tool
+          python -m pip install --disable-pip-version-check 'osmium==4.3.2'
+      - name: Baixar extrato de Sudeste (Geofabrik)
+        run: |
+          curl --fail --location --silent --show-error --retry 4 --retry-delay 12 \
+               --connect-timeout 30 --max-time 900 \
+               https://download.geofabrik.de/south-america/brazil/sudeste-latest.osm.pbf \
+               -o /tmp/sudeste.osm.pbf
+          test $(stat -c '%s' /tmp/sudeste.osm.pbf) -gt 100000000
+      - name: Recortar a área de BH e Contagem
+        run: |
+          osmium extract --bbox=-44.18,-20.10,-43.76,-19.72 \
+            --strategy=complete_ways \
+            /tmp/sudeste.osm.pbf -o /tmp/bh-osm.osm.pbf
+          osmium fileinfo /tmp/bh-osm.osm.pbf | head -20
+          rm -f /tmp/sudeste.osm.pbf
+      - name: Construir e testar rede de pedestres
+        run: |
+          python scripts/build_walking.py /tmp/bh-osm.osm.pbf catalog/walk-network.json.gz
+          python - <<'PY'
+          from pathlib import Path
+          from transit.walking import WalkingGraph
+          g=WalkingGraph(Path('catalog'))
+          assert g.ready,g.reason
+          assert len(g.points)>5000
+          assert sum(len(v) for v in g.adj)>10000
+          print('WALK_GRAPH_READY',len(g.points),'nodes')
+          print('WALK_UFMG_SNAP',g.snap(-19.8695,-43.9675))
+          PY
+          python -m unittest tests.test_walking -v
+      - name: Proteger tamanho de artefato
+        run: |
+          size=$(stat -c '%s' catalog/walk-network.json.gz)
+          echo "WALK_GRAPH_BYTES=$size"
+          test "$size" -gt 100000
+          test "$size" -lt 70000000
+      - name: Publicar rede apenas na P6 sem sobrescrever histórico
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add catalog/walk-network.json.gz
+          if git diff --cached --quiet; then
+            echo "WALK_GRAPH_UNCHANGED"
+            exit 0
+          fi
+          git commit -m "data(walking): rede caminhável OSM para BH (P6)"
+          for attempt in $(seq 1 12); do
+            git fetch origin feat/externo-p6-precisao-roteador-20261117
+            git rebase origin/feat/externo-p6-precisao-roteador-20261117
+            if git push origin HEAD:feat/externo-p6-precisao-roteador-20261117; then
+              echo "WALK_GRAPH_PUSH_OK"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "Falha de publicação de grafo após 12 tentativas"
+          exit 1
