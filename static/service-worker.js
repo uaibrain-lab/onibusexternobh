@@ -10,6 +10,7 @@ const base=scope.pathname.endsWith('/')?scope.pathname:scope.pathname+'/';
 const shellPaths=[
   base,base+'index.html',base+'app.js',base+'style.css',
   base+'route-worker.js',base+'catalog-api.js',base+'pedestrian.js',
+  base+'metro-journeys.js',
   base+'catalog/metro.json',
   base+'catalog/scan/index.json'
 ];
