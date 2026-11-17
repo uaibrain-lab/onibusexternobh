@@ -153,7 +153,7 @@ class JourneyPlanner:
         return bool(entry and entry['start_date']<=d<=entry['end_date']
                     and entry[WEEKDAYS[date.weekday()]]=='1')
 
-    @functools.lru_cache(maxsize=64)
+    @functools.lru_cache(maxsize=32)
     def _trips(self,code):
         name=self.files.get(code)
         if not name:
@@ -166,7 +166,7 @@ class JourneyPlanner:
         except (OSError,ValueError) as exc:
             raise PlannerError('Falha ao ler o índice da linha '+str(code)) from exc
 
-    @functools.lru_cache(maxsize=64)
+    @functools.lru_cache(maxsize=24)
     def _trip_stop_index(self, code):
         """Inverted stop->trip offsets for this route.
 
