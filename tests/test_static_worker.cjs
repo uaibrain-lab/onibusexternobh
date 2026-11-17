@@ -218,3 +218,69 @@ test('shard inconsistency returns error rather than an invented route',async()=>
     at:'2026-11-17T07:50:00-03:00',mode:'departAt'
   }}),/Dados GTFS inconsistentes/);
 });
+
+
+
+function addSyntheticRecord(t,trip,record,hOut,hIn,group='31'){
+  const list=JSON.parse(zlib.gunzipSync(t.fileMap['trips.json.gz']).toString('utf8'));
+  list.push(trip);
+  const index=list.length-1;
+  const packed=index|(1<<20)|(1<<21);
+  const b=Buffer.alloc(20);
+  [...record.slice(0,4),packed].forEach((x,i)=>b.writeUInt32LE(x,i*4));
+  t.fileMap['trips.json.gz']=zlib.gzipSync(JSON.stringify(list));
+  t.fileMap['out/'+group+'/'+hOut+'.bin.gz']=zlib.gzipSync(b);
+  t.fileMap['in/'+group+'/'+hIn+'.bin.gz']=zlib.gzipSync(b);
+  t.manifest.hours.out[group]||={};
+  t.manifest.hours.in[group]||={};
+  t.manifest.hours.out[group][hOut]={connections:1};
+  t.manifest.hours.in[group][hIn]={connections:1};
+  t.manifest.tripCount=list.length;
+  t.manifest.connectionCount++;
+  t.fileMap['index.json']=JSON.stringify(t.manifest);
+}
+
+test('exception-only service is downloaded and used only on its authorized date',async()=>{
+  const t=setup(true);
+  t.manifest.services.push({id:'extra',calendar:null,group:'0'});
+  t.manifest.exceptions['20261118']={extra:1};
+  t.manifest.groups.push('0');
+  addSyntheticRecord(t,['extra','E','Evento especial',1],
+    [0,2,8*3600+12*60,8*3600+22*60],'08','08','0');
+  await t.run('init',1);
+  const params={origin:{lat:t.origin[0],lng:t.origin[1]},
+    destination:{lat:t.destination[0],lng:t.destination[1]},
+    mode:'departAt',preference:'fastest'};
+  const regular=(await t.run('plan',2,{params:{
+    ...params,at:'2026-11-17T07:50:00-03:00'}}))
+    .find(m=>m.kind==='result').data;
+  assert.ok(!regular.itineraries.some(it=>it.legs.some(l=>l.line==='E')));
+  assert.ok(!t.fetched.some(p=>p.includes('/out/0/')));
+  const special=(await t.run('plan',3,{params:{
+    ...params,at:'2026-11-18T07:50:00-03:00'}}))
+    .find(m=>m.kind==='result').data;
+  assert.equal(special.itineraries[0].legs.find(l=>l.mode==='bus').line,'E');
+  assert.ok(t.fetched.some(p=>p.includes('/out/0/')));
+});
+
+test('GTFS 24:50 departure works after midnight using the previous service date',async()=>{
+  const t=setup(true);
+  addSyntheticRecord(t,['night','N','Noturno',0],
+    [0,2,24*3600+50*60,25*3600+10*60],'24','25');
+  await t.run('init',1);
+  const params={origin:{lat:t.origin[0],lng:t.origin[1]},
+    destination:{lat:t.destination[0],lng:t.destination[1]},
+    preference:'fastest'};
+  const out=(await t.run('plan',2,{params:{
+    ...params,at:'2026-11-18T00:40:00-03:00',mode:'departAt'}}))
+    .find(m=>m.kind==='result').data;
+  assert.ok(out.itineraries.length,out.status);
+  assert.equal(out.itineraries[0].legs.find(l=>l.mode==='bus').line,'N');
+  assert.equal(new Date(out.itineraries[0].legs.find(l=>l.mode==='bus').departure).toISOString(),
+    '2026-11-18T03:50:00.000Z');
+  const backwards=(await t.run('plan',3,{params:{
+    ...params,at:'2026-11-18T01:30:00-03:00',mode:'arriveBy'}}))
+    .find(m=>m.kind==='result').data;
+  assert.ok(backwards.itineraries.some(it=>it.legs.some(l=>l.line==='N')),
+    'Reverse search must consider the previous GTFS service date');
+});
