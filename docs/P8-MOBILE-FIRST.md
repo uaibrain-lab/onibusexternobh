@@ -14,7 +14,8 @@ Branch baseada na P5/P6. Não altera a P7, a integração do metrô, a branch pr
 - O histórico de horários **não prova que o ônibus está rodando**.
 - O indicador de última viagem considera o dia de serviço do GTFS; não confirma operação.
 - A previsão GPS permanece conservadora e não foi homologada com chegadas observadas em campo.
-- PWA, renovação automática do GTFS, alertas oficiais e infraestrutura pública continuam pendentes; integração com P7 e metrô foi explicitamente adiada.
+- PWA instalado com cache apenas de arquivos da interface, sem guardar informações de GPS, consultas com localização nem mapas-base externos. Sem internet, favoritos permanecem na interface, mas chegadas ficam indisponíveis.
+- Renovação automática do GTFS, alertas oficiais e infraestrutura pública continuam pendentes; integração com P7 e metrô foi explicitamente adiada.
 
 ## Testes
 

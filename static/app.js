@@ -49,7 +49,7 @@ function updateStatus(obj){
   const recent=Number(obj.gpsRecent||0)>0;
   statusLed(recent&&!errors.length,errors.length?'Dados parcialmente indisponíveis':recent?'GPS recente disponível':'Sem posições GPS recentes');
 }
-async function loadRoutes(){state.routes=await api('/api/routes');let dl=$('routeList');dl.innerHTML='';for(let r of state.routes){let op=document.createElement('option');op.value=r.code;op.label=r.name;dl.append(op)}$('lineInput').value='';renderAllLines('');renderFavoriteLines();renderFavoriteStops();await loadNearbyStops(-19.8695,-43.9675,false);
+async function loadRoutes(){try{state.routes=await api('/api/routes')}catch(e){state.routes=[];statusLed(false,'Sem conexão · chegadas indisponíveis')}let dl=$('routeList');dl.innerHTML='';for(let r of state.routes){let op=document.createElement('option');op.value=r.code;op.label=r.name;dl.append(op)}$('lineInput').value='';renderAllLines('');renderFavoriteLines();renderFavoriteStops();try{await loadNearbyStops(-19.8695,-43.9675,false)}catch(e){$('nearbyHint').textContent='Sem conexão. Seus favoritos continuam disponíveis; chegadas exigem internet.';}
   api('/api/status').then(updateStatus).catch(()=>statusLed(false,'Localizações indisponíveis'));
   const point=new URLSearchParams(location.search).get('ponto');
   if(point&&/^[\w-]{1,60}$/.test(point)){
@@ -252,3 +252,9 @@ const note=document.createElement('p');note.className='stop-forecast-note';note.
 switchTab('pontos');renderStops();
 window.addEventListener('resize',resize);document.addEventListener('visibilitychange',()=>{if(!document.hidden)refresh().catch(reportError)});
 resize();loadRoutes().catch(reportError);setInterval(()=>{if(document.hidden)return;tickVehicleAges();drawSoon()},1000);setInterval(()=>refresh().catch(reportError),35000);setInterval(()=>{if(!document.hidden&&state.selectedStop)openStopDetail(state.selectedStop,true).catch(reportError)},35000);
+
+// P8 PWA: cache only the static app shell, never GPS APIs or map tiles.
+if('serviceWorker' in navigator && (location.protocol==='https:' || ['localhost','127.0.0.1'].includes(location.hostname))
+   && location.pathname.startsWith('/externo')){
+  window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js',{scope:'./'}).catch(e=>console.info('PWA indisponível',e)));
+}

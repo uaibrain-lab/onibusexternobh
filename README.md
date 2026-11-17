@@ -11,6 +11,7 @@
 - Compartilhamento por link `?ponto=<ID>` (não compartilha coordenadas da pessoa).
 - Favoritos de linhas e pontos, com nomes personalizados locais por navegador e edição por diálogo. Os primeiros cinco pontos favoritos exibem prévia das próximas chegadas, sem precisar abrir cada ponto.
 - Botões e textos preparados prioritariamente para telas de celular; tema claro/escuro sincronizável com o Hub UFMG.
+- PWA instalável: cache restrito ao shell da interface (HTML, CSS, JS e ícones). **Nunca cacheia GPS, horários dinâmicos, localização nem tiles de mapa**; sem internet, favoritos locais são visíveis, mas chegadas não estão disponíveis.
 
 ## Verdade e disponibilidade dos dados
 
