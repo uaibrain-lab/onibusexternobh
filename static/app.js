@@ -582,7 +582,10 @@ if(isStaticOnly){
   // Only poll an actively selected line when the free GPS adapter was enabled
   // by an explicit, independently validated deployment configuration.
   setInterval(()=>{
-    if(!document.hidden&&navigator.onLine&&state.route&&
+    // Do not spend free Worker requests while the user is reading Metro,
+    // planning routes, or viewing stops without an active line.
+    const lineVisible=activeTab==='linhas'||(activeTab==='pontos'&&state.selectedStop);
+    if(!document.hidden&&navigator.onLine&&state.route&&lineVisible&&
        typeof StaticLive!=='undefined'&&StaticLive.enabled())
       refresh().catch(e=>console.warn('GPS opcional indisponível',e));
   },45000);
