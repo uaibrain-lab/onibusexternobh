@@ -373,7 +373,7 @@ class JourneyPlanner:
                     legs=self._path(label,False)+[self._edge_walk(sid,'destination',meters,label.time,finish,foot)]
                     if finish<search_ts or finish-search_ts>HORIZON_SECONDS:
                         continue
-                if not any(leg['mode']=='bus' for leg in legs):
+                if not self._validate_legs(legs):
                     continue
                 results.append({'departure':self._iso(departure),
                                 'arrival':self._iso(finish),
@@ -415,6 +415,28 @@ class JourneyPlanner:
             return hints[:4]
         except (KeyError,ValueError,TypeError):
             return []
+
+    @staticmethod
+    def _validate_legs(legs):
+        """Never display a physically/time-inconsistent chain as a trip."""
+        if not legs or legs[0].get('from')!='origin' or legs[-1].get('to')!='destination':
+            return False
+        last=None
+        for leg in legs:
+            try:
+                departure=dt.datetime.fromisoformat(leg['departure']).timestamp()
+                arrival=dt.datetime.fromisoformat(leg['arrival']).timestamp()
+            except (KeyError,ValueError,TypeError):
+                return False
+            if arrival<departure:
+                return False
+            if last is not None:
+                if departure+0.001<last['arrival']:
+                    return False
+                if last['to']!=leg.get('from'):
+                    return False
+            last={'arrival':arrival,'to':leg.get('to')}
+        return any(x.get('mode')=='bus' for x in legs)
 
     def _finish_walk_geometry(self, options, origin, destination):
         if not self.walking.ready:
