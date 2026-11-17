@@ -219,6 +219,79 @@ function emit(node,ctx) {
   }
   addTransfers(node,ctx);
 }
+/* Exact, time-only multi-ride CSA. One best arrival/departure per
+ * (stop, number of bus rides), with no arbitrary Pareto-label cap.
+ * This proves earliest GTFS *scheduled* arrival within configured horizon,
+ * transfer graph and maximum 3 rides; not real-world GPS optimality.
+ */
+function exactBetter(a,b,backward){
+ return !b || (backward?a.time>b.time:a.time<b.time) ||
+   (a.time===b.time&&a.walk<b.walk);
+}
+function exactEmit(label,ctx,allowWalk=true){
+ if(label.time<ctx.lo||label.time>ctx.hi)return;
+ const map=ctx.exactBest[label.rides];
+ if(!exactBetter(label,map.get(label.stop),ctx.backward))return;
+ map.set(label.stop,label);
+ const final=ctx.ends.get(label.stop);
+ if(final!==undefined&&label.rides>0){
+   const delta=walkSeconds(final)*1000;
+   const target=label.time+(ctx.backward?-delta:delta);
+   if(target>=ctx.lo&&target<=ctx.hi)
+     ctx.finals.push({node:label,time:target,meters:rounded(final)});
+ }
+ if(!allowWalk)return;
+ for(const [meters,id] of neighbors(label.stop)){
+   const sec=walkSeconds(meters)*1000;
+   const time=label.time+(ctx.backward?-sec:sec);
+   if(time<ctx.lo||time>ctx.hi)continue;
+   const edge=ctx.backward?
+      {mode:'walk',from:id,to:label.stop,departure:time,arrival:label.time,
+       metersApprox:rounded(meters),pathVerified:false}:
+      {mode:'walk',from:label.stop,to:id,departure:label.time,arrival:time,
+       metersApprox:rounded(meters),pathVerified:false};
+   exactEmit({stop:id,time,rides:label.rides,
+     walk:label.walk+rounded(meters),prev:label,edge},ctx,false);
+ }
+}
+function exactConnection(conn,ctx){
+ const {from,to,dep,arr,flags,tripIdx,day}=conn;
+ const id=day+':'+tripIdx;
+ let vehicle=ctx.exactOnboard.get(id);
+ if(!vehicle){vehicle=new Array(MAX_RIDES);ctx.exactOnboard.set(id,vehicle)}
+ if(ctx.backward){
+   // Reversed scan is ordered by arrival time.
+   if(flags&ALIGHT)for(let rides=0;rides<MAX_RIDES;rides++){
+     const reachable=ctx.exactBest[rides].get(to);
+     if(!reachable||reachable.time<arr+(rides?BUFFER:0))continue;
+     const candidate={label:reachable,station:to,epoch:arr};
+     if(!vehicle[rides]||exactBetter(reachable,vehicle[rides].label,true))
+       vehicle[rides]=candidate;
+   }
+   if(flags&BOARD)for(let rides=0;rides<MAX_RIDES;rides++){
+     const boarded=vehicle[rides];if(!boarded)continue;
+     const edge={mode:'bus',tripIdx,from,to:boarded.station,
+       departure:dep,arrival:boarded.epoch};
+     exactEmit({stop:from,time:dep,rides:rides+1,
+       walk:boarded.label.walk,prev:boarded.label,edge},ctx);
+   }
+ }else{
+   if(flags&BOARD)for(let rides=0;rides<MAX_RIDES;rides++){
+     const reachable=ctx.exactBest[rides].get(from);
+     if(!reachable||reachable.time+BUFFER>dep)continue;
+     const candidate={label:reachable,station:from,epoch:dep};
+     if(!vehicle[rides]||exactBetter(reachable,vehicle[rides].label,false))
+       vehicle[rides]=candidate;
+   }
+   if(flags&ALIGHT)for(let rides=0;rides<MAX_RIDES;rides++){
+     const boarded=vehicle[rides];if(!boarded)continue;
+     const edge={mode:'bus',tripIdx,from:boarded.station,to,
+       departure:boarded.epoch,arrival:arr};
+     exactEmit({stop:to,time:arr,rides:rides+1,
+       walk:boarded.label.walk,prev:boarded.label,edge},ctx);
+   }
+ }
+}
 function processConnection(conn,ctx){
   const {from,to,dep,arr,flags,tripIdx,day}=conn;
   const key=day+':'+tripIdx;
@@ -460,7 +533,7 @@ function seedStops(ctx,which) {
       prev:null,edge},ctx);
   }
 }
-async function scanHour(ctx,epoch) {
+async function scanHour(ctx,epoch,processor=processConnection) {
   const direction=ctx.backward?'in':'out';
   const parts=[];
   for(let dayDiff=-1;dayDiff<=1;dayDiff++){
@@ -502,10 +575,27 @@ async function scanHour(ctx,epoch) {
     if(!info||!p.active[info[3]])continue;
     ctx.scanned++;
     if(ctx.scanned>MAX_SCANNED){ctx.partial=true;ctx.exceeded=true;return}
-    processConnection({from:values[offset],to:values[offset+1],
+    processor({from:values[offset],to:values[offset+1],
       dep:p.base+values[offset+2]*1000,arr:p.base+values[offset+3]*1000,
       flags:packed,tripIdx,day:p.day},ctx);
   }
+}
+function exactSeed(ctx){
+ ctx.exactBest=Array.from({length:MAX_RIDES+1},()=>new Map());
+ ctx.exactOnboard=new Map();
+ const place=ctx.backward?ctx.destination:ctx.origin;
+ for(const [meters,id] of nearby(...place)){
+   const delta=walkSeconds(meters)*1000;
+   const time=ctx.requested+(ctx.backward?-delta:delta);
+   const edge=ctx.backward
+    ?{mode:'walk',from:id,to:'destination',departure:time,
+      arrival:ctx.requested,metersApprox:rounded(meters),pathVerified:false}
+    :{mode:'walk',from:'origin',to:id,departure:ctx.requested,
+      arrival:time,metersApprox:rounded(meters),pathVerified:false};
+   exactEmit({stop:id,time,rides:0,walk:rounded(meters),prev:null,edge},ctx,false);
+ }
+ const dest=ctx.backward?ctx.origin:ctx.destination;
+ for(const [meters,id] of nearby(...dest))ctx.ends.set(id,meters);
 }
 async function plan(params,seq) {
   if(!meta)throw Error('Catálogo GTFS ainda não carregado');
@@ -527,14 +617,15 @@ async function plan(params,seq) {
     scanned:0,partial:false,exceeded:false,
     lo:backward?requested-MAX_HOURS*HOUR:requested,
     hi:backward?requested:requested+MAX_HOURS*HOUR};
-  seedStops(ctx,'start');seedStops(ctx,'end');
+  if(preference==='fastest')exactSeed(ctx);
+  else {seedStops(ctx,'start');seedStops(ctx,'end');}
   const first=Math.floor(ctx.lo/HOUR),last=Math.floor(ctx.hi/HOUR);
   const hours=[];
   for(let h=first;h<=last;h++)hours.push(h*HOUR);
   if(backward)hours.reverse();
   for(const [i,epoch] of hours.entries()){
     if(seq!==currentSeq)throw Error('Busca substituída');
-    await scanHour(ctx,epoch);
+    await scanHour(ctx,epoch,preference==='fastest'?exactConnection:processConnection);
     if(ctx.exceeded)break;
     self.postMessage({kind:'progress',seq,done:i+1,total:hours.length,
       found:ctx.finals.length,scanned:ctx.scanned});
@@ -552,7 +643,8 @@ async function plan(params,seq) {
     status:ctx.partial?'partial':'ok',mode,preference,
     requestedAt:stamp(requested),itineraries,metroHints:hints,
     stats:{connectionsScanned:ctx.scanned,hoursScanned:hours.length,
-      truncatedLabels:ctx.partial,pedestrianGraph:pedestrianCheck.verified},
+      truncatedLabels:ctx.partial,pedestrianGraph:pedestrianCheck.verified,
+      timeOptimalBusScan:preference==='fastest'&&!ctx.partial},
     pedestrianRouting:pedestrianCheck.verified?'osm_real_graph':'approximate',
     dataSource:'static_gtfs_browser_worker',
     notes:[
@@ -560,7 +652,9 @@ async function plan(params,seq) {
       pedestrianCheck.verified?
         'Caminhadas calculadas por conectividade real de vias OSM; o acesso entre o local escolhido e o nó mais próximo pode não estar mapeado.':
         'Caminhadas estimadas em linha reta com fator conservador; rede de ruas não verificada.',
-      'Busca limitada a 5 h e no máximo 2 baldeações; resultado parcial quando houver poda.',
+      preference==='fastest'
+        ?'Busca de menor chegada GTFS sem poda arbitrária de rótulos, dentro de 5h, até 2 baldeações e modelo de caminhada disponível.'
+        :'Busca multicritério limitada a 5h e 2 baldeações; resultados parciais quando houver poda.',
       'Metrô apenas informativo até termos grade verificável de partidas.'
     ]
   };
