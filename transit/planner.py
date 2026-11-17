@@ -281,8 +281,10 @@ class JourneyPlanner:
             for label in labels.get(sid,()):
                 delay=self._walk_time(meters)
                 if backward:
-                    departure=label.time-delay
-                    legs=[self._edge_walk('origin',sid,meters,departure,label.time)]+self._path(label,True)
+                    # Reserve a boarding buffer at the initial stop too.
+                    walk_arrival=label.time-TRANSFER_BUFFER_SECONDS
+                    departure=walk_arrival-delay
+                    legs=[self._edge_walk('origin',sid,meters,departure,walk_arrival)]+self._path(label,True)
                     # Actual arrival is usually earlier than the requested deadline.
                     # Never inflate the itinerary duration with artificial idle time.
                     finish=search_ts
