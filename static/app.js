@@ -11,8 +11,36 @@ function invMercator(x,y,z){const size=256*2**z;const n=Math.PI-2*Math.PI*y/size
 function screen(lat,lng){let [cx,cy]=mercator(...state.center,state.zoom),[px,py]=mercator(lat,lng,state.zoom);return [px-cx+$canvas.clientWidth/2,py-cy+$canvas.clientHeight/2]}
 function resize(){let dpr=Math.min(window.devicePixelRatio||1,MOBILE_DPR_CAP);$canvas.width=Math.floor($canvas.clientWidth*dpr);$canvas.height=Math.floor($canvas.clientHeight*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);drawSoon();scheduleMapStops()}
 function drawSoon(){if(!state.frame)state.frame=requestAnimationFrame(()=>{state.frame=0;draw()})}
-function getTile(z,x,y){let n=2**z;if(y<0||y>=n)return null;let key=`${z}/${((x%n)+n)%n}/${y}`;let ent=state.tiles.get(key);if(!ent){let img=new Image();ent={img,ready:false,error:false};state.tiles.set(key,ent);img.onload=()=>{ent.ready=true;drawSoon()};img.onerror=()=>{ent.error=true;drawSoon()};img.src=`https://tile.openstreetmap.org/${z}/${((x%n)+n)%n}/${y}.png`;}if(state.tiles.size>TILE_CACHE_LIMIT+16){for(const k of state.tiles.keys()){if(state.tiles.size<=TILE_CACHE_LIMIT)break;state.tiles.delete(k)}}return ent}
-function drawTiles(w,h){let z=Math.floor(state.zoom),scale=2**(state.zoom-z),[cx,cy]=mercator(...state.center,z),tx=cx-w/2/scale,ty=cy-h/2/scale;ctx.fillStyle='#d9e4e4';ctx.fillRect(0,0,w,h);let minx=Math.floor(tx/256)-1,maxx=Math.ceil((tx+w/scale)/256)+1,miny=Math.floor(ty/256)-1,maxy=Math.ceil((ty+h/scale)/256)+1;for(let y=miny;y<=maxy;y++)for(let x=minx;x<=maxx;x++){let px=(x*256-tx)*scale,py=(y*256-ty)*scale,tile=getTile(z,x,y);if(tile&&tile.ready){ctx.drawImage(tile.img,px,py,256*scale+.5,256*scale+.5)}else{ctx.fillStyle=((x+y)&1)?'#e8eeea':'#dfe9e6';ctx.fillRect(px,py,256*scale+.5,256*scale+.5);ctx.strokeStyle='#cddad7';ctx.strokeRect(px,py,256*scale,256*scale)}}}
+let basemapFailures=0;
+function getTile(z,x,y){
+  const n=2**z;
+  if(y<0||y>=n)return null;
+  const key=`${z}/${((x%n)+n)%n}/${y}`;
+  let ent=state.tiles.get(key);
+  if(!ent){
+    const img=new Image();
+    ent={img,ready:false,error:false};
+    state.tiles.set(key,ent);
+    img.onload=()=>{
+      ent.ready=true;basemapFailures=0;
+      $('mapBasemapNotice').hidden=true;drawSoon();
+    };
+    img.onerror=()=>{
+      ent.error=true;
+      if(++basemapFailures>=2)$('mapBasemapNotice').hidden=false;
+      drawSoon();
+    };
+    img.src=`https://tile.openstreetmap.org/${z}/${((x%n)+n)%n}/${y}.png`;
+  }
+  if(state.tiles.size>TILE_CACHE_LIMIT+16){
+    for(const k of state.tiles.keys()){
+      if(state.tiles.size<=TILE_CACHE_LIMIT)break;
+      state.tiles.delete(k);
+    }
+  }
+  return ent;
+}
+function drawTiles(w,h){let z=Math.floor(state.zoom),scale=2**(state.zoom-z),[cx,cy]=mercator(...state.center,z),tx=cx-w/2/scale,ty=cy-h/2/scale;const dark=document.documentElement.dataset.theme==='dark';ctx.fillStyle=dark?'#28323c':'#d9e4e4';ctx.fillRect(0,0,w,h);let minx=Math.floor(tx/256)-1,maxx=Math.ceil((tx+w/scale)/256)+1,miny=Math.floor(ty/256)-1,maxy=Math.ceil((ty+h/scale)/256)+1;for(let y=miny;y<=maxy;y++)for(let x=minx;x<=maxx;x++){let px=(x*256-tx)*scale,py=(y*256-ty)*scale,tile=getTile(z,x,y);if(tile&&tile.ready){ctx.drawImage(tile.img,px,py,256*scale+.5,256*scale+.5)}else{ctx.fillStyle=dark?(((x+y)&1)?'#33404d':'#2c3742'):(((x+y)&1)?'#e8eeea':'#dfe9e6');ctx.fillRect(px,py,256*scale+.5,256*scale+.5);ctx.strokeStyle=dark?'#3b4650':'#cddad7';ctx.strokeRect(px,py,256*scale,256*scale)}}}
 function draw(){const w=$canvas.clientWidth,h=$canvas.clientHeight;if(!w||!h)return;ctx.clearRect(0,0,w,h);drawTiles(w,h);  state.stopMarkers=[];
   const bucketSize=state.zoom<14?62:state.zoom<15.5?48:state.zoom<17?34:0;
   const buckets=new Map();
