@@ -8,10 +8,12 @@ const StaticLive=(()=>{
   let cfgPromise=null, mappingPromise=null, currentCfg=null, lastStatus=null;
   const fleets=new Map();
   const TTL=30000;
-  const unavailable=(line,name,reason)=>({
-    line,name,available:false,count:null,vehicles:[],sources:{},
-    note:reason||'GPS público ainda não habilitado; horários são de tabela.'
-  });
+  const unavailable=(line,name,reason)=>{
+    lastStatus={available:false,gpsRecent:0,vehiclesKnown:0,sources:{},
+      note:reason||'GPS público ainda não habilitado; horários são de tabela.'};
+    return {line,name,available:false,count:null,vehicles:[],sources:{},
+      note:lastStatus.note};
+  };
   const isoFromHr=hr=>{
     const s=String(hr||'');
     if(!/^\d{14}$/.test(s))return null;
@@ -58,7 +60,7 @@ const StaticLive=(()=>{
     return {vehicleId:String(r.NV),source,NL:String(r.NL),public:publicCode,
       latitude:lat,longitude:lng,heading:Number.isFinite(r.DG)?r.DG:null,
       speedRaw:null,SV:'',lastGpsFixAt:fix,
-      positionUnchangedSinceAt:fix,lastFetchedAt:fetchedAt,
+      positionUnchangedSinceAt:null,lastFetchedAt:fetchedAt,
       ageSec:Math.max(0,Math.round(ageSec)),unchangedSec:null,
       gpsStatus:ageSec<=120?'recent':ageSec<=300?'delayed':'stale',
       shapeMatch:{status:'unknown'},
@@ -116,7 +118,7 @@ const StaticLive=(()=>{
     const list=[...vehicles.values()].sort((a,b)=>a.ageSec-b.ageSec);
     const recent=list.filter(v=>v.ageSec<=120).length;
     lastStatus={available:ok>0,gpsRecent:recent,vehiclesKnown:list.length,
-      gpsUpdating:false,sources,
+      partial:ok<tasks.length,gpsUpdating:false,sources,
       note:ok>0?(ok<tasks.length?'GPS parcial':'Posições oficiais PBH'):
         'Fonte GPS indisponível; use horários programados'};
     if(!ok)return unavailable(line,name,'Serviço GPS indisponível; horários programados disponíveis.');
