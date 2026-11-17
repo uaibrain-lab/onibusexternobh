@@ -27,8 +27,8 @@ WEEKDAYS = ('monday','tuesday','wednesday','thursday','friday','saturday','sunda
 WALK_SPEED_M_S = 1.15
 WALK_FACTOR = 1.35
 MAX_RIDES = 3
-MAX_ROUTE_SCANS = 135
-MAX_STOP_SCANS = 1900000
+MAX_ROUTE_SCANS = 500
+MAX_STOP_SCANS = 3000000
 HORIZON_SECONDS = 5 * 3600
 TRANSFER_BUFFER_SECONDS = 45
 
@@ -58,7 +58,7 @@ class JourneyPlanner:
             return
         try:
             self.index = json.loads(index_path.read_text('utf-8'))
-            if self.index['schema'] != 1:
+            if self.index['schema'] != 2:
                 raise ValueError('Versão de índice não suportada')
             self.stops = json.loads((self.catalog/'routing-stops.json').read_text('utf-8'))
             self.stop_routes = json.loads((self.catalog/'routing-stop-routes.json').read_text('utf-8'))
@@ -124,6 +124,7 @@ class JourneyPlanner:
         except (ValueError, TypeError):
             raise PlannerError('Data e horário inválidos')
 
+    @functools.lru_cache(maxsize=8192)
     def _valid(self,service,date):
         d=date.strftime('%Y%m%d')
         override=self.index['exceptions'].get(d,{}).get(service)
@@ -133,7 +134,7 @@ class JourneyPlanner:
         return bool(entry and entry['start_date']<=d<=entry['end_date']
                     and entry[WEEKDAYS[date.weekday()]]=='1')
 
-    @functools.lru_cache(maxsize=32)
+    @functools.lru_cache(maxsize=96)
     def _trips(self,code):
         name=self.files.get(code)
         if not name:
@@ -208,11 +209,8 @@ class JourneyPlanner:
                 eligible_days=[day for day in days if self._valid(service,day)]
                 if not eligible_days:
                     continue
-                # Fast rejection: the trip must overlap the requested time
-                # window and contain a stop already reachable in this round.
-                # Otherwise scanning every stop of the city's timetable is wasteful.
-                if not any(stop[0] in prior for stop in stops):
-                    continue
+                # Check the GTFS time window before scanning thousands of stops
+                # for candidate boarding. This avoids processing out-of-window trips.
                 for day in eligible_days:
                     midnight=dt.datetime.combine(day,dt.time.min,BRT).timestamp()
                     earliest=midnight+stops[0][2]
@@ -223,15 +221,22 @@ class JourneyPlanner:
                     else:
                         if latest<search_ts or earliest>search_ts+HORIZON_SECONDS:
                             continue
+                    if not any(s[0] in prior for s in stops):
+                        continue
                     candidates=[]
                     entries=reversed(stops) if backward else iter(stops)
-                    for sid,arr,dep in entries:
+                    for row in entries:
+                        sid,arr,dep,pickup,dropoff = row
                         stats['stopScans']+=1
                         if stats['stopScans']>MAX_STOP_SCANS:
                             stats['limited']=True
                             return next_labels
                         epoch=midnight+(dep if backward else arr)
-                        for earlier,board_sid,board_epoch in candidates:
+                        # Alight only at a stop where GTFS permits alighting.
+                        # In reverse, this position is the BOARDING stop.
+                        may_exit = pickup==0 if backward else dropoff==0
+                        if may_exit:
+                          for earlier,board_sid,board_epoch in candidates:
                             if sid==board_sid:
                                 continue
                             if backward and epoch<search_ts-HORIZON_SECONDS:
@@ -247,7 +252,10 @@ class JourneyPlanner:
                             node=Label(sid,epoch,earlier.walked,earlier.rides+1,earlier,edge)
                             self._insert(next_labels,node,backward)
                         # Add board possibilities after dropping at this stop.
-                        if sid in prior:
+                        # A trip cannot be entered where boarding is forbidden.
+                        # In backward search, the reachable stop is an ALIGHTING stop.
+                        may_enter = dropoff==0 if backward else pickup==0
+                        if may_enter and sid in prior:
                             for label in prior[sid]:
                                 departure=midnight+dep
                                 arrival=midnight+arr
