@@ -18,7 +18,7 @@ let pedestrian=null;
 const HOUR=3600000, MIN=60000, DAY=86400000, MAX_HOURS=5;
 const TRIP_MASK=(1<<20)-1,BOARD=1<<20,ALIGHT=1<<21;
 const BUFFER=45000,WALK_SPEED=1.15,WALK_FACTOR=1.35,MAX_RIDES=3;
-const MAX_SCANNED=2100000,MAX_LABELS=8,MAX_ONBOARD=8;
+const MAX_SCANNED=2600000,MAX_LABELS=20,MAX_ONBOARD=12;
 const cityTZ='America/Sao_Paulo';
 let root='',meta=null,stops=null,trips=null,grid=null,stopLines=null,metro=null;
 let currentSeq=0;
@@ -212,8 +212,8 @@ function emit(node,ctx) {
     const endTime=node.time+(ctx.backward?-(ms+BUFFER):ms);
     if(endTime>=ctx.lo&&endTime<=ctx.hi){
       ctx.finals.push({node,time:endTime,meters:rounded(ending)});
-      if(ctx.finals.length>1000){
-        ctx.partial=true;ctx.finals.splice(1000);
+      if(ctx.finals.length>3000){
+        ctx.partial=true;ctx.finals.splice(3000);
       }
     }
   }
