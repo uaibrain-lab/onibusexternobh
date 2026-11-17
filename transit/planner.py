@@ -14,6 +14,7 @@ import collections
 import datetime as dt
 import functools
 import gzip
+import hashlib
 import json
 import math
 import pathlib
@@ -23,6 +24,7 @@ from typing import Optional
 from .matcher import distance_m
 from .metro import BRT
 from .walking import WalkingGraph
+from .binary_trips import BinaryTripTable
 
 try:
     import orjson as _fast_json
@@ -67,11 +69,17 @@ class JourneyPlanner:
             return
         try:
             self.index = json.loads(index_path.read_text('utf-8'))
-            if self.index['schema'] not in (1, 2):
+            if self.index['schema'] not in (1, 2, 3):
                 raise ValueError('Versão de índice não suportada')
             self.stops = json.loads((self.catalog/'routing-stops.json').read_text('utf-8'))
             self.stop_routes = json.loads((self.catalog/'routing-stop-routes.json').read_text('utf-8'))
             self.files = self.index['files']
+            self.binary_files=self.index.get('binaryFiles',{})
+            self.stop_ids=tuple(sorted(self.stops))
+            expected=self.index.get('stopIdsHash')
+            if expected and expected!=hashlib.sha256(
+                '\n'.join(self.stop_ids).encode('utf-8')).hexdigest():
+                raise ValueError('Índice GTFS incompatível com o mapa de paradas')
             self.routes = {r['code']:r['name'] for r in json.loads(
                 (self.catalog/'routes.json').read_text('utf-8'))}
             self.cells = collections.defaultdict(list)
@@ -159,11 +167,15 @@ class JourneyPlanner:
         if not name:
             return ()
         try:
-            # Binary lines avoid UTF-8 decoding twice. The optional Rust-based
-            # parser accelerates loading, while CPython's json remains valid.
+            binary_path=self.binary_files.get(code)
+            if binary_path:
+                # Compact UBR3 keeps 11 bytes per stop without expanding
+                # millions of nested Python lists into resident memory.
+                return BinaryTripTable.read(self.catalog/binary_path,self.stop_ids)
+            # Offline-compatible legacy GTFS shards remain a fallback.
             with gzip.open(self.catalog/name,'rb') as file:
                 return tuple(_JSON_LOADS(line) for line in file)
-        except (OSError,ValueError) as exc:
+        except (OSError,ValueError,IndexError) as exc:
             raise PlannerError('Falha ao ler o índice da linha '+str(code)) from exc
 
     @functools.lru_cache(maxsize=24)
