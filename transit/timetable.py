@@ -5,6 +5,7 @@ These are *scheduled* stop passage times, not live vehicle sightings.
 import datetime as dt
 import gzip
 import json
+import threading
 from bisect import bisect_left
 from pathlib import Path
 from .engine import BRT
@@ -17,21 +18,29 @@ class Timetable:
         self.calendar = None
         self.stops = None
         self.error = None
+        self._load_lock = threading.Lock()
 
     def _load(self):
+        """Build the large GTFS timetable once even with concurrent requests."""
         if self.calendar is not None or self.error:
             return
-        try:
-            self.calendar = json.loads((self.catalog/'timetable-calendar.json').read_text('utf8'))
-            self.stops = {}
-            with gzip.open(self.catalog/'timetable.json.gz','rt',encoding='utf8') as f:
-                for line in f:
-                    sid, entries = json.loads(line)
-                    self.stops[sid] = entries
-        except (OSError, ValueError, TypeError) as exc:
-            self.error = type(exc).__name__
-            self.calendar = None
-            self.stops = None
+        with self._load_lock:
+            if self.calendar is not None or self.error:
+                return
+            try:
+                calendar=json.loads((self.catalog/'timetable-calendar.json').read_text('utf8'))
+                stops={}
+                with gzip.open(self.catalog/'timetable.json.gz','rt',encoding='utf8') as f:
+                    for line in f:
+                        sid, entries=json.loads(line)
+                        stops[sid]=entries
+                # Publish only a fully loaded snapshot; nobody reads partial data.
+                self.stops=stops
+                self.calendar=calendar
+            except (OSError,ValueError,TypeError) as exc:
+                self.error=type(exc).__name__
+                self.calendar=None
+                self.stops=None
 
     def active(self, service, day):
         if not self.calendar:
