@@ -260,6 +260,7 @@ class TransitEngine:
                        for v in self.vehicles.values())
             return {'now':iso(reference),'gpsRecent':recent,
                     'vehiclesKnown':len(self.vehicles), 'sources':self.sources,
+                    'gpsUpdating':bool(self.refresh_in_progress or self._background_refresh_queued),
                     'refreshIntervalSec':self.ttl}
 
     def routes_listing(self):
