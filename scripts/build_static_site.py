@@ -24,7 +24,7 @@ def build(target=None):
     if not info.exists():
         raise FileNotFoundError('Catálogo binário ausente; execute build_static_scan.py primeiro.')
     manifest=json.loads(info.read_text(encoding='utf-8'))
-    if (manifest.get('schema')!=1 or manifest.get('tripCount',0)<1000 or
+    if (manifest.get('schema') not in (1,2) or manifest.get('tripCount',0)<1000 or
         manifest.get('connectionCount',0)<10000):
         raise ValueError('Índice estático incompleto ou de versão incompatível')
     if not (catalog/'metro.json').is_file():
