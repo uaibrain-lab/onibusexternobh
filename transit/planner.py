@@ -157,7 +157,7 @@ class JourneyPlanner:
             best_time=lambda l:-l.time if backward else l.time
             current.sort(key=lambda l:(best_time(l)+l.walked*.15,l.walked))
             del current[5:]
-        return label in current
+        return any(x is label for x in current)
 
     def _edge_walk(self,source,dest,meters,depart,arrive):
         return {'mode':'walk','from':source,'to':dest,
@@ -170,6 +170,8 @@ class JourneyPlanner:
                 'tripId':trip,'headsign':headsign,
                 'from':a,'to':b,
                 'fromName':self.stops[a][0],'toName':self.stops[b][0],
+                'fromCoords':[float(self.stops[a][1]),float(self.stops[a][2])],
+                'toCoords':[float(self.stops[b][1]),float(self.stops[b][2])],
                 'departure':self._iso(depart),'arrival':self._iso(arrive),
                 'prediction':'GTFS scheduled'}
 
@@ -267,8 +269,19 @@ class JourneyPlanner:
                 delay=self._walk_time(meters)
                 if backward:
                     departure=label.time-delay
-                    finish=search_ts
                     legs=[self._edge_walk('origin',sid,meters,departure,label.time)]+self._path(label,True)
+                    # Actual arrival is usually earlier than the requested deadline.
+                    # Never inflate the itinerary duration with artificial idle time.
+                    finish=search_ts
+                    if len(legs)>=2 and legs[-1]['mode']=='walk':
+                        last_bus=next((leg for leg in reversed(legs[:-1]) if leg['mode']=='bus'),None)
+                        if last_bus:
+                            last_arrival=dt.datetime.fromisoformat(last_bus['arrival']).timestamp()
+                            trailing=legs[-1]
+                            extra_walk=trailing['metersApprox']/WALK_FACTOR
+                            finish=min(search_ts,last_arrival+self._walk_time(extra_walk))
+                            trailing['departure']=self._iso(last_arrival)
+                            trailing['arrival']=self._iso(finish)
                     if departure>search_ts or search_ts-departure>HORIZON_SECONDS:
                         continue
                 else:
