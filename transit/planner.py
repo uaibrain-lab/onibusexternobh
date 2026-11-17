@@ -110,7 +110,7 @@ class JourneyPlanner:
     def _walk_time(self,dist):
         return max(20.,dist * WALK_FACTOR / WALK_SPEED_M_S + 25.)
 
-    def _access_points(self, point, radius=1050, limit=22):
+    def _access_points(self, point, radius=1050, limit=22, reverse=False):
         candidates=self.nearby(*point,radius=radius,limit=90)
         if not self.walking.ready:
             return [(meters,sid,None) for meters,sid in candidates[:limit]]
@@ -118,7 +118,7 @@ class JourneyPlanner:
         # pedestrian ways. Straight line is used solely for snapping to a
         # graph node at the origin and the stop (explicitly disclosed).
         available=[(sid,self.stops[sid]) for _,sid in candidates]
-        routed=self.walking.reachable_stops(point,available,radius=radius*1.4,limit=limit)
+        routed=self.walking.reachable_stops(point,available,radius=radius*1.4,limit=limit,reverse=reverse)
         return [(meters/WALK_FACTOR,sid,path) for meters,sid,path in routed]
 
     @staticmethod
@@ -234,8 +234,10 @@ class JourneyPlanner:
                 foot=None
                 if self.walking.ready:
                     dest=self.stops[sid]
-                    foot=self.walking.route((float(stop[1]),float(stop[2])),
-                                            (float(dest[1]),float(dest[2])),
+                    current=(float(stop[1]),float(stop[2]))
+                    neighbor=(float(dest[1]),float(dest[2]))
+                    foot=self.walking.route(neighbor if backward else current,
+                                            current if backward else neighbor,
                                             max_meters=410)
                     if foot is None:
                         continue  # never bridge a disconnected OSM barrier
@@ -342,7 +344,7 @@ class JourneyPlanner:
         return legs
 
     def _collect(self,labels,origin,dest,search_ts,backward):
-        endings=self._access_points(origin if backward else dest,radius=1050,limit=22)
+        endings=self._access_points(origin if backward else dest,radius=1050,limit=22,reverse=not backward)
         results=[]
         for meters,sid,foot in endings:
             for label in labels.get(sid,()):
@@ -460,7 +462,7 @@ class JourneyPlanner:
                     'itineraries':[],'metroHints':[]}
         backward=(mode=='arriveBy')
         search_ts=at_dt.timestamp()
-        starts=self._access_points(destination if backward else origin,radius=1050,limit=22)
+        starts=self._access_points(destination if backward else origin,radius=1050,limit=22,reverse=backward)
         prior={}
         for meters,sid,foot in starts:
             delay=self._walk_time(meters)
