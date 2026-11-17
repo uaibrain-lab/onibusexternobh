@@ -42,7 +42,7 @@ def build(target=None):
     public=target/'externo'
     public.mkdir(parents=True)
     static=ROOT/'static'
-    for name in ('app.js','style.css','hub-parity.css','route-worker.js','service-worker.js','static-bus.js','static-arrivals.js','walk-network.js','metro-timing.js','manifest.webmanifest','icon-192.png','icon-512.png'):
+    for name in ('app.js','style.css','hub-parity.css','route-worker.js','service-worker.js','static-bus.js','static-arrivals.js','live-gps.js','gps-config.json','walk-network.js','metro-timing.js','manifest.webmanifest','icon-192.png','icon-512.png'):
         shutil.copy2(static/name,public/name)
     html=(static/'index.html').read_text(encoding='utf-8')
     anchor='<html lang="pt-BR">'
@@ -54,11 +54,12 @@ def build(target=None):
         raise ValueError('Script principal não localizado')
     html=html.replace(loader,
         '<script src="./static-arrivals.js" defer></script>\n'
+        '<script src="./live-gps.js" defer></script>\n'
         '<script src="./static-bus.js" defer></script>\n'+loader,1)
     (public/'index.html').write_text(html,encoding='utf-8')
     (public/'catalog').mkdir(exist_ok=True)
     shutil.copy2(catalog/'metro.json',public/'catalog'/'metro.json')
-    for name in ('manifest.json','routes.json','stops.json','patterns.json','shapes.json','routing-stop-routes.json'):
+    for name in ('manifest.json','routes.json','stops.json','patterns.json','shapes.json','routing-stop-routes.json','gps-nl-map.json'):
         shutil.copy2(catalog/name,public/'catalog'/name)
     shutil.copytree(scan,public/'catalog'/'scan')
     # Do not ship the 18 MiB monolithic timetable to mobile visitors.
