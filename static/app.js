@@ -560,9 +560,10 @@ function renderRouteResults(data){
   }else if(!data.itineraries?.length){
     routeStatus('Nenhum trajeto de ônibus encontrado nesta janela. Experimente outro horário, origem ou destino.','warn');
   }else{
-    routeStatus((data.status==='partial'?'Busca limitada por desempenho; ':'')+
-      data.itineraries.length+' itinerário(s) programado(s). '+(data.pedestrianRouting==='local_osm'
-       ?'Caminhadas conferidas no grafo de pedestres OSM local.'
+    routeStatus((data.status==='partial'?'Busca limitada: não garante a opção globalmente ótima. ':'')+
+      data.itineraries.length+' itinerário(s) programado(s). '+(
+       data.pedestrianRouting==='osm_real_graph'
+       ?'Conexões pedestres calculadas na rede OSM. Trechos de acesso às vias podem não estar mapeados.'
        :'Caminhadas aproximadas; os percursos pelas ruas ainda não foram verificados.'),
       data.status==='partial'?'warn':'info');
   }
@@ -574,7 +575,8 @@ function renderRouteResults(data){
     clock.textContent=routeClock(trip.departure)+' → '+routeClock(trip.arrival)+' · '+trip.durationMinutes+' min';
     const detail=document.createElement('small');
     const buses=trip.legs.filter(x=>x.mode==='bus');
-    const verified=trip.confidence==='scheduled_gtfs_with_osm_pedestrian_paths';
+    const verified=trip.confidence==='GTFS_scheduled_and_OSM_footpaths'||
+                   trip.confidence==='scheduled_gtfs_with_osm_pedestrian_paths';
     detail.textContent=buses.map(x=>x.line).join(' + ')+' · '+trip.walkMetersApprox+
       (verified?' m a pé (vias OSM)':' m a pé (aprox.)')+' · '+trip.transfers+' baldeação(ões)';
     select.append(clock,detail);
@@ -630,6 +632,7 @@ function focusSelectedRoute(itinerary){
   for(const leg of itinerary.legs){
     if(leg.fromCoords)coords.push(leg.fromCoords);
     if(leg.toCoords)coords.push(leg.toCoords);
+    if(leg.mode==='walk'&&leg.geometry)coords.push(...leg.geometry);
   }
   if(coords.length>1){fitCoordinates(coords);drawSoon();scheduleMapStops()}
 }
@@ -638,6 +641,13 @@ function drawRouteLayer(){
   const trip=state.routeResults[state.routeSelected];
   if(trip){
     for(const leg of trip.legs){
+      if(leg.mode==='walk'&&Array.isArray(leg.geometry)&&leg.geometry.length>1){
+        ctx.save();ctx.beginPath();
+        leg.geometry.forEach((p,i)=>{const [x,y]=screen(p[0],p[1]);if(i)ctx.lineTo(x,y);else ctx.moveTo(x,y)});
+        ctx.strokeStyle=leg.pathVerified?'#16866e':'#d09a29';
+        ctx.lineWidth=4;ctx.globalAlpha=.9;ctx.stroke();ctx.restore();
+        continue;
+      }
       if(!leg.fromCoords||!leg.toCoords)continue;
       const [x1,y1]=screen(...leg.fromCoords),[x2,y2]=screen(...leg.toCoords);
       ctx.save();ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);
