@@ -534,7 +534,8 @@ async function submitRoute(){
     const response=await freeCall('plan',{params:{origin,destination,
       mode:when==='arriveBy'?'arriveBy':'departAt',
       at:when==='now'?undefined:at,
-      preference:$('routePreference').value}});
+      preference:$('routePreference').value,
+      searchDepth:$('routeSearchDepth').value}});
     const data=response.data;
     state.routeResults=data.itineraries||[];state.routeSelected=0;
     renderRouteResults(data);
@@ -555,7 +556,9 @@ function renderRouteResults(data){
   }else if(!data.itineraries?.length){
     routeStatus('Nenhum trajeto de ônibus encontrado nesta janela. Experimente outro horário, origem ou destino.','warn');
   }else{
-    routeStatus((data.status==='partial'?'Busca limitada por desempenho; ':'')+
+    routeStatus((data.status==='partial'?
+         (data.stats?.searchDepth==='expanded'?'Mesmo a busca ampliada tem limites; ':
+          'Busca parcial; selecione Ampliada para comparar mais alternativas. '):'')+
       data.itineraries.length+' itinerário(s) programado(s). '+(['local_osm','osm_walk_graph_with_unverified_access_snap'].includes(data.pedestrianRouting)
        ?'Caminhadas pelo grafo viário OSM; o acesso às ruas e às entradas ainda não foi verificado em campo.'
        :'Caminhadas aproximadas; os percursos pelas ruas ainda não foram verificados.'),
@@ -683,7 +686,7 @@ for(const which of ['origin','destination']){
 }
 $('routeOriginLocation').onclick=useRouteLocation;
 $('routeWhen').onchange=routeWhenChanged;
-for(const id of ['routeDate','routeTime','routeBuffer','routePreference']){
+for(const id of ['routeDate','routeTime','routeBuffer','routePreference','routeSearchDepth']){
   $(id).addEventListener('change',()=>invalidateRouteResults());
 }
 $('routeSubmit').onclick=submitRoute;
