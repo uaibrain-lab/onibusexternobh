@@ -34,10 +34,7 @@ def run(host='127.0.0.1',port=8765,open_browser=False):
                 elif path=='/externo':
                     path='/'
                 if path=='/api/status': return self.payload(200,engine.status())
-                if path=='/api/eta-diagnostics':
-                    if self.client_address[0] not in ('127.0.0.1','::1'):
-                        return self.payload(403,{'error':'Acesso local apenas'})
-                    return self.payload(200,engine.eta_coverage_summary())
+                if path=='/api/eta-diagnostics': return self.payload(200,engine.eta_coverage_summary())
                 if path=='/api/routes': return self.payload(200,engine.routes_listing())
                 if path=='/api/route':
                     code=qs.get('code',[''])[0];pattern=qs.get('pattern',[None])[0]
@@ -64,12 +61,12 @@ def run(host='127.0.0.1',port=8765,open_browser=False):
                     v=engine.fleet(code)
                     return self.payload(200,v) if v else self.payload(404,{'error':'Linha não localizada'})
                 if path=='/':path='/index.html'
-                if path not in ('/index.html','/app.js','/style.css'):
+                if path not in ('/index.html','/app.js','/style.css','/sw.js','/manifest.webmanifest','/icon-192.png','/icon-512.png'):
                     return self.payload(404,{'error':'Não encontrado'})
                 file=ROOT/'static'/path.lstrip('/')
                 raw=file.read_bytes()
-                mime={'/index.html':'text/html','/app.js':'application/javascript','/style.css':'text/css'}[path]
-                return self.respond(200,raw,mime+'; charset=utf-8')
+                mime={'/index.html':'text/html','/app.js':'application/javascript','/style.css':'text/css', '/sw.js':'application/javascript','/manifest.webmanifest':'application/manifest+json','/icon-192.png':'image/png','/icon-512.png':'image/png'}[path]
+                return self.respond(200,raw,mime if mime=='image/png' else mime+'; charset=utf-8')
             except (BrokenPipeError,ConnectionResetError):pass
             except Exception as exc:
                 try:self.payload(500,{'error':'Erro interno','detail':type(exc).__name__})

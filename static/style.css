@@ -36,7 +36,7 @@ html[data-theme="dark"]{color-scheme:dark;--bg:#14181f;--bg2:#1e242d;--ink:#f5f7
 
 .line-heading{display:flex;align-items:center;justify-content:space-between;gap:10px}.line-heading .line-title{flex:1}
 
-/* P6: focused arrivals. Other lists reappear after "Voltar para pontos". */
+/* P6 — Focus mode for the selected stop, preserving a simple return path. */
 #pontosPane.has-open-stop > :not(#stopDetail){display:none!important}
 .stop-head{align-items:center}
 .stop-head > div{min-width:0;flex:1}
@@ -45,3 +45,44 @@ html[data-theme="dark"]{color-scheme:dark;--bg:#14181f;--bg2:#1e242d;--ink:#f5f7
 .stop-detail{margin-bottom:6px}
 .stop-detail .route-arrival{min-height:62px;touch-action:manipulation}
 .stop-detail .route-arrival .eta{font-variant-numeric:tabular-nums}
+
+/* P8 — prioridades mobile-first: legibilidade, toque e feedback. */
+.stop-action,.fav-btn,.stop-back,.sheet-toggle,.fav-edit{min-width:44px;min-height:44px}
+.stop-action,.fav-edit{flex:none;display:grid;place-items:center;border:1px solid var(--line);border-radius:50%;background:var(--bg);font-size:22px;color:var(--ink);cursor:pointer}
+.route-arrival .arrival-info b{font-size:14px;line-height:1.3}
+.route-arrival .arrival-info small,.route-arrival .eta small{font-size:12px;line-height:1.3}
+.route-arrival .eta{font-size:19px}
+.route-arrival .eta .arrival-following{font-size:11px;white-space:normal;max-width:130px;margin-left:auto}
+.route-arrival .eta .arrival-last{font-size:11px;font-weight:700;color:var(--warn)}
+.stop-detail .route-arrival{min-height:70px;gap:10px;padding:11px}
+#body .hint,#body .muted-empty,#body .info-small{font-size:13px}
+.quick-tabs button{min-height:44px;min-width:62px}
+.row-item,.vehicle,.fab,.btn,.subtle{min-height:44px}
+.fav-row .row-item{min-width:0}
+.fav-row .fav-edit,.fav-row .fav-btn{flex:0 0 44px}
+.fav-dialog{border:1px solid var(--line);border-radius:18px;background:var(--bg);color:var(--ink);padding:20px;width:min(92vw,410px);box-shadow:var(--sh)}
+.fav-dialog::backdrop{background:rgba(0,0,0,.46)}
+.fav-dialog h2{margin:0 0 12px;font-size:19px}
+.fav-dialog input{width:100%;min-height:48px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg2)}
+.fav-dialog-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:17px}
+.fav-dialog-actions button{min-height:44px;padding:8px 15px;border-radius:12px}
+@media(max-width:759px){
+  .sheet-head{min-height:60px}
+  #sheet.peek{height:calc(87px + env(safe-area-inset-bottom,0px))}
+  #sheet.full{height:min(88dvh,calc(100dvh - 56px))}
+  #body{padding:9px 12px calc(26px + env(safe-area-inset-bottom,0px))}
+  #body h3{font-size:16px}
+  .stop-detail{border:0;padding:6px 0;background:var(--bg)}
+  .stop-head h2{font-size:19px!important;line-height:1.25}
+  .stop-head{gap:8px;margin-bottom:9px}
+  .stop-detail .route-arrival{background:var(--bg2);border:1px solid var(--line);border-radius:13px;margin-top:8px}
+  .route-arrival .eta{font-size:21px}
+  .route-arrival .num{min-width:53px}
+  .location-prompt{max-width:calc(100vw - 22px);left:11px;right:11px}
+}
+@media(max-width:360px){.stop-head{flex-wrap:wrap}.stop-head>div{flex-basis:calc(100% - 56px)}.stop-detail .route-arrival{gap:7px;padding:9px}.route-arrival .eta{font-size:18px}}
+@media(prefers-reduced-motion:reduce){#sheet,.sheet-toggle svg{transition:none!important}}
+
+.favorite-stop{display:flex;flex-direction:column;justify-content:center;gap:3px}
+.favorite-stop b{font-size:14px;font-weight:700}
+.favorite-stop .favorite-next{display:block;font-size:12px;line-height:1.3;color:var(--mut)}

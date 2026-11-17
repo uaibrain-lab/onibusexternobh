@@ -44,31 +44,54 @@ class Timetable:
         spec=self.calendar['services'].get(service)
         return bool(spec and spec['start_date']<=d<=spec['end_date'] and spec[WEEKDAYS[day.weekday()]]=='1')
 
-    def next_by_line(self, stop_id, now=None, horizon_hours=5):
-        """Return next scheduled timestamp per route; never imply live vehicle GPS."""
+    def next_by_line(self, stop_id, now=None, horizon_hours=5, max_per_line=3):
+        """Next GTFS scheduled services by route, never a live vehicle claim."""
         self._load()
         if not self.stops:
             return {}
         now = now or dt.datetime.now(BRT)
         if now.tzinfo is None:
-            now=now.replace(tzinfo=BRT)
-        results={}
-        for route,service,destination,times in self.stops.get(str(stop_id),[]):
-            for offset in (-1,0,1):
-                day=now.date()+dt.timedelta(days=offset)
-                if not self.active(service,day):
+            now = now.replace(tzinfo=BRT)
+        cap = max(1, min(5, int(max_per_line)))
+        horizon = dt.timedelta(hours=horizon_hours)
+        found = {}
+        last_today = {}
+        for route, service, destination, times in self.stops.get(str(stop_id), []):
+            if not times:
+                continue
+            for offset in (-1, 0, 1):
+                day = now.date() + dt.timedelta(days=offset)
+                if not self.active(service, day):
                     continue
-                midnight=dt.datetime.combine(day,dt.time(0,0), BRT)
-                threshold=int((now-midnight).total_seconds())
-                pos=bisect_left(times,threshold)
-                if pos >=len(times):continue
-                when=midnight+dt.timedelta(seconds=times[pos])
-                if (when-now).total_seconds()>horizon_hours*3600:
-                    continue
-                prior=results.get(route)
-                if prior is None or when<prior['when']:
-                    results[route]={'when':when,'destination':destination}
-        return {code:{'type':'scheduled','at':item['when'].isoformat(timespec='seconds'),
-                      'minutes':max(0,int((item['when']-now).total_seconds()//60)),
-                      'destination':item['destination']}
-                for code,item in results.items()}
+                midnight = dt.datetime.combine(day, dt.time(0, 0), BRT)
+                if offset == 0:
+                    key = (route, destination)
+                    last = midnight + dt.timedelta(seconds=times[-1])
+                    if key not in last_today or last > last_today[key]:
+                        last_today[key] = last
+                threshold = int((now - midnight).total_seconds())
+                pos = bisect_left(times, threshold)
+                for seconds in times[pos:pos+cap]:
+                    when = midnight + dt.timedelta(seconds=seconds)
+                    if when < now:
+                        continue
+                    if when - now > horizon:
+                        break
+                    found.setdefault(route, []).append((when, destination))
+        result = {}
+        for route, entries in found.items():
+            ordered = sorted(set(entries), key=lambda x:(x[0],x[1]))
+            if not ordered:
+                continue
+            when, dest = ordered[0]
+            later = [{'at': t.isoformat(timespec='seconds'),
+                      'minutes':max(0,int((t-now).total_seconds()//60)),
+                      'destination': direction} for t,direction in ordered[1:] if direction == dest][:cap-1]
+            last = last_today.get((route,dest))
+            result[route] = {
+                'type':'scheduled','at':when.isoformat(timespec='seconds'),
+                'minutes':max(0,int((when-now).total_seconds()//60)),
+                'destination':dest,'following':later,
+                'lastTripToday':bool(last and when.date()==now.date() and when>=last),
+            }
+        return result
