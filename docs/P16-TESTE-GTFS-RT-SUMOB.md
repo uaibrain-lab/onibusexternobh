@@ -32,8 +32,9 @@ Licença: CC BY 4.0. Atribuição obrigatória:
   1.500 veículos por consulta, 50 ids de rota.
 - `scripts/check_gtfs_rt_free.mjs`: teste HTTP público de uma única consulta,
   sem deploy ou modificações; mostra HTTP, categoria do erro, status upstream,
-  entidades do feed, veículos correspondentes, idade do fix mais recente,
-  cabeçalho CORS e volume de resposta, sem listar posições/identificadores individuais.
+  entidades do feed, veículos correspondentes, amostra de até 12 IDs de rota,
+  quantidade de veículos sem rota, idade do fix mais recente, cabeçalho CORS
+  e volume de resposta, sem listar posições/identificadores individuais.
 - `tests/test_gtfs_realtime_worker.cjs`: exemplos sintéticos de Protobuf válido, corrompido,
   rota divergente, posição vencida, deduplicação e erros HTTP 301/403/429/500.
 
@@ -66,6 +67,8 @@ Worker do Hub/FUMP. Requer autenticação prévia no Cloudflare.
 - `http=200`, `corsAuthorized=true`, `feedEntities>0`: feed obtido
   e lido. Verificar `matchedVehicles` e `freshestFixAgeSeconds`.
 - `http=200`, `matchedVehicles=0`: NÃO alegar ausência de ônibus.
+  Conferir `vehicleEntities`, `missingRouteIds` e `sampleRouteIds`: permitem
+  verificar IDs realmente publicados, sem expor posição/veículo individual.
   Investigar IDs GTFS-RT, período do dia, padrão de viagem e versão do GTFS.
 - `http=503`, `reason=GTFS_RT_HTTP_ERROR`, `upstreamStatus=403`:
   a origem também recusou o Worker. Não tentar mascarar IP/headers ou contornar
