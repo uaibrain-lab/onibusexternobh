@@ -1,3 +1,13 @@
+# Externo — Hub UFMG · P4 (metrô integrado)
+
+**Branch de desenvolvimento, sem deploy de produção (17/11/2026).** A P4 acrescenta a aba **Metrô** à P3 e mantém as funcionalidades de ônibus existentes. O código desta branch **não altera** a `main` nem o Hub publicado.
+
+**O que foi integrado:** 22 estações cadastradas em operação (Linha 1 até Novo Eldorado e Linha 2 Nova Suíça–Amazonas), seleção e busca no mapa, linhas esquemáticas, intervalos e horário habitual da operadora, avisos excepcionais, links oficiais de previsão por estação, RSS de comunicados e pontos de ônibus próximos. **Sem previsão própria de trem em tempo real**: frequência não é ETA.
+
+**Documentação e limites:** [docs/METRO-P4.md](docs/METRO-P4.md). API: `/externo/api/metro`, `/externo/api/metro/line?id=1`, `/externo/api/metro/station?id=amazonas`, `/externo/api/metro/nearby?lat=-19.93&lng=-43.98` e `/externo/api/metro/news`.
+
+---
+
 # Externo — Hub UFMG · P3 (protótipo de homologação)
 
 Versão: **P3 RC1**, 17/11/2026. **Sem deploy de produção.** Aplicação independente, preparada para ser incorporada futuramente como `/externo/` no Hub UFMG. Visual inspirado diretamente no `public/interno/index.html` do repositório `uaibrain-lab/ru-hoje`.
