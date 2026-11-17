@@ -9,7 +9,7 @@ const scope=new URL(self.registration.scope);
 const base=scope.pathname.endsWith('/')?scope.pathname:scope.pathname+'/';
 const shellPaths=[
   base,base+'index.html',base+'app.js',base+'style.css',
-  base+'route-worker.js',base+'static-bus.js',base+'walk-network.js',
+  base+'route-worker.js',base+'static-bus.js',base+'walk-network.js',base+'metro-timing.js',
   base+'catalog/metro.json',base+'catalog/scan/index.json'
 ];
 self.addEventListener('install',event=>{
