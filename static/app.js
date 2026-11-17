@@ -1232,6 +1232,26 @@ function renderRouteResults(data){
        :'Caminhadas aproximadas; os percursos pelas ruas ainda não foram verificados.'),
       data.status==='partial'?'warn':'info');
   }
+  if(data.itineraries?.length){
+    // Diagnostics are opt-in, to keep the route result cards concise.
+    // Expose why an answer can differ from an external timetable planner.
+    const more=document.createElement('details');
+    more.className='route-diagnostics';
+    const summary=document.createElement('summary');
+    summary.textContent='Como esses trajetos foram calculados';
+    const note=document.createElement('p');
+    const st=data.stats||{};
+    note.textContent='Horários programados GTFS, não GPS nem trânsito ao vivo. '+
+      'Foram verificadas '+Number(st.connectionsScanned||0).toLocaleString('pt-BR')+
+      ' conexões; '+Number(st.walkCandidatesEvaluated||0)+
+      ' alternativas tiveram caminhadas avaliadas na rede de ruas e '+
+      Number(st.walkCandidatesRejected||0)+' foram rejeitadas por falta de trajeto pedestre viável. '+
+      'Busca '+(st.searchDepth==='expanded'?'ampliada':'normal')+
+      ', pontos a até '+Number(st.boardingStopRadiusMeters||0)+
+      ' m da origem/destino. Acesso real à entrada do imóvel, trânsito e dados em tempo real ainda não são confirmados. '+
+      'Para comparar com outro app, utilize endereços, data e horário idênticos.';
+    more.append(summary,note);area.append(more);
+  }
   for(const [index,trip] of (data.itineraries||[]).entries()){
     const container=document.createElement('div');container.className='route-result';
     if(index===state.routeSelected)container.classList.add('selected');
