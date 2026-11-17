@@ -34,7 +34,7 @@ def build(target=None):
     public=target/'externo'
     public.mkdir(parents=True)
     static=ROOT/'static'
-    for name in ('app.js','style.css','route-worker.js','service-worker.js','static-bus.js','walk-network.js'):
+    for name in ('app.js','style.css','route-worker.js','service-worker.js','static-bus.js','walk-network.js','metro-timing.js'):
         shutil.copy2(static/name,public/name)
     html=(static/'index.html').read_text(encoding='utf-8')
     anchor='<html lang="pt-BR">'
