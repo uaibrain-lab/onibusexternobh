@@ -33,7 +33,9 @@ def run(host='127.0.0.1',port=8765,open_browser=False):
                     path=path[len('/externo'):]
                 elif path=='/externo':
                     path='/'
-                if path=='/api/status': return self.payload(200,engine.status())
+                if path=='/api/status':
+                    engine.refresh_in_background()
+                    return self.payload(200,engine.status(poll=False))
                 if path=='/api/eta-diagnostics': return self.payload(200,engine.eta_coverage_summary())
                 if path=='/api/routes': return self.payload(200,engine.routes_listing())
                 if path=='/api/route':
@@ -55,11 +57,13 @@ def run(host='127.0.0.1',port=8765,open_browser=False):
                     except (ValueError, TypeError):return self.payload(400,{'error':'Limites invalidos'})
                     return self.payload(200,v)
                 if path=='/api/stop':
-                    v=engine.stop_detail(qs.get('id',[''])[0])
+                    engine.refresh_in_background()
+                    v=engine.stop_detail(qs.get('id',[''])[0],poll=False)
                     return self.payload(200,v) if v else self.payload(404,{'error':'Ponto nao encontrado'})
                 if path=='/api/fleet':
                     code=qs.get('route',[''])[0]
-                    v=engine.fleet(code)
+                    engine.refresh_in_background()
+                    v=engine.fleet(code,poll=False)
                     return self.payload(200,v) if v else self.payload(404,{'error':'Linha não localizada'})
                 if path=='/':path='/index.html'
                 if path not in ('/index.html','/app.js','/style.css','/sw.js','/manifest.webmanifest','/icon-192.png','/icon-512.png'):
