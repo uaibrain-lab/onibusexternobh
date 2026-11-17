@@ -100,17 +100,20 @@ export async function auditPublishedSite({
     check('published-arrivals-catalog',
       a.response.status===200&&a.body?.schema===1&&
       Number(a.body?.stopCount)>9000);
-    const validDate=Date.parse(String(index.validThrough)+'T23:59:59-03:00');
+    // Official BH GTFS catalog uses YYYYMMDD (e.g. 20261231), not ISO.
+    // Accept both to prevent a false expiry alarm for a valid official feed.
+    const rawDate=String(index.validThrough||'');
+    const datePart=/^\d{8}$/.test(rawDate)
+      ?rawDate.slice(0,4)+'-'+rawDate.slice(4,6)+'-'+rawDate.slice(6,8)
+      :rawDate;
+    const validDate=/^\d{4}-\d{2}-\d{2}$/.test(datePart)
+      ?Date.parse(datePart+'T23:59:59-03:00')
+      :NaN;
     details.gtfsValidThrough=index.validThrough;
     check('published-gtfs-valid-today',
       Number.isFinite(validDate)&&clock()<=validDate,
       'If expired, scheduled times are not verified for the current date');
   }catch(e){check('published-gtfs-same-edition',false,e.message)}
-
-  try{
-    const {response,body}=await get(PREFIX+'_headers');
-    // Pages may not expose the _headers file; not required.
-  }catch(_){}
 
   // Fetch from a browser-like, exact Pages Origin and verify the same
   // Access-Control-Allow-Origin the browser enforces.
