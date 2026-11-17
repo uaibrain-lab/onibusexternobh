@@ -190,9 +190,10 @@ class JourneyPlanner:
                 'departure':self._iso(depart),'arrival':self._iso(arrive),
                 'prediction':'GTFS scheduled'}
 
-    def _transfer(self,labels,backward,stats=None):
+    def _transfer(self,labels,backward,stats=None,bound=None):
         # Transfers are still geometric approximations, not validated walking paths.
-        seed=[x for values in labels.values() for x in values]
+        seed=[x for values in labels.values() for x in values
+              if bound is None or (x.time>bound if backward else x.time<bound)]
         if len(seed)>MAX_TRANSFER_LABELS:
             if stats is not None:
                 stats['limited']=True
@@ -210,12 +211,14 @@ class JourneyPlanner:
                     continue
                 seconds=self._walk_time(meters)+TRANSFER_BUFFER_SECONDS
                 t=old.time-seconds if backward else old.time+seconds
+                if bound is not None and (t<=bound if backward else t>=bound):
+                    continue
                 edge=(self._edge_walk(sid,old.stop,meters,t,old.time) if backward
                       else self._edge_walk(old.stop,sid,meters,old.time,t))
                 self._insert(labels,Label(sid,t,old.walked+meters*WALK_FACTOR,
                                           old.rides,old,edge),backward)
 
-    def _scan_round(self,prior,search_ts,backward,stats):
+    def _scan_round(self,prior,search_ts,backward,stats,bound=None):
         next_labels={}
         counts=collections.Counter(code for sid in prior for code in self.stop_routes.get(sid,())
                                     if code in self.files)
@@ -244,8 +247,14 @@ class JourneyPlanner:
                     if backward:
                         if earliest>search_ts or latest<search_ts-HORIZON_SECONDS:
                             continue
+                        if bound is not None and latest<=bound:
+                            stats['timePrunedTrips']=stats.get('timePrunedTrips',0)+1
+                            continue
                     else:
                         if latest<search_ts or earliest>search_ts+HORIZON_SECONDS:
+                            continue
+                        if bound is not None and earliest>=bound:
+                            stats['timePrunedTrips']=stats.get('timePrunedTrips',0)+1
                             continue
                     # A single trip reaches each downstream stop at a fixed
                     # time, regardless of where it was boarded. Of all feasible
@@ -263,6 +272,8 @@ class JourneyPlanner:
                             stats['limited']=True
                             return next_labels
                         epoch=midnight+(dep if backward else arr)
+                        if bound is not None and (epoch<=bound if backward else epoch>=bound):
+                            break  # stop times monotonic in scan direction
                         if best_board is not None and (pickup if backward else dropoff)==0:
                             earlier,board_sid,board_epoch=best_board
                             if sid!=board_sid:
@@ -407,13 +418,28 @@ class JourneyPlanner:
         for rides in range(MAX_RIDES):
             if not prior:
                 break
-            gained=self._scan_round(prior,search_ts,backward,stats)
+            # A destination time bound is mathematically safe for "fastest":
+            # a later intermediate arrival cannot produce an earlier final
+            # arrival, and an earlier intermediate departure cannot improve
+            # the latest feasible start in arriveBy mode.
+            bound=None
+            if preference=='fastest' and candidates:
+                bound=(max if backward else min)(
+                    dt.datetime.fromisoformat(x['departure' if backward else 'arrival']).timestamp()
+                    for x in candidates)
+            gained=self._scan_round(prior,search_ts,backward,stats,bound)
             stats['rounds']=rides+1
             if gained:
                 candidates.extend(self._collect(gained,origin,destination,search_ts,backward))
             if stats['limited']:
                 break
-            self._transfer(gained,backward,stats)
+            # Once zero transfers exists, further rides cannot improve
+            # the requested minimum-transfer criterion.
+            if preference=='leastTransfers' and candidates:
+                break
+            if preference=='leastWalking' and any(x['walkMetersApprox']==0 for x in candidates):
+                break
+            self._transfer(gained,backward,stats,bound)
             prior=gained
         if preference=='leastWalking':
             key=lambda x:(x['walkMetersApprox'],x['durationMinutes'],x['transfers'])
