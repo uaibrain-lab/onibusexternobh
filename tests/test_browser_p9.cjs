@@ -60,6 +60,7 @@ async function check(name,config){
       metroType:typeof self.__MetroJourney,
       hasPedestrian:typeof pedestrian!=='undefined'&&Boolean(pedestrian),
       pedKnown:typeof pedestrian!=='undefined'&&pedestrian?pedestrian.known:null,
+      pedError:typeof pedestrian!=='undefined'&&pedestrian?pedestrian.error:null,
       graphRoot:typeof pedestrian!=='undefined'&&pedestrian?pedestrian.root:null
     })).catch(e=>({error:e.message}))));
   console.log('P9_BROWSER_ROUTE_DIAGNOSTIC',JSON.stringify({
