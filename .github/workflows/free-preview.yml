@@ -10,6 +10,7 @@ on:
       - .github/workflows/free-preview.yml
       - scripts/build_static_scan.py
       - static/static-bus.js
+      - tests/test_static_bus.cjs
       - static/app.js
       - static/service-worker.js
       - catalog/scan/index.json
@@ -32,7 +33,7 @@ jobs:
           node --check static/service-worker.js
           node --check static/app.js
           node --check static/static-bus.js
-          node --test tests/test_static_worker.cjs
+          node --test tests/test_static_worker.cjs tests/test_static_bus.cjs
       - name: Empacotar preview puramente estático
         run: |
           python scripts/build_static_site.py
