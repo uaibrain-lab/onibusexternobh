@@ -20,6 +20,17 @@ Execute `node scripts/check_p18_public_site.mjs` no Windows antes de
 considerar a publicação validada; a análise visual mobile continua pendente.
 O GPS padrão no repositório permanece desativado e o Hub não foi alterado.
 
+**P21 — 17/11/2026:** modo de linha temporário com retorno ao mapa e
+ponto anteriores; paradas restritas ao percurso selecionado; seletor de
+ponto com horários GTFS; busca explícita por endereço/estabelecimento
+via Photon/OSM, com fallback local; planejador agora considera mais
+pontos de acesso, caminhadas entre paradas e itinerários distintos.
+O usuário identificou diferença em relação ao Moovit
+(9209+5106 36 min versus resultados GTFS mais lentos); tempos exatos
+ainda não homologados com as mesmas coordenadas e calendário.
+Consulte [P21](docs/P21-LINHAS-LOCAIS-ROTEAMENTO.md).
+**Não publicado no Pages; PR draft, Hub intacto.**
+
 ## P17 — Site de homologação GPS oficial SUMOB, sem custos obrigatórios
 
 O GPS GTFS Realtime SUMOB foi validado no Worker gratuito com HTTP 200,
