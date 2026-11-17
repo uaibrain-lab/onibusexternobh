@@ -202,26 +202,41 @@ class JourneyPlanner:
                 'departure':self._iso(depart),'arrival':self._iso(arrive),
                 'prediction':'GTFS scheduled'}
 
+    @functools.lru_cache(maxsize=20000)
+    def _transfer_neighbors(self,stop_id):
+        stop=self.stops.get(stop_id)
+        if not stop:
+            return ()
+        return tuple((meters,sid) for meters,sid in
+                     self.nearby(float(stop[1]),float(stop[2]),radius=165,limit=9)
+                     if sid!=stop_id and meters>=2)
+
+    @staticmethod
+    def _dominated_scalar(labels,stop,time,walked,rides,backward):
+        for old in labels.get(stop,()):
+            if ((old.time>=time if backward else old.time<=time) and
+                old.walked<=walked+0.01 and old.rides<=rides):
+                return True
+        return False
+
     def _transfer(self,labels,backward,history,stats):
         # Transfer only between very nearby stop coordinates; not a street route.
         seed=[x for values in labels.values() for x in values]
         # Avoid explosive footpath expansion in busy terminals.
         for old in seed[:18000]:
-            stop=self.stops.get(old.stop)
-            if not stop:
-                continue
-            for meters,sid in self.nearby(float(stop[1]),float(stop[2]),radius=165,limit=9):
-                if sid==old.stop or meters<2:
-                    continue
+            for meters,sid in self._transfer_neighbors(old.stop):
                 seconds=self._walk_time(meters)+TRANSFER_BUFFER_SECONDS
                 t=old.time-seconds if backward else old.time+seconds
+                walked=old.walked+meters*WALK_FACTOR
+                if self._dominated_scalar(history,sid,t,walked,old.rides,backward):
+                    continue
+                if self._dominated_scalar(labels,sid,t,walked,old.rides,backward):
+                    continue
                 edge=(self._edge_walk(sid,old.stop,meters,t,old.time) if backward
                       else self._edge_walk(old.stop,sid,meters,old.time,t))
-                node=Label(sid,t,old.walked+meters*WALK_FACTOR,old.rides,old,edge)
-                if not any(self._dominates(other,node,backward)
-                           for other in history.get(sid,())):
-                    if self._insert(labels,node,backward,stats):
-                        self._insert_global(history,node,backward,stats)
+                node=Label(sid,t,walked,old.rides,old,edge)
+                if self._insert(labels,node,backward,stats):
+                    self._insert_global(history,node,backward,stats)
 
     def _scan_round(self,prior,search_ts,backward,stats,history):
         next_labels={}
@@ -272,17 +287,21 @@ class JourneyPlanner:
                                 continue
                             if not backward and epoch>search_ts+HORIZON_SECONDS:
                                 continue
+                            walked=earlier.walked
+                            rides=earlier.rides+1
+                            if self._dominated_scalar(history,sid,epoch,walked,rides,backward):
+                                continue
+                            if self._dominated_scalar(next_labels,sid,epoch,walked,rides,backward):
+                                continue
                             if backward:
                                 edge=self._edge_bus(code,trip_id,headsign,sid,board_sid,
                                                     midnight+dep,board_epoch)
                             else:
                                 edge=self._edge_bus(code,trip_id,headsign,board_sid,sid,
                                                     board_epoch,midnight+arr)
-                            node=Label(sid,epoch,earlier.walked,earlier.rides+1,earlier,edge)
-                            if not any(self._dominates(old,node,backward)
-                                       for old in history.get(sid,())):
-                                if self._insert(next_labels,node,backward,stats):
-                                    self._insert_global(history,node,backward,stats)
+                            node=Label(sid,epoch,walked,rides,earlier,edge)
+                            if self._insert(next_labels,node,backward,stats):
+                                self._insert_global(history,node,backward,stats)
                         # Add board possibilities after dropping at this stop.
                         # A trip cannot be entered where boarding is forbidden.
                         # In backward search, the reachable stop is an ALIGHTING stop.
