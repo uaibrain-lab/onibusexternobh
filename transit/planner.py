@@ -348,11 +348,9 @@ class JourneyPlanner:
                             break  # stop times monotonic in scan direction
                         if (pickup if backward else dropoff)==0:
                             choices=(best_walk,best_late) if backward else (best_walk,)
-                            for selected in choices:
-                                if selected is None or (selected is best_late and
-                                                        selected is best_walk):
-                                    if selected is None or selected is best_late:
-                                        continue
+                            for ordinal,selected in enumerate(choices):
+                                if selected is None or (ordinal==1 and selected is best_walk):
+                                    continue
                                 earlier,board_sid,board_epoch=selected
                                 if sid==board_sid:
                                     continue
