@@ -8,6 +8,11 @@
  * Metro is deliberately displayed as a non-timed suggestion only.
  */
 'use strict';
+// Optional real OSM foot routing, loaded only by browsers supporting importScripts.
+// The original timetable engine remains usable if the graph has not been built.
+try{if(typeof importScripts==='function')importScripts('./pedestrian.js')}
+catch(e){console.warn('Grafo pedestre não instalado',e)}
+let pedestrian=null;
 const HOUR=3600000, MIN=60000, DAY=86400000, MAX_HOURS=5;
 const TRIP_MASK=(1<<20)-1,BOARD=1<<20,ALIGHT=1<<21;
 const BUFFER=45000,WALK_SPEED=1.15,WALK_FACTOR=1.35,MAX_RIDES=3;
@@ -77,6 +82,8 @@ async function bootstrap(base) {
   if(s.length!==m.stopCount||t.length!==m.tripCount)
     throw Error('Índice GTFS incompleto ou com versões divergentes');
   meta=m;stops=s;trips=t;
+  pedestrian=typeof self.__PedestrianNetwork==='function'
+    ?new self.__PedestrianNetwork(new URL('../pedestrian/',root).href):null;
   grid=new Map();
   for(let i=0;i<stops.length;i++){
     const key=cell(stops[i][2],stops[i][3]);
@@ -328,7 +335,75 @@ function ranked(ctx,preference) {
       return a.walkMetersApprox-b.walkMetersApprox||fastest(a,b)||a.transfers-b.transfers;
     return fastest(a,b)||a.walkMetersApprox-b.walkMetersApprox||a.transfers-b.transfers;
   });
-  return options.slice(0,6);
+  return options.slice(0,40);
+}
+async function verifyPedestrianItinerary(option,ctx){
+  if(!pedestrian||!await pedestrian.init())return null;
+  const legs=option.legs,real=JSON.parse(JSON.stringify(option));
+  const list=real.legs;
+  let total=0,allVerified=true,anyUncertain=false;
+  function coords(ref){
+    if(ref==='origin')return ctx.origin;
+    if(ref==='destination')return ctx.destination;
+    const s=stops[ref];
+    return s?[s[2],s[3]]:null;
+  }
+  for(let i=0;i<list.length;i++){
+    const leg=list[i];
+    if(leg.mode!=='walk')continue;
+    const a=coords(leg.from),b=coords(leg.to);
+    if(!a||!b)return null;
+    const geometry=await pedestrian.route(a,b,{maxMeters:2700,maxVisited:21000});
+    if(!geometry||!geometry.graphConnected)return null;
+    leg.geometry=geometry.geometry;
+    leg.metersApprox=geometry.meters;
+    leg.pathVerified=geometry.pathVerified;
+    leg.walkSource=geometry.source;
+    leg.endpointSnapMeters=geometry.endpointSnapMeters;
+    total+=geometry.meters;
+    if(!geometry.pathVerified){allVerified=false;anyUncertain=true}
+    const dur=geometry.seconds*1000;
+    const prev=list[i-1],next=list[i+1];
+    // The departure is the physically earliest available moment;
+    // preserving scheduled bus boarding and its required buffer.
+    let start;
+    if(prev){start=Date.parse(prev.arrival)}
+    else if(ctx.backward&&next?.mode==='bus'){
+      start=Date.parse(next.departure)-BUFFER-dur;
+    }else start=ctx.requested;
+    const finish=start+dur;
+    if(next?.mode==='bus'&&finish+BUFFER>Date.parse(next.departure))return null;
+    if(i===0&&!ctx.backward&&start<ctx.requested)return null;
+    leg.departure=stamp(start);leg.arrival=stamp(finish);
+  }
+  const begin=Date.parse(list[0].departure),end=Date.parse(list.at(-1).arrival);
+  if(end>ctx.hi||begin<ctx.lo||!(end>begin))return null;
+  real.walkMetersApprox=Math.round(total);
+  real.durationMinutes=Math.round((end-begin)/MIN);
+  real.departure=stamp(begin);real.arrival=stamp(end);
+  real.confidence=allVerified?'GTFS_scheduled_and_OSM_footpaths':
+                             'GTFS_scheduled_OSM_graph_with_uncertain_access';
+  real.pedestrianRouting='osm_real_graph';
+  return real;
+}
+async function verifyPedestrianOptions(options,ctx,preference){
+  if(!pedestrian||!await pedestrian.init())return {options:options.slice(0,6),verified:false};
+  const pool=[];
+  for(const option of options.slice(0,24)){
+    const real=await verifyPedestrianItinerary(option,ctx);
+    if(real)pool.push(real);
+    if(pool.length>=12)break;
+  }
+  // Re-rank after correct street distances change travel times/walk metrics.
+  const order=(a,b)=>ctx.backward?
+    Date.parse(b.departure)-Date.parse(a.departure):
+    Date.parse(a.arrival)-Date.parse(b.arrival);
+  pool.sort((a,b)=>preference==='leastWalking'
+    ?a.walkMetersApprox-b.walkMetersApprox||order(a,b)
+    :preference==='leastTransfers'
+      ?a.transfers-b.transfers||order(a,b)
+      :order(a,b)||a.walkMetersApprox-b.walkMetersApprox);
+  return {options:pool.slice(0,6),verified:true};
 }
 async function metroHints(origin,destination,at){
   try{
@@ -459,18 +534,22 @@ async function plan(params,seq) {
     self.postMessage({kind:'progress',seq,done:i+1,total:hours.length,
       found:ctx.finals.length,scanned:ctx.scanned});
   }
-  const itineraries=ranked(ctx,preference);
+  const rankedOptions=ranked(ctx,preference);
+  const pedestrianCheck=await verifyPedestrianOptions(rankedOptions,ctx,preference);
+  const itineraries=pedestrianCheck.options;
   const hints=await metroHints(origin,destination,requested);
   return {
     status:ctx.partial?'partial':'ok',mode,preference,
     requestedAt:stamp(requested),itineraries,metroHints:hints,
     stats:{connectionsScanned:ctx.scanned,hoursScanned:hours.length,
-      truncatedLabels:ctx.partial},
-    pedestrianRouting:'approximate',
+      truncatedLabels:ctx.partial,pedestrianGraph:pedestrianCheck.verified},
+    pedestrianRouting:pedestrianCheck.verified?'osm_real_graph':'approximate',
     dataSource:'static_gtfs_browser_worker',
     notes:[
       'Horários de ônibus programados no GTFS, não previsões GPS.',
-      'Caminhadas estimadas em linha reta com fator conservador; rede de ruas não verificada.',
+      pedestrianCheck.verified?
+        'Caminhadas calculadas por conectividade real de vias OSM; o acesso entre o local escolhido e o nó mais próximo pode não estar mapeado.':
+        'Caminhadas estimadas em linha reta com fator conservador; rede de ruas não verificada.',
       'Busca limitada a 5 h e no máximo 2 baldeações; resultado parcial quando houver poda.',
       'Metrô apenas informativo até termos grade verificável de partidas.'
     ]
