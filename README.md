@@ -1,3 +1,13 @@
+# Externo — Hub UFMG · P5 (planejador de viagens, protótipo)
+
+**P5 em desenvolvimento; sem deploy.** Nova aba **Rotas**, com origem/destino por mapa, GPS ou endereço, horários de partida/chegada, comparação de itinerários reais do GTFS e transferências. Possibilidades com metrô são apenas indicativas até existir programação metroviária verificável.
+
+**Gerar o índice de viagens**: executar o workflow de `build-routing.yml` ou `py -3 scripts\\build_routing.py GTFSBHTRANS.zip catalog`. O protótipo não calcula ônibus se `catalog/routing-index.json` estiver ausente; não inventa rotas a partir de horários agregados.
+
+**Precisão**: partidas dos ônibus conforme tabelas GTFS, não ETA GPS; caminhada por distância aproximada, não pela rede de pedestres. Não está homologado como Moovit. [Documentação P5](docs/PLANEJADOR-P5.md).
+
+---
+
 # Externo — Hub UFMG · P4 (metrô integrado)
 
 **Branch de desenvolvimento, sem deploy de produção (17/11/2026).** A P4 acrescenta a aba **Metrô** à P3 e mantém as funcionalidades de ônibus existentes. O código desta branch **não altera** a `main` nem o Hub publicado.
