@@ -21,6 +21,8 @@ import tempfile
 import zipfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+sys.path.insert(0,str(ROOT))
+from transit.binary_trips import MAGIC, encode_trip
 
 
 def seconds(s):
@@ -52,6 +54,11 @@ def build(archive, output=None):
                       r.get('stop_lat') and r.get('stop_lon')}
         (output/'routing-stops.json').write_text(
             json.dumps(gtfs_stops,ensure_ascii=False,separators=(',',':')),encoding='utf-8')
+        sorted_stop_ids=sorted(gtfs_stops)
+        if len(sorted_stop_ids)>65535:
+            raise ValueError('GTFS excede o índice de paradas UBR3')
+        stop_indices={sid:i for i,sid in enumerate(sorted_stop_ids)}
+        stop_ids_hash=hashlib.sha256('\n'.join(sorted_stop_ids).encode('utf-8')).hexdigest()
         route_codes = {r['route_id']: r['route_short_name'].strip()
                        for r in read('routes.txt') if r.get('route_short_name')}
         services = {r['service_id']: {k: r[k] for k in ('monday','tuesday','wednesday',
@@ -123,6 +130,7 @@ def build(archive, output=None):
                        ensure_ascii=False,separators=(',',':')),encoding='utf-8')
 
         files = {}
+        binary_files = {}
         trip_count = 0
         outdir = output / 'routing'
         outdir.mkdir(parents=True, exist_ok=True)
@@ -130,8 +138,12 @@ def build(archive, output=None):
         for code in route_list:
             filename = hashlib.sha256(code.encode('utf-8')).hexdigest()[:16] + '.jsonl.gz'
             dest = outdir / filename
+            binary_filename=filename.replace('.jsonl.gz','.ubr3.gz')
+            binary_dest=outdir/binary_filename
             count = 0
-            with gzip.open(dest, 'wt', encoding='utf-8', compresslevel=6) as out:
+            with gzip.open(dest, 'wt', encoding='utf-8', compresslevel=6) as out, \
+                    gzip.open(binary_dest,'wb',compresslevel=6) as packed:
+                packed.write(MAGIC)
                 query = '''SELECT t.id, t.service, t.destination,
                                   s.stop, s.arrive, s.depart, s.pickup, s.dropoff
                            FROM trips t JOIN times s ON s.trip=t.id
@@ -146,6 +158,7 @@ def build(archive, output=None):
                     if not invalid_trip and len(stops) >= 2:
                         out.write(json.dumps([meta[0], meta[1], meta[2], stops],
                                              ensure_ascii=False,separators=(',',':'))+'\n')
+                        packed.write(encode_trip(meta[0],meta[1],meta[2],stops,stop_indices))
                         count += 1
                 for trip_id, service, headsign, stop, arr, dep, pickup, dropoff in db.execute(query,(code,)):
                     if trip_id != previous_id:
@@ -165,20 +178,23 @@ def build(archive, output=None):
                     write_trip()
             if count:
                 files[code] = 'routing/' + filename
+                binary_files[code] = 'routing/' + binary_filename
                 trip_count += count
             else:
                 dest.unlink()
+                binary_dest.unlink()
 
         if not services and not exceptions:
             raise ValueError('GTFS sem calendário: planejamento de datas não é seguro')
         dates = [s['start_date'] for s in services.values()] + list(exceptions.keys())
         ends = [s['end_date'] for s in services.values()] + list(exceptions.keys())
         index = {
-            'schema':2, 'builtUTC':dt.datetime.now(dt.timezone.utc).isoformat(),
+            'schema':3, 'builtUTC':dt.datetime.now(dt.timezone.utc).isoformat(),
             'source':'https://s3.amazonaws.com/mobilibus-uploads/gtfs/GTFSBHTRANS.zip',
             'timezone':'America/Sao_Paulo', 'validFrom':min(dates) if dates else None,
             'validThrough':max(ends) if ends else None,
             'services':services, 'exceptions':exceptions, 'files':files,
+            'binaryFiles':binary_files,'stopIdsHash':stop_ids_hash,
             'tripCount':trip_count, 'stopTimeRows':total_rows,
             'maxServiceSeconds':max_service_seconds,
             'stops':len(gtfs_stops), 'stopRouteMappings':len(stop_routes),
