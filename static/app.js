@@ -204,10 +204,19 @@ function reportError(e){console.error(e);statusLed(false,'Erro ao consultar dado
 async function refresh(){if(document.hidden)return;if(!state.route)return;const code=state.route.code;let [fleet,status]=await Promise.all([api('/api/fleet?route='+encodeURIComponent(code)),api('/api/status')]);if(state.route?.code!==fleet.line)return;state.fleet=fleet;updateStatus(status);renderVehicles();drawSoon()}
 // Interface compartilhada com o padrão visual do Hub UFMG / Interno.
 let activeTab='pontos';
-function syncSheetAccessibility(){const hidden=innerWidth<760&&$('sheet').classList.contains('peek');$('body').inert=hidden;$('body').setAttribute('aria-hidden',String(hidden))}
+function syncSheetAccessibility(){
+  const sheet=$('sheet');
+  const detail=activeTab==='pontos' && Boolean(state.selectedStop) && !$('stopDetail').hidden;
+  sheet.classList.toggle('detail',detail);
+  const hidden=window.innerWidth<760&&sheet.classList.contains('peek');
+  $('body').inert=hidden;
+  $('body').setAttribute('aria-hidden',String(hidden));
+  const label=sheet.classList.contains('peek')?'Expandir painel':sheet.classList.contains('full')?'Recolher painel':'Expandir detalhes';
+  for(const id of ['grab','sheet-toggle'])$(id).setAttribute('aria-label',label);
+}
 function openSheet(full=false){const sheet=$('sheet');sheet.classList.remove('peek');sheet.classList.toggle('full',!!full);$('sheet-toggle').setAttribute('aria-expanded','true');$('grab').setAttribute('aria-expanded','true');syncSheetAccessibility()}
 function closeSheet(){if($('body').contains(document.activeElement))$('sheet-toggle').focus();const sheet=$('sheet');sheet.classList.add('peek');sheet.classList.remove('full');$('sheet-toggle').setAttribute('aria-expanded','false');$('grab').setAttribute('aria-expanded','false');syncSheetAccessibility()}
-function switchTab(tab,open=false){activeTab=tab;const pts=tab==='pontos';$('pontosPane').hidden=!pts;$('linhasPane').hidden=pts;$('quick-pontos').classList.toggle('on',pts);$('quick-linhas').classList.toggle('on',!pts);$('quick-pontos').setAttribute('aria-pressed',String(pts));$('quick-linhas').setAttribute('aria-pressed',String(!pts));if(open)openSheet()}
+function switchTab(tab,open=false){activeTab=tab;const pts=tab==='pontos';$('pontosPane').hidden=!pts;$('linhasPane').hidden=pts;$('quick-pontos').classList.toggle('on',pts);$('quick-linhas').classList.toggle('on',!pts);$('quick-pontos').setAttribute('aria-pressed',String(pts));$('quick-linhas').setAttribute('aria-pressed',String(!pts));if(open)openSheet();else syncSheetAccessibility()}
 function renderStops(){const el=$('stopList');el.textContent='';const stops=state.geometry?.selected?.stops||[];$('pontosHelp').textContent=stops.length?`${stops.length} paradas no trajeto`:'Selecione uma linha para ver suas paradas.';if(!stops.length){const b=document.createElement('button');b.type='button';b.className='row-item';b.textContent='Escolher linha e percurso';b.onclick=()=>switchTab('linhas',true);el.append(b);return}for(let [i,s] of stops.entries()){const b=document.createElement('button');b.type='button';b.className='row-item';b.dataset.stopId=s.id;const num=document.createElement('span');num.className='num';num.textContent=String(i+1);const text=document.createElement('span');text.className='name';const name=document.createElement('b');name.textContent=s.name;const meta=document.createElement('small');meta.textContent='Ponto '+(i+1)+' · toque para localizar';text.append(name,meta);b.append(num,text);b.onclick=()=>focusStop(s);el.append(b)}}
 function focusStop(stop){state.selectedStop=String(stop.id);updatePointLink(state.selectedStop);state.stopCoordinates=[Number(stop.lat),Number(stop.lng)];state.selectedVehicle="";state.center=[Number(stop.lat),Number(stop.lng)];state.zoom=Math.max(state.zoom,16);switchTab('pontos',true);centerStopInAvailableMap();$('body').scrollTo({top:0,behavior:'smooth'});for(let node of $('stopList').querySelectorAll('[data-stop-id]'))node.classList.toggle('selected',node.dataset.stopId===String(stop.id));drawSoon();scheduleMapStops();openStopDetail(state.selectedStop).catch(reportError)}
 function renderAllLines(query){const el=$('allLineList');el.textContent='';let arr=state.routes||[];const q=String(query||'').trim().toLocaleLowerCase('pt-BR');if(q)arr=arr.filter(x=>(x.code+' '+x.name).toLocaleLowerCase('pt-BR').includes(q));let limited=q?arr.slice(0,80):[];for(let r of limited){const wrap=document.createElement('div');wrap.className='fav-row';const b=document.createElement('button');b.type='button';b.className='row-item';const n=document.createElement('span');n.className='num';n.textContent=r.code;const t=document.createElement('span');t.className='name';const title=document.createElement('b');title.textContent=r.name||'Sem descrição';t.append(title);b.append(n,t);b.onclick=()=>selectLine(r.code).then(()=>{openSheet();$('body').scrollTo({top:0,behavior:'smooth'})}).catch(reportError);wrap.append(b,starButton('routes',r.code));el.append(wrap)}if(q&&arr.length>limited.length){const msg=document.createElement('p');msg.className='muted info-small';msg.textContent='Refine a busca para ver mais linhas.';el.append(msg)}}
@@ -259,9 +268,36 @@ $('loc').onclick=askLocation;$('allowLocation').onclick=askLocation;$('skipLocat
 function hideLocationPrompt(){$('locationPrompt').hidden=true;try{sessionStorage.setItem('bh-externo-location-intro-seen','yes')}catch(e){}}
 try{if(sessionStorage.getItem('bh-externo-location-intro-seen')==='yes')hideLocationPrompt()}catch(e){}
 
-// Quando incorporado pelo Hub (mesma origem), o tema acompanha o contêiner.
-try{if(window.parent!==window){const theme=window.parent.document.documentElement.dataset.theme;if(theme==='dark'||theme==='light')document.documentElement.dataset.theme=theme}}catch(e){}
-window.addEventListener('message',e=>{if(e.origin!==location.origin)return;if(e.data?.type==='hub-theme'&&['dark','light'].includes(e.data.theme))document.documentElement.dataset.theme=e.data.theme});
+// Tema e contrato de embed: o Hub atual segue prefers-color-scheme; iframe
+// same-origin pode ler o tema inicial do pai sem exigir mudanças no ru-hoje.
+function applyHubTheme(theme){
+  if(theme!=='dark'&&theme!=='light')return;
+  const root=document.documentElement;
+  if(root.dataset.theme!==theme)root.dataset.theme=theme;
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content',theme==='dark'?'#14181f':'#ffffff');
+  drawSoon();
+}
+function inheritHubTheme(){
+  let theme=window.matchMedia?.('(prefers-color-scheme: dark)')?.matches?'dark':'light';
+  try{
+    if(window.parent!==window && window.parent.location.origin===location.origin){
+      const parentTheme=window.parent.document.documentElement.dataset.theme;
+      if(parentTheme==='dark'||parentTheme==='light')theme=parentTheme;
+    }
+  }catch(e){/* acesso ao pai de outra origem não é necessário */}
+  applyHubTheme(theme);
+}
+inheritHubTheme();
+const hubColorScheme=window.matchMedia?.('(prefers-color-scheme: dark)');
+if(hubColorScheme){
+  if(hubColorScheme.addEventListener)hubColorScheme.addEventListener('change',inheritHubTheme);
+  else hubColorScheme.addListener?.(inheritHubTheme);
+}
+// Mensagem opcional para uma futura integração; nunca aceitar outros frames.
+window.addEventListener('message',e=>{
+  if(window.parent===window || e.source!==window.parent || e.origin!==location.origin)return;
+  if(e.data?.type==='hub-theme')applyHubTheme(e.data.theme);
+});
 
 // P3: ponto-first map, location-aware suggestions, favorites and scheduled arrivals.
 const FAVORITES_KEY='hubufmg-externo-favorites-v1';
@@ -382,6 +418,7 @@ function closeStopDetail(){
   $('stopDetail').hidden=true;
   $('stopDetail').replaceChildren();
   $('pontosPane').classList.remove('has-open-stop');
+  syncSheetAccessibility();
   renderFavoriteStops();
   drawSoon();
 }
@@ -484,6 +521,8 @@ function initStopDetail(area,data){
 async function openStopDetail(id,silent=false){
   const seq=++stopDetailSeq,area=$('stopDetail');
   area.hidden=false;$('pontosPane').classList.add('has-open-stop');
+  syncSheetAccessibility();
+  if(!silent)requestAnimationFrame(()=>{if(state.selectedStop===String(id)){centerStopInAvailableMap();drawSoon()}});
   if(!silent){area.replaceChildren();const message=document.createElement('p');
     message.className='muted-empty';message.textContent='Consultando chegadas…';area.append(message)}
   let data;
@@ -528,7 +567,12 @@ async function openStopDetail(id,silent=false){
 }
 
 switchTab('pontos');renderStops();syncSheetAccessibility();
-window.addEventListener('resize',()=>{resize();syncSheetAccessibility()});
+window.addEventListener('resize',()=>{
+  resize();syncSheetAccessibility();
+  if(state.selectedStop&&activeTab==='pontos'){
+    requestAnimationFrame(()=>{centerStopInAvailableMap();drawSoon()});
+  }
+});
 document.addEventListener('keydown',event=>{if(event.key!=='Escape'||document.querySelector('dialog[open]'))return;if(state.selectedStop&&activeTab==='pontos')closeStopDetail();else if(innerWidth<760)closeSheet()});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden){drawSoon();scheduleMapStops();if(navigator.onLine)refresh().catch(reportError)}});
 resize();loadRoutes().catch(reportError);setInterval(()=>{if(document.hidden)return;tickVehicleAges();if(state.fleet?.vehicles?.length)drawSoon()},15000);setInterval(()=>{if(navigator.onLine)refresh().catch(reportError)},35000);setInterval(()=>{if(navigator.onLine&&!document.hidden&&state.selectedStop)openStopDetail(state.selectedStop,true).catch(reportError)},35000);
