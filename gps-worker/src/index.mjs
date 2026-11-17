@@ -12,6 +12,7 @@ const ORIGINS=new Set(['https://hubufmg.web.app','https://hubufmg.firebaseapp.co
 // Endpoint is fixed: callers cannot supply their own URL.
 const REALTIME_URL='http://realtime4.mobilibus.com/web/4ch6j/vehicle-positions?accesskey=982a57efd77a9462bf1665696fb25984';
 const RT_MAX_BODY=8*1024*1024;
+const API_VERSION='p16-gtfs-rt-20261117-1';
 const MAX_BODY=12*1024*1024;
 const MAX_RESPONSE_ROWS=1500;
 const MIN_CACHE_SECONDS=25;
@@ -135,6 +136,12 @@ export async function handleGpsRequest(request,{fetchFn=fetch,cache=globalThis.c
   }
   if(request.method!=='GET')return reply({available:false,error:'METHOD_NOT_ALLOWED'},405,origin);
   const url=new URL(request.url);
+  // Probe requires no upstream request; distinguishes stale Worker deployments
+  // from malformed GPS parameters or errors returned by the official feed.
+  if(url.pathname==='/api/gps/capabilities')
+    return reply({service:'Externo BH GPS',apiVersion:API_VERSION,
+      supportedSources:['CONVENCIONAL','SUPLEMENTAR','GTFS_RT'],
+      dataSourceVerified:false},200,origin);
   if(url.pathname!=='/api/gps')return reply({available:false,error:'NOT_FOUND'},404,origin);
   const source=url.searchParams.get('source');
   const rt=source==='GTFS_RT';
