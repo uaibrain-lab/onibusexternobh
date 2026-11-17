@@ -33,6 +33,18 @@ function feed(vehicles){
 }
 const req=path=>new Request('https://externo-bh-gps-free.hubufmg.workers.dev'+path,
  {headers:{Origin:'https://hubufmg.web.app'}});
+test('capability probe exposes Worker revision and GTFS-RT support without contacting PBH',async()=>{
+  const {handleGpsRequest}=await worker;
+  let calls=0;
+  const res=await handleGpsRequest(req('/api/gps/capabilities'),{
+    cache:null,now:NOW,fetchFn:async()=>{calls++;throw Error('unexpected upstream')}
+  });
+  assert.equal(res.status,200);
+  const data=await res.json();
+  assert.equal(data.apiVersion,'p16-gtfs-rt-20261117-1');
+  assert.ok(data.supportedSources.includes('GTFS_RT'));
+  assert.equal(calls,0);
+});
 test('GTFS-RT wire parser accepts official VehiclePosition shape and keeps only fresh matching route',async()=>{
   const {parseVehiclePositions}=await reader;
   const raw=feed([
