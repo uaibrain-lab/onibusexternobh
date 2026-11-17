@@ -7,7 +7,12 @@ const FEEDS=Object.freeze({
   CONVENCIONAL:'https://temporeal.pbh.gov.br/?param=D',
   SUPLEMENTAR:'https://temporeal.pbh.gov.br/?param=SD'
 });
-const ORIGINS=new Set(['https://hubufmg.web.app','https://hubufmg.firebaseapp.com']);
+const ORIGINS=new Set([
+  'https://hubufmg.web.app',
+  'https://hubufmg.firebaseapp.com',
+  // Isolated Pages Free project for GPS homologation; never a wildcard.
+  'https://externo-bh-hml-uaibrain.pages.dev'
+]);
 // Alternative official SUMOB GTFS-RT feed, publicly catalogued under CC BY 4.0.
 // Endpoint is fixed: callers cannot supply their own URL.
 const REALTIME_URL='http://realtime4.mobilibus.com/web/4ch6j/vehicle-positions?accesskey=982a57efd77a9462bf1665696fb25984';
