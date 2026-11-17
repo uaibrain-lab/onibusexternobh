@@ -2,7 +2,8 @@
 const $=id=>document.getElementById(id);
 const state={routes:[],route:null,geometry:null,fleet:null,pattern:'',selectedVehicle:'',
   center:[-19.8695,-43.9675],zoom:15,markers:[],stopMarkers:[],mapStops:[],selectedStop:null,nearby:[],userPosition:null,tiles:new Map(),frame:0,drag:null,
-  metro:null,metroMarkers:[],metroVisible:false,metroLine:'',selectedMetroStation:''};
+  metro:null,metroMarkers:[],metroVisible:false,metroLine:'',selectedMetroStation:'',
+  routeOrigin:null,routeDestination:null,routePick:null,routeResults:[],routeSelected:0};
 const $canvas=$('mapCanvas'),ctx=$canvas.getContext('2d');
 const MAX_Z=18,MIN_Z=10;
 function mercator(lat,lng,z){const size=256*2**z;let y=Math.max(-85.0511,Math.min(85.0511,lat));return [(lng+180)/360*size,(1-Math.asinh(Math.tan(y*Math.PI/180))/Math.PI)/2*size]}
@@ -12,11 +13,14 @@ function resize(){let dpr=Math.min(window.devicePixelRatio||1,2);$canvas.width=M
 function drawSoon(){if(!state.frame)state.frame=requestAnimationFrame(()=>{state.frame=0;draw()})}
 function getTile(z,x,y){let n=2**z;if(y<0||y>=n)return null;let key=`${z}/${((x%n)+n)%n}/${y}`;let ent=state.tiles.get(key);if(!ent){let img=new Image();ent={img,ready:false,error:false};state.tiles.set(key,ent);img.onload=()=>{ent.ready=true;drawSoon()};img.onerror=()=>{ent.error=true;drawSoon()};img.src=`https://tile.openstreetmap.org/${z}/${((x%n)+n)%n}/${y}.png`;}if(state.tiles.size>180){for(const k of state.tiles.keys()){if(state.tiles.size<=160)break;state.tiles.delete(k)}}return ent}
 function drawTiles(w,h){let z=Math.floor(state.zoom),scale=2**(state.zoom-z),[cx,cy]=mercator(...state.center,z),tx=cx-w/2/scale,ty=cy-h/2/scale;ctx.fillStyle='#d9e4e4';ctx.fillRect(0,0,w,h);let minx=Math.floor(tx/256)-1,maxx=Math.ceil((tx+w/scale)/256)+1,miny=Math.floor(ty/256)-1,maxy=Math.ceil((ty+h/scale)/256)+1;for(let y=miny;y<=maxy;y++)for(let x=minx;x<=maxx;x++){let px=(x*256-tx)*scale,py=(y*256-ty)*scale,tile=getTile(z,x,y);if(tile&&tile.ready){ctx.drawImage(tile.img,px,py,256*scale+.5,256*scale+.5)}else{ctx.fillStyle=((x+y)&1)?'#e8eeea':'#dfe9e6';ctx.fillRect(px,py,256*scale+.5,256*scale+.5);ctx.strokeStyle='#cddad7';ctx.strokeRect(px,py,256*scale,256*scale)}}}
-function draw(){const w=$canvas.clientWidth,h=$canvas.clientHeight;if(!w||!h)return;ctx.clearRect(0,0,w,h);drawTiles(w,h);state.stopMarkers=[];for(const s of state.mapStops){let [x,y]=screen(s.lat,s.lng);if(x<-20||y<-20||x>w+20||y>h+20)continue;const selected=state.selectedStop===s.id;ctx.beginPath();ctx.arc(x,y,selected?8:state.zoom>=15?5:3,0,Math.PI*2);ctx.fillStyle=selected?'#f79009':'#fff';ctx.fill();ctx.lineWidth=selected?3:2;ctx.strokeStyle=selected?'#8d5904':'#344054';ctx.stroke();state.stopMarkers.push({x,y,stop:s})}if(state.geometry?.selected){let selected=state.geometry.selected,coords=selected.coordinates;if(coords.length){ctx.beginPath();coords.forEach(([lat,lng],i)=>{let [x,y]=screen(lat,lng);if(!i)ctx.moveTo(x,y);else ctx.lineTo(x,y)});ctx.strokeStyle='#0c6e6b';ctx.lineWidth=7;ctx.globalAlpha=.25;ctx.stroke();ctx.lineWidth=3;ctx.strokeStyle='#007f75';ctx.globalAlpha=.9;ctx.stroke();ctx.globalAlpha=1;}for(let s of selected.stops){let [x,y]=screen(s.lat,s.lng);if(x<-10||y<-10||x>w+10||y>h+10)continue;ctx.beginPath();ctx.arc(x,y,state.zoom>=14?3:2,0,Math.PI*2);ctx.fillStyle='#fefefe';ctx.fill();ctx.strokeStyle='#168f83';ctx.lineWidth=1.4;ctx.stroke();state.stopMarkers.push({x,y,stop:s})}}
+function draw(){const w=$canvas.clientWidth,h=$canvas.clientHeight;if(!w||!h)return;ctx.clearRect(0,0,w,h);drawTiles(w,h);state.stopMarkers=[];for(const s of state.mapStops){let [x,y]=screen(s.lat,s.lng);if(x<-20||y<-20||x>w+20||y>h+20)continue;const selected=state.selectedStop===s.id;ctx.beginPath();ctx.arc(x,y,selected?8:state.zoom>=15?5:3,0,Math.PI*2);ctx.fillStyle=selected?'#f79009':'#fff';ctx.fill();ctx.lineWidth=selected?3:2;ctx.strokeStyle=selected?'#8d5904':'#344054';ctx.stroke();state.stopMarkers.push({x,y,stop:s})}if(state.geometry?.selected&&activeTab!=='rotas'){let selected=state.geometry.selected,coords=selected.coordinates;if(coords.length){ctx.beginPath();coords.forEach(([lat,lng],i)=>{let [x,y]=screen(lat,lng);if(!i)ctx.moveTo(x,y);else ctx.lineTo(x,y)});ctx.strokeStyle='#0c6e6b';ctx.lineWidth=7;ctx.globalAlpha=.25;ctx.stroke();ctx.lineWidth=3;ctx.strokeStyle='#007f75';ctx.globalAlpha=.9;ctx.stroke();ctx.globalAlpha=1;}for(let s of selected.stops){let [x,y]=screen(s.lat,s.lng);if(x<-10||y<-10||x>w+10||y>h+10)continue;ctx.beginPath();ctx.arc(x,y,state.zoom>=14?3:2,0,Math.PI*2);ctx.fillStyle='#fefefe';ctx.fill();ctx.strokeStyle='#168f83';ctx.lineWidth=1.4;ctx.stroke();state.stopMarkers.push({x,y,stop:s})}}
   drawMetroLayer();
+  drawRouteLayer();
   state.markers=[];let vehicles=state.fleet?.vehicles||[];for(let v of vehicles){let [x,y]=screen(v.latitude,v.longitude);if(x<-25||y<-25||x>w+25||y>h+25)continue;let changedAge=diffSeconds(v.positionUnchangedSinceAt);let stale=diffSeconds(v.lastGpsFixAt)>120,frozen=changedAge>120;let isSelected=state.selectedVehicle===v.source+'|'+v.vehicleId;ctx.save();ctx.translate(x,y);if(isSelected){ctx.beginPath();ctx.arc(0,0,24,0,Math.PI*2);ctx.fillStyle='#38d5ab44';ctx.fill()}ctx.beginPath();ctx.arc(0,0,13,0,Math.PI*2);ctx.fillStyle=stale?'#a6565d':frozen?'#ad7728':'#136c66';ctx.fill();ctx.strokeStyle='#ffffff';ctx.lineWidth=2;ctx.stroke();ctx.rotate((v.heading||0)*Math.PI/180);ctx.fillStyle='#ffffff';ctx.beginPath();ctx.moveTo(0,-9);ctx.lineTo(-5,6);ctx.lineTo(0,3);ctx.lineTo(5,6);ctx.closePath();ctx.fill();ctx.restore();state.markers.push({x,y,id:v.source+'|'+v.vehicleId});}
   if(state.userPosition){const [x,y]=screen(...state.userPosition);ctx.beginPath();ctx.arc(x,y,9,0,Math.PI*2);ctx.fillStyle='#1570ef';ctx.fill();ctx.lineWidth=3;ctx.strokeStyle='#fff';ctx.stroke()}
-  $('mapToast').textContent=state.metroVisible&&state.metro
+  $('mapToast').textContent=activeTab==='rotas'
+    ?'Rotas · viagem GTFS programada; caminhada aproximada (sem trilha de pedestres)'
+    :state.metroVisible&&state.metro
     ?'Metrô · linhas esquemáticas e estações em operação · sem previsão GPS dos trens'
     :state.route?`${vehicles.length} ônibus da linha ${state.route.code} · ${state.geometry?.selected?'Traçado de referência':'Escolha um percurso para vê-lo'}`
     :`${state.mapStops.length} pontos no mapa · toque em um ponto para ver linhas e chegadas`;}
@@ -39,7 +43,15 @@ function zoom(delta,at=null){const old=state.zoom,newZ=Math.max(MIN_Z,Math.min(M
 $canvas.addEventListener('wheel',e=>{e.preventDefault();let rc=$canvas.getBoundingClientRect();zoom(e.deltaY<0?.5:-.5,[e.clientX-rc.left,e.clientY-rc.top])},{passive:false});
 $canvas.addEventListener('pointerdown',e=>{let box=$canvas.getBoundingClientRect();state.drag={x:e.clientX,y:e.clientY,moved:false,at:[e.clientX-box.left,e.clientY-box.top]};$canvas.setPointerCapture(e.pointerId);$canvas.classList.add('dragging')});
 $canvas.addEventListener('pointermove',e=>{if(!state.drag)return;let dx=e.clientX-state.drag.x,dy=e.clientY-state.drag.y;if(Math.abs(dx)+Math.abs(dy)>3)state.drag.moved=true;let [cx,cy]=mercator(...state.center,state.zoom);state.center=invMercator(cx-dx,cy-dy,state.zoom);state.drag.x=e.clientX;state.drag.y=e.clientY;drawSoon()});
-$canvas.addEventListener('pointerup',e=>{const drag=state.drag;state.drag=null;$canvas.classList.remove('dragging');if(drag?.moved){scheduleMapStops();return}if(!drag)return;let p=drag.at, near=state.markers.map(m=>({...m,d:Math.hypot(m.x-p[0],m.y-p[1])})).sort((a,b)=>a.d-b.d)[0];if(near&&near.d<20){state.selectedVehicle=near.id;switchTab('linhas',true);renderVehicles();drawSoon();return}let station=state.metroMarkers.map(m=>({...m,d:Math.hypot(m.x-p[0],m.y-p[1])})).sort((a,b)=>a.d-b.d)[0];if(station&&station.d<23){focusMetroStation(station.station.id);return}let stop=state.stopMarkers.map(m=>({...m,d:Math.hypot(m.x-p[0],m.y-p[1])})).sort((a,b)=>a.d-b.d)[0];if(stop&&stop.d<24){focusStop(stop.stop);return}});
+$canvas.addEventListener('pointerup',e=>{const drag=state.drag;state.drag=null;$canvas.classList.remove('dragging');if(drag?.moved){scheduleMapStops();return}if(!drag)return;let p=drag.at;
+if(state.routePick){
+  const [cx,cy]=mercator(...state.center,state.zoom);
+  const [lat,lng]=invMercator(cx+p[0]-$canvas.clientWidth/2,cy+p[1]-$canvas.clientHeight/2,state.zoom);
+  const which=state.routePick;state.routePick=null;
+  setRoutePoint(which,{lat,lng,label:`Mapa: ${lat.toFixed(5)}, ${lng.toFixed(5)}`});
+  switchTab('rotas',true);drawSoon();return;
+}
+let near=state.markers.map(m=>({...m,d:Math.hypot(m.x-p[0],m.y-p[1])})).sort((a,b)=>a.d-b.d)[0];if(near&&near.d<20){state.selectedVehicle=near.id;switchTab('linhas',true);renderVehicles();drawSoon();return}let station=state.metroMarkers.map(m=>({...m,d:Math.hypot(m.x-p[0],m.y-p[1])})).sort((a,b)=>a.d-b.d)[0];if(station&&station.d<23){focusMetroStation(station.station.id);return}let stop=state.stopMarkers.map(m=>({...m,d:Math.hypot(m.x-p[0],m.y-p[1])})).sort((a,b)=>a.d-b.d)[0];if(stop&&stop.d<24){focusStop(stop.stop);return}});
 $('zoomIn').onclick=()=>zoom(1);$('zoomOut').onclick=()=>zoom(-1);$('recenter').onclick=()=>{state.center=[-19.8695,-43.9675];state.zoom=15;drawSoon();scheduleMapStops();loadNearbyStops(-19.8695,-43.9675,false).catch(reportError)};
 $('goLine').onclick=()=>selectLine($('lineInput').value).catch(reportError);$('lineInput').onkeydown=e=>{if(e.key==='Enter')$('goLine').click()};$('patternInput').onchange=()=>selectPattern().catch(reportError);
 $('refresh').onclick=()=>refresh().catch(reportError);
@@ -49,9 +61,9 @@ async function refresh(){if(document.hidden)return;if(!state.route)return;const 
 let activeTab='pontos';
 function openSheet(full=false){const sheet=$('sheet');sheet.classList.remove('peek');sheet.classList.toggle('full',!!full);$('sheet-toggle').setAttribute('aria-expanded','true');$('grab').setAttribute('aria-expanded','true');$('body').setAttribute('aria-hidden','false')}
 function closeSheet(){const sheet=$('sheet');sheet.classList.add('peek');sheet.classList.remove('full');$('sheet-toggle').setAttribute('aria-expanded','false');$('grab').setAttribute('aria-expanded','false');$('body').setAttribute('aria-hidden','true')}
-function switchTab(tab,open=false){activeTab=tab;const pts=tab==='pontos',lin=tab==='linhas',met=tab==='metro';
-$('pontosPane').hidden=!pts;$('linhasPane').hidden=!lin;$('metroPane').hidden=!met;
-for(const [name,on] of [['pontos',pts],['linhas',lin],['metro',met]]){const button=$('quick-'+name);button.classList.toggle('on',on);button.setAttribute('aria-pressed',String(on))}
+function switchTab(tab,open=false){activeTab=tab;const pts=tab==='pontos',lin=tab==='linhas',met=tab==='metro',rot=tab==='rotas';
+$('pontosPane').hidden=!pts;$('linhasPane').hidden=!lin;$('metroPane').hidden=!met;$('rotasPane').hidden=!rot;
+for(const [name,on] of [['pontos',pts],['linhas',lin],['metro',met],['rotas',rot]]){const button=$('quick-'+name);button.classList.toggle('on',on);button.setAttribute('aria-pressed',String(on))}
 state.metroVisible=met;
 if(met){$('sourceLed').className='dot';$('sourceText').textContent='Metrô BH · horários informativos';loadMetroNews().catch(e=>console.warn('RSS da concessionária indisponível',e))}
 else if(state.lastBusStatus)updateStatus(state.lastBusStatus);
@@ -67,6 +79,7 @@ $('allLineSearch').addEventListener('input',e=>renderAllLines(e.target.value));
 $('quick-pontos').onclick=()=>switchTab('pontos',true);
 $('quick-linhas').onclick=()=>switchTab('linhas',true);
 $('quick-metro').onclick=()=>switchTab('metro',true);
+$('quick-rotas').onclick=()=>switchTab('rotas',true);
 $('sheet-toggle').onclick=()=>{$('sheet').classList.contains('peek')?openSheet():closeSheet()};
 $('grab').onclick=()=>{$('sheet').classList.contains('peek')?openSheet():closeSheet()};
 function askLocation(){hideLocationPrompt();if(!window.isSecureContext||!navigator.geolocation){$('nearbyHint').textContent='Localização requer HTTPS ou localhost. Mostrando pontos próximos à UFMG.';openSheet();return}navigator.geolocation.getCurrentPosition(async p=>{const lat=p.coords.latitude,lng=p.coords.longitude;state.userPosition=[lat,lng];state.center=[lat,lng];state.zoom=15.5;drawSoon();scheduleMapStops();try{if(activeTab==='metro'){await loadMetroNearby(lat,lng);switchTab('metro',true)}else{await loadNearbyStops(lat,lng,true);switchTab('pontos',true)}}catch(e){reportError(e)}},()=>{$('nearbyHint').textContent='Localização não autorizada. Você ainda pode buscar pontos no mapa da UFMG.';openSheet()},{enableHighAccuracy:false,timeout:12000,maximumAge:60000})}
