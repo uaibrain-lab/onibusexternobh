@@ -35,7 +35,8 @@ const StaticLive=(()=>{
         const url=new URL(String(value.endpoint||''));
         if(url.protocol!=='https:'||url.pathname!=='/api/gps'||url.search||url.hash)
           throw Error('Endpoint GPS inválido');
-        return currentCfg={enabled:true,endpoint:url.href};
+        const provider=value.provider==='gtfs_rt'?'gtfs_rt':'pbh_json';
+        return currentCfg={enabled:true,endpoint:url.href,provider};
       }).catch(()=>currentCfg={enabled:false});
     return cfgPromise;
   }
@@ -70,10 +71,63 @@ const StaticLive=(()=>{
     return lastStatus||{available:false,gpsRecent:0,sources:{},
       note:'GPS gratuito desativado; horários programados disponíveis.'};
   }
+  async function pollGtfsRealtime(cfg,routeId,line,name){
+    const request=new URL(cfg.endpoint);
+    request.searchParams.set('source','GTFS_RT');
+    request.searchParams.set('routes',String(routeId));
+    let response,data;
+    try{
+      response=await fetch(request,{mode:'cors',cache:'no-store'});
+      if(!response.ok)throw Error('GTFS-RT HTTP '+response.status);
+      data=await response.json();
+      if(data.available!==true||data.source!=='GTFS_RT'||!Array.isArray(data.records))
+        throw Error('Resposta GTFS-RT inválida');
+    }catch(_){
+      return unavailable(line,name,'GTFS Realtime indisponível; horários da tabela disponíveis.');
+    }
+    const now=Date.now(),vehicles=new Map();
+    for(const record of data.records){
+      if(String(record.routeId)!==String(routeId))continue;
+      const timestamp=Date.parse(String(record.lastGpsFixAt||''));
+      const latitude=Number(record.latitude),longitude=Number(record.longitude);
+      const ageSec=(now-timestamp)/1000;
+      if(!Number.isFinite(timestamp)||ageSec < -60||ageSec>600||
+         !Number.isFinite(latitude)||!Number.isFinite(longitude)||
+         latitude< -20.5||latitude> -19.4||longitude< -44.5||longitude> -43.4)continue;
+      const vehicleId=String(record.vehicleId||'');
+      if(!vehicleId||vehicleId.length>80)continue;
+      const heading=Number(record.heading);
+      const vehicle={
+        vehicleId,source:'GTFS_RT',public:line,
+        latitude,longitude,
+        heading:record.heading!=null&&Number.isFinite(heading)?heading:null,
+        lastGpsFixAt:new Date(timestamp).toISOString(),
+        lastFetchedAt:data.fetchedAt,
+        positionUnchangedSinceAt:null,unchangedSec:null,
+        ageSec:Math.max(0,Math.round(ageSec)),
+        gpsStatus:ageSec<=120?'recent':ageSec<=300?'delayed':'stale',
+        shapeMatch:{status:'unknown'},
+        tripId:String(record.tripId||''),
+        note:'Dados GTFS Realtime SUMOB (CC BY 4.0); sentido não confirmado'
+      };
+      const previous=vehicles.get(vehicleId);
+      if(!previous||timestamp>Date.parse(previous.lastGpsFixAt))
+        vehicles.set(vehicleId,vehicle);
+    }
+    const list=[...vehicles.values()].sort((a,b)=>a.ageSec-b.ageSec);
+    lastStatus={available:true,gpsRecent:list.filter(v=>v.ageSec<=120).length,
+      vehiclesKnown:list.length,partial:false,gpsUpdating:false,
+      sources:{GTFS_RT:{lastFetchedAt:data.fetchedAt,lastError:null}},
+      note:'Dados de posição: SUMOB (CC BY 4.0) · horários de chegada ainda programados'};
+    return {line,name,available:true,count:list.length,vehicles:list,
+      asOf:new Date(now).toISOString(),sources:lastStatus.sources,partial:false,
+      note:lastStatus.note};
+  }
   async function poll(routeId,line,name,version){
     const cfg=await config();
     if(!cfg.enabled||typeof navigator!=='undefined'&&!navigator.onLine)
       return unavailable(line,name);
+    if(cfg.provider==='gtfs_rt')return pollGtfsRealtime(cfg,routeId,line,name);
     let gpsMap;
     try{gpsMap=await mapping(version)}
     catch(_){return unavailable(line,name,'Correspondência de linhas não disponível')}
