@@ -32,7 +32,7 @@ class PedestrianNetwork {
        throw Error('Grafo de pedestres inválido');
      this.meta=m;this.known=true;this.allowed=new Set(m.tileNames);
      return true;
-   }catch(e){this.known=false;return false}
+   }catch(e){this.error=String(e?.message||e);this.known=false;return false}
  }
  async tile(tileName){
    if(!this.allowed.has(tileName))return new Map();
