@@ -24,6 +24,13 @@ from .matcher import distance_m
 from .metro import BRT
 from .walking import WalkingGraph
 
+try:
+    import orjson as _fast_json
+except ImportError:  # Keep offline/std-lib operation possible.
+    _fast_json = None
+
+_JSON_LOADS = _fast_json.loads if _fast_json is not None else json.loads
+
 WEEKDAYS = ('monday','tuesday','wednesday','thursday','friday','saturday','sunday')
 WALK_SPEED_M_S = 1.15
 WALK_FACTOR = 1.35
@@ -152,8 +159,10 @@ class JourneyPlanner:
         if not name:
             return ()
         try:
-            with gzip.open(self.catalog/name,'rt',encoding='utf-8') as file:
-                return tuple(json.loads(line) for line in file)
+            # Binary lines avoid UTF-8 decoding twice. The optional Rust-based
+            # parser accelerates loading, while CPython's json remains valid.
+            with gzip.open(self.catalog/name,'rb') as file:
+                return tuple(_JSON_LOADS(line) for line in file)
         except (OSError,ValueError) as exc:
             raise PlannerError('Falha ao ler o índice da linha '+str(code)) from exc
 
