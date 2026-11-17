@@ -120,14 +120,25 @@ class GpsArrivalEstimator:
                 if pr and pr[0]<=85:
                     fixes.append((t,pr[1]*total))
             fixes.sort()
-            if len(fixes)<3:continue
+            if len({t for t, _ in fixes}) < 3:
+                continue
+            # A recent fix cannot validate a speed inferred across a long gap.
+            if (when - fixes[-1][0]).total_seconds() > 45:
+                continue
             start=fixes[0];end=fixes[-1]
             duration=(end[0]-start[0]).total_seconds()
             advance=end[1]-start[1]
             if duration<35 or duration>240 or advance<90:
                 continue
-            # Backtracking is inconsistent with a confident forward ETA.
-            if any(b[1]+30<a[1] for a,b in zip(fixes,fixes[1:])):
+            # Reject large GPS jumps, backwards travel, and discontinuous fixes.
+            inconsistent=False
+            for a,b in zip(fixes,fixes[1:]):
+                elapsed=(b[0]-a[0]).total_seconds()
+                delta=b[1]-a[1]
+                if elapsed<=0 or elapsed>100 or delta < -30 or delta>elapsed*22:
+                    inconsistent=True
+                    break
+            if inconsistent:
                 continue
             speed=advance/duration
             if not 1.2<=speed<=15:

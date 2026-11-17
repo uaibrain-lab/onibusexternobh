@@ -28,3 +28,6 @@ jobs:
           else
             echo "Aguardando importação do código P2; repositório ainda em preparação."
           fi
+
+      - name: Validar JavaScript
+        run: node --check static/app.js

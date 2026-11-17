@@ -57,6 +57,9 @@ class TransitEngine:
         self.sources={name:{'lastFetchedAt':None,'lastError':None,'responseRecords':0}
                       for name in FEEDS}
         self.last_attempt_monotonic=0.
+        # Aggregated ETA coverage only; no passenger coordinates are tracked.
+        self.eta_coverage=collections.Counter()
+        self.eta_coverage_started=now_brt()
         self._restore()
 
     def _restore(self):
@@ -267,12 +270,25 @@ class TransitEngine:
         forecasts=self.timetable.next_by_line(str(stop_id),now)
         routes=[]
         with self.lock:
+            if (now-self.eta_coverage_started).total_seconds()>3600:
+                self.eta_coverage.clear()
+                self.eta_coverage_started=now
+            self.eta_coverage['stopQueries']+=1
+            # Build the route index once per lookup instead of scanning all
+            # vehicles repeatedly for each bus line serving this stop.
+            by_route=collections.defaultdict(list)
+            for vehicle in self.vehicles.values():
+                for rid in vehicle.get('routeIds',[]):
+                    by_route[rid].append(vehicle)
             for code in sorted(self.stop_routes.get(str(stop_id),()),key=lambda c:(not c.isdigit(),c)):
                 route=self.route_by_code.get(code)
                 if not route:continue
-                gps=self.eta.estimate(route,str(stop_id),self.vehicles.values(),now)
+                gps=self.eta.estimate(route,str(stop_id),by_route.get(route['id'],()),now)
+                arrival=gps or forecasts.get(code)
+                self.eta_coverage['linesChecked']+=1
+                self.eta_coverage['gpsEstimates' if gps else 'timetableFallbacks' if arrival else 'unavailable']+=1
                 routes.append({'code':code,'name':route['name'],
-                               'nextArrival':gps or forecasts.get(code)})
+                               'nextArrival':arrival})
         routes.sort(key=lambda x:(x['nextArrival'] is None,
                                  x['nextArrival']['minutes'] if x['nextArrival'] else 10**10,
                                  x['code']))
@@ -280,6 +296,20 @@ class TransitEngine:
                 'routes':routes,'asOf':iso(now),
                 'forecastSource':('GPS + GTFS scheduled' if any(r['nextArrival'] and r['nextArrival']['type']=='gps_estimate' for r in routes) else 'GTFS scheduled (not GPS)'),
                 'timetableAvailable':self.timetable.error is None and self.timetable.calendar is not None}
+
+    def eta_coverage_summary(self):
+        """Coverage counts only; accuracy needs independently observed arrivals."""
+        with self.lock:
+            counts=dict(self.eta_coverage)
+            lines=counts.get('linesChecked',0)
+            return {'periodStartedAt':iso(self.eta_coverage_started),
+                    'queries':counts.get('stopQueries',0),
+                    'linesChecked':lines,
+                    'gpsEstimates':counts.get('gpsEstimates',0),
+                    'timetableFallbacks':counts.get('timetableFallbacks',0),
+                    'unavailable':counts.get('unavailable',0),
+                    'gpsCoverage':round(counts.get('gpsEstimates',0)/lines,4) if lines else None,
+                    'accuracyVerified':False}
 
     def fleet(self,code):
         self.refresh()
