@@ -617,10 +617,12 @@ function renderRouteResults(data){
     rail.append(h);
     for(const hint of data.metroHints){
       const card=document.createElement('div');card.className='metro-hint';
-      const strong=document.createElement('strong');strong.textContent='Linha '+hint.line+
-        ': '+hint.fromStation+' → '+hint.toStation;
+      const strong=document.createElement('strong');
+      strong.textContent=(hint.status==='conditional_bus_metro'
+        ?(hint.mode==='metro+bus'?'Metrô + ônibus ':'Ônibus + metrô ')+hint.busLine+' · '
+        :'Linha ')+hint.line+': '+hint.fromStation+' → '+hint.toStation;
       const p=document.createElement('p');
-      if(hint.status==='estimated_range_not_timetable'){
+      if(hint.status==='estimated_range_not_timetable'||hint.status==='conditional_bus_metro'){
         const window=hint.timeWindow||{};
         const estimate=hint.rideRangeMinutes?.join('–')||'?';
         let timing='';
@@ -635,8 +637,11 @@ function renderRouteResults(data){
           timing='Última saída aproximada '+routeClock(window.latestDeparture)+
             ', sem espera máxima confirmada.';
         }
-        p.textContent='Percurso ferroviário estimado: '+estimate+' min. '+timing+
-          '. Não há grade de partidas individualizada; os intervalos podem mudar em obras ou atrasos.';
+        p.textContent=(hint.status==='conditional_bus_metro'
+          ?'BALDEAÇÃO CONDICIONAL com ônibus '+hint.busLine+
+           ' ('+routeClock(hint.busDeparture)+'–'+routeClock(hint.busArrival)+'). '
+          :'')+'Percurso ferroviário estimado: '+estimate+' min. '+timing+
+          '. Não há grade de partidas individualizada nem verificação de acessos entre estação e ponto; pode não ser viável em atrasos ou obras.';
       }else{
         p.textContent='Possibilidade de viagem por '+hint.stationCount+
           ' trecho(s) entre estações. Horários e duração ainda não confirmados.';
