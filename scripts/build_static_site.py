@@ -88,6 +88,15 @@ def build(target=None, gps_staging=False):
         if notice not in html:
             raise ValueError('Marcador do aviso GPS não localizado')
         html=html.replace(notice,notice+'HOMOLOGAÇÃO: GPS experimental SUMOB. Sem ETA validado. ',1)
+        # Stage-specific cache-busting: older HTML/CSS from the P17 build
+        # must never mask a corrected canvas/map release in an installed PWA.
+        stage_version='p20-map-ui-20261117'
+        for name in ('app.js','style.css','hub-parity.css',
+                     'live-gps.js','static-bus.js','static-arrivals.js'):
+            html=html.replace('src="./'+name+'"',
+                              'src="./'+name+'?v='+stage_version+'"')
+            html=html.replace('href="./'+name+'"',
+                              'href="./'+name+'?v='+stage_version+'"')
         # Cloudflare Pages static directives exist ONLY in the isolated build.
         (target/'_redirects').write_text('/ /externo/ 302\n',encoding='utf-8')
         (target/'_headers').write_text(
@@ -95,7 +104,15 @@ def build(target=None, gps_staging=False):
             '  X-Content-Type-Options: nosniff\n'
             '  Referrer-Policy: strict-origin-when-cross-origin\n'
             '/externo/gps-config.json\n'
-            '  Cache-Control: no-store, max-age=0\n',
+            '  Cache-Control: no-store, max-age=0\n'
+            '/externo/index.html\n'
+            '  Cache-Control: no-cache, max-age=0\n'
+            '/externo/app.js\n'
+            '  Cache-Control: no-cache, max-age=0\n'
+            '/externo/style.css\n'
+            '  Cache-Control: no-cache, max-age=0\n'
+            '/externo/hub-parity.css\n'
+            '  Cache-Control: no-cache, max-age=0\n',
             encoding='utf-8')
     (public/'index.html').write_text(html,encoding='utf-8')
     (public/'catalog').mkdir(exist_ok=True)
