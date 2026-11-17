@@ -1,7 +1,7 @@
 # P4 — Metrô BH integrado ao Externo (17/11/2026)
 
 ## Escopo implementado (sem alterar produção)
-Branch: \`feat/externo-p4-metro-20261117\`, baseada em \`feat/externo-hub-p3-pontos-eta\`. A \`main\` e o projeto \`uaibrain-lab/ru-hoje\` não são modificados.
+Branch: `feat/externo-p4-metro-20261117`, baseada em `feat/externo-hub-p3-pontos-eta`. A `main` e o projeto `uaibrain-lab/ru-hoje` não são modificados.
 
 A aba **Metrô** contém:
 - 22 estações distintas em operação cadastradas, sendo 21 na sequência da Linha 1 (incluindo Nova Suíça) e duas no trecho da Linha 2 (Nova Suíça e Amazonas); Nova Suíça pertence a ambas.
@@ -27,21 +27,21 @@ A aba **Metrô** contém:
 
 As estações planejadas Nova Gameleira, Nova Cintra, Vista Alegre, Ferrugem e Barreiro não aparecem como opções para embarque. Alterações do cronograma futuro devem ser verificadas com a operadora.
 
-## API (local e prefixada \`/externo/api/*\`)
-- \`GET /externo/api/metro\` — estações, linhas, operação habitual, fontes, links oficiais e tarifa
-- \`GET /externo/api/metro/line?id=1\` — sequência de estações e geometria explicitamente esquemática
-- \`GET /externo/api/metro/station?id=nova-suica\` — serviços nas duas linhas + pontos de ônibus próximos
-- \`GET /externo/api/metro/nearby?lat=-19.92484&lng=-43.97830\` — estações próximas em linha reta
-- \`GET /externo/api/metro/news\` — RSS oficial cacheado, indicação de falha/defasagem
+## API (local e prefixada `/externo/api/*`)
+- `GET /externo/api/metro` — estações, linhas, operação habitual, fontes, links oficiais e tarifa
+- `GET /externo/api/metro/line?id=1` — sequência de estações e geometria explicitamente esquemática
+- `GET /externo/api/metro/station?id=nova-suica` — serviços nas duas linhas + pontos de ônibus próximos
+- `GET /externo/api/metro/nearby?lat=-19.92484&lng=-43.97830` — estações próximas em linha reta
+- `GET /externo/api/metro/news` — RSS oficial cacheado, indicação de falha/defasagem
 
-As APIs antigas de ônibus da P2/P3 permanecem, sem alteração dos feeds PBH. A API \`metro/news\` realiza apenas leitura do RSS oficial, não envia coordenadas de pessoas à concessionária nem registra querystrings.
+As APIs antigas de ônibus da P2/P3 permanecem, sem alteração dos feeds PBH. A API `metro/news` realiza apenas leitura do RSS oficial, não envia coordenadas de pessoas à concessionária nem registra querystrings.
 
 ## Como testar
-\`\`\`powershell
+```powershell
 py -3 -m unittest discover -s tests -v
 py -3 server.py
-\`\`\`
-Abrir \`http://127.0.0.1:8765/externo/\` e selecionar **Metrô**.
+```
+Abrir `http://127.0.0.1:8765/externo/` e selecionar **Metrô**.
 
 Validar no Android, PC e em iframe do Hub antes de integrar; conferir presença, centração, comportamento dos links, desempenho com 9.925 pontos de ônibus e horários divulgados pela operadora. Não realizar deploy de produção nesta fase.
 
