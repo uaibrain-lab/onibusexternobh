@@ -1,0 +1,125 @@
+/* P9 pedestrian routes on an offline OpenStreetMap walking graph.
+ * No API requests for private coordinates. The graph is fetched once as
+ * static data; A* runs in the same Web Worker as the transit planner.
+ */
+'use strict';
+const WalkGraph=(()=>{
+  const rad=Math.PI/180;
+  const dist=(a,b)=>{
+    const lat=(b[0]-a[0])*rad,lon=(b[1]-a[1])*rad;
+    const v=Math.sin(lat/2)**2+Math.cos(a[0]*rad)*Math.cos(b[0]*rad)*Math.sin(lon/2)**2;
+    return 12742000*Math.asin(Math.min(1,Math.sqrt(Math.max(0,v))));
+  };
+  const key=p=>Math.floor(p[0]*1000)+':'+Math.floor(p[1]*1000);
+  class Heap{
+    constructor(){this.data=[]}
+    push(item){
+      const a=this.data;let i=a.length;a.push(item);
+      while(i){const p=(i-1)>>1;if(a[p][0]<=item[0])break;a[i]=a[p];i=p}
+      a[i]=item;
+    }
+    pop(){
+      const a=this.data;if(!a.length)return null;
+      const out=a[0],item=a.pop();if(!a.length)return out;
+      let i=0;
+      while(i*2+1<a.length){
+        let k=i*2+1;if(k+1<a.length&&a[k+1][0]<a[k][0])k++;
+        if(a[k][0]>=item[0])break;
+        a[i]=a[k];i=k;
+      }
+      a[i]=item;return out;
+    }
+    get length(){return this.data.length}
+  }
+  class Network{
+    constructor(obj){
+      if(obj.schema!==1||!Array.isArray(obj.nodes)||!Array.isArray(obj.edges)||
+         obj.nodes.length!==obj.nodeCount||obj.edges.length!==obj.edgeCount)
+        throw Error('Grafo OSM incompatível ou incompleto');
+      this.nodes=obj.nodes;this.edges=obj.edges;this.index=new Map();
+      this.adj=Array.from({length:this.nodes.length},()=>[]);
+      for(const [a,b,meters] of this.edges){
+        if(!this.nodes[a]||!this.nodes[b]||!Number.isFinite(meters)||meters<=0)
+          throw Error('Aresta inválida no grafo OSM');
+        this.adj[a].push([b,meters]);this.adj[b].push([a,meters]);
+      }
+      for(let n=0;n<this.nodes.length;n++){
+        const k=key(this.nodes[n]);
+        if(!this.index.has(k))this.index.set(k,[]);
+        this.index.get(k).push(n);
+      }
+      this.cache=new Map();
+      this.meta={nodeCount:obj.nodeCount,edgeCount:obj.edgeCount,source:obj.source,
+        osmDate:obj.osmDate,bbox:obj.bbox};
+    }
+    nearest(point,maxSnap=70){
+      const lat=Math.floor(point[0]*1000),lon=Math.floor(point[1]*1000);
+      let best=null;
+      for(let x=-1;x<=1;x++)for(let y=-1;y<=1;y++)
+        for(const id of this.index.get((lat+x)+':'+(lon+y))||[]){
+          const d=dist(this.nodes[id],point);
+          if(d<=maxSnap&&(!best||d<best[1]))best=[id,d];
+        }
+      return best;
+    }
+    route(from,to,limitMeters=2500){
+      const a=this.nearest(from),b=this.nearest(to);
+      if(!a||!b)return null;
+      if(a[0]===b[0]){
+        const meters=a[1]+b[1];
+        return meters<=limitMeters?{
+          meters:Math.round(meters),seconds:Math.ceil(meters/1.15)+35,
+          geometry:[from,this.nodes[a[0]],to],snapMeters:Math.round(meters),
+          pathSource:'OSM walking network (snapped access)'
+        }:null;
+      }
+      const cacheKey=a[0]+':'+b[0]+':'+limitMeters;
+      const stored=this.cache.get(cacheKey);
+      if(stored){
+        const meters=stored.meters+a[1]+b[1];
+        if(meters>limitMeters)return null;
+        return {...stored,meters:Math.round(meters),
+          seconds:Math.ceil(meters/1.15)+35,
+          geometry:[from,...stored.geometry,to],snapMeters:Math.round(a[1]+b[1])};
+      }
+      const n=this.nodes.length;
+      const distances=new Map([[a[0],0]]),parents=new Map();
+      const heap=new Heap();
+      heap.push([dist(this.nodes[a[0]],this.nodes[b[0]]),a[0],0]);
+      const goal=b[0];let expanded=0;
+      while(heap.length&&expanded<30000){
+        const entry=heap.pop(),pos=entry[1],travel=entry[2];
+        if(travel>distances.get(pos))continue;
+        if(pos===goal){
+          const ids=[pos];let back=pos;
+          while(back!==a[0]){
+            back=parents.get(back);
+            if(back==null)return null;
+            ids.push(back);
+          }
+          ids.reverse();
+          const coords=ids.map(i=>this.nodes[i]);
+          const core={meters:Math.round(travel),geometry:coords,
+            pathSource:'OSM walking network (snapped access)'};
+          if(this.cache.size>800)this.cache.clear();
+          this.cache.set(cacheKey,core);
+          const total=travel+a[1]+b[1];
+          if(total>limitMeters)return null;
+          return {...core,meters:Math.round(total),
+            seconds:Math.ceil(total/1.15)+35,
+            geometry:[from,...coords,to],snapMeters:Math.round(a[1]+b[1])};
+        }
+        expanded++;
+        for(const [next,length] of this.adj[pos]){
+          const ng=travel+length;
+          if(ng+a[1]+b[1]>limitMeters)continue;
+          if(ng>= (distances.get(next)??Infinity))continue;
+          distances.set(next,ng);parents.set(next,pos);
+          heap.push([ng+dist(this.nodes[next],this.nodes[goal]),next,ng]);
+        }
+      }
+      return null;
+    }
+  }
+  return {Network};
+})();

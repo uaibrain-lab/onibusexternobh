@@ -11,8 +11,11 @@
 const HOUR=3600000, MIN=60000, DAY=86400000, MAX_HOURS=5;
 const TRIP_MASK=(1<<20)-1,BOARD=1<<20,ALIGHT=1<<21;
 const BUFFER=45000,WALK_SPEED=1.15,WALK_FACTOR=1.35,MAX_RIDES=3;
-const MAX_SCANNED=2100000,MAX_LABELS=8,MAX_ONBOARD=8;
+const MAX_SCANNED=2100000,MAX_LABELS=12,MAX_ONBOARD=12;
 const cityTZ='America/Sao_Paulo';
+try{importScripts('./walk-network.js')}catch(e){/* optional; no fabricated graph */}
+try{importScripts('./metro-timing.js')}catch(e){/* old rail hints remain available */}
+let walkGraph=null,walkLoad=null,walkGraphStatus='not_loaded';
 let root='',meta=null,stops=null,trips=null,grid=null,stopLines=null,metro=null;
 let currentSeq=0;
 const bucketCache=new Map(),nearCache=new Map();
@@ -147,11 +150,11 @@ function insert(labels,node,ctx) {
   for(const other of existing)if(dominates(other,node,ctx.backward))return false;
   const kept=existing.filter(other=>!dominates(node,other,ctx.backward));
   kept.push(node);
-  if(kept.length>MAX_LABELS){
-    ctx.partial=true;
+  if(kept.length>ctx.maxLabels){
+    ctx.partial=true;ctx.partialReasons.labels++;
     kept.sort((a,b)=>(a.walk/90+a.rides*15+(ctx.backward?-a.time:a.time)/60000)
                   -(b.walk/90+b.rides*15+(ctx.backward?-b.time:b.time)/60000));
-    kept.splice(MAX_LABELS);
+    kept.splice(ctx.maxLabels);
   }
   labels.set(node.stop,kept);
   return kept.includes(node);
@@ -186,10 +189,10 @@ function appendOnboard(map,key,candidate,ctx){
     candidate.prev.rides<=other.prev.rides&&
     (ctx.backward?candidate.endTime>=other.endTime:candidate.endTime<=other.endTime)));
   next.push(candidate);
-  if(next.length>MAX_ONBOARD){
-    ctx.partial=true;
+  if(next.length>ctx.maxOnboard){
+    ctx.partial=true;ctx.partialReasons.onboard++;
     next.sort((a,b)=>a.prev.walk-b.prev.walk||a.prev.rides-b.prev.rides);
-    next=next.slice(0,MAX_ONBOARD);
+    next=next.slice(0,ctx.maxOnboard);
   }
   map.set(key,next);
 }
@@ -204,7 +207,7 @@ function emit(node,ctx) {
     if(endTime>=ctx.lo&&endTime<=ctx.hi){
       ctx.finals.push({node,time:endTime,meters:rounded(ending)});
       if(ctx.finals.length>1000){
-        ctx.partial=true;ctx.finals.splice(1000);
+        ctx.partial=true;ctx.partialReasons.finals++;ctx.finals.splice(1000);
       }
     }
   }
@@ -307,7 +310,83 @@ function reconstruct(hit,ctx) {
     legs,confidence:'scheduled_gtfs_with_unverified_walks'
   };
 }
-function ranked(ctx,preference) {
+async function ensureWalkingGraph(){
+  if(walkGraphStatus==='missing')return null;
+  if(walkGraph)return walkGraph;
+  if(walkLoad)return walkLoad;
+  if(typeof WalkGraph==='undefined'){
+    walkGraphStatus='missing';return null;
+  }
+  walkLoad=(async()=>{
+    try{
+      const url=new URL('../walk/graph.json.gz',root).href;
+      // One request only: the graph is ~6 MB compressed. A preliminary
+      // existence GET would double the paid-by-traffic Hosting bandwidth.
+      const bytes=await loadBinary(url);
+      const value=JSON.parse(new TextDecoder().decode(bytes));
+      walkGraph=new WalkGraph.Network(value);
+      walkGraphStatus='ready';
+      return walkGraph;
+    }catch(err){
+      walkGraphStatus='missing';
+      console.warn('Rede de pedestres OSM ausente ou incompleta',String(err));
+      return null;
+    }
+  })();
+  return walkLoad;
+}
+function locationOf(endpoint,ctx){
+  if(endpoint==='origin')return ctx.origin;
+  if(endpoint==='destination')return ctx.destination;
+  const s=stops[endpoint];
+  return s?[s[2],s[3]]:null;
+}
+function verifyWalking(itinerary,ctx,graph){
+  const legs=itinerary.legs;
+  let walked=0,unknown=false;
+  for(let i=0;i<legs.length;i++){
+    const leg=legs[i];
+    if(leg.mode!=='walk')continue;
+    const from=locationOf(leg.from,ctx),to=locationOf(leg.to,ctx);
+    if(!from||!to)return false;
+    const route=graph.route(from,to,i===0||i===legs.length-1?2500:800);
+    if(!route)return false;
+    leg.pathVerified=true;
+    leg.geometry=route.geometry;
+    leg.snapMeters=route.snapMeters;
+    leg.metersApprox=route.meters;
+    leg.walkSource=route.pathSource;
+    leg.durationSeconds=route.seconds;
+    walked+=route.meters;
+    const prev=legs[i-1],next=legs[i+1];
+    let start;
+    if(prev&&prev.mode==='bus'){
+      start=Date.parse(prev.arrival);
+    }else if(i===0&&ctx.backward&&next?.mode==='bus'){
+      start=Date.parse(next.departure)-route.seconds*1000-BUFFER;
+    }else if(i===0){
+      start=ctx.requested;
+    }else if(prev){
+      start=Date.parse(prev.arrival);
+    }else return false;
+    const finish=start+route.seconds*1000;
+    if(next?.mode==='bus'&&finish+BUFFER>Date.parse(next.departure))
+      return false;
+    leg.departure=stamp(start);
+    leg.arrival=stamp(finish);
+  }
+  const first=Date.parse(legs[0].departure),last=Date.parse(legs.at(-1).arrival);
+  if(!Number.isFinite(first)||!Number.isFinite(last)||last<=first||
+     last-first>MAX_HOURS*HOUR||ctx.backward&&last>ctx.requested||
+     !ctx.backward&&first<ctx.requested)return false;
+  itinerary.walkMetersApprox=Math.round(walked);
+  itinerary.departure=stamp(first);
+  itinerary.arrival=stamp(last);
+  itinerary.durationMinutes=Math.ceil((last-first)/MIN);
+  itinerary.confidence='GTFS_scheduled_with_OSM_walk_graph_and_snap_uncertainty';
+  return true;
+}
+function ranked(ctx,preference,limit=6) {
   const options=[];
   const found=new Set();
   for(const hit of ctx.finals){
@@ -328,9 +407,9 @@ function ranked(ctx,preference) {
       return a.walkMetersApprox-b.walkMetersApprox||fastest(a,b)||a.transfers-b.transfers;
     return fastest(a,b)||a.walkMetersApprox-b.walkMetersApprox||a.transfers-b.transfers;
   });
-  return options.slice(0,6);
+  return options.slice(0,limit);
 }
-async function metroHints(origin,destination,at){
+async function metroHints(origin,destination,at,railHintMode='departAt'){
   try{
     if(!metro){
       const path=new URL('../metro.json',root).href;
@@ -351,11 +430,17 @@ async function metroHints(origin,destination,at){
         for(const e of metro.operations.hoursExceptions||[])
           if(e.line===line.id&&e.from<=day&&day<=e.through)end=e.end;
         if(clock<line.hours.start||clock>=end)continue;
+        const timings=typeof RailWindows!=='undefined'
+          ?RailWindows.window(metro,line,a,b,at,railHintMode||'departAt',
+            distance(origin,[a.lat,a.lng]),distance(destination,[b.lat,b.lng]))
+          :null;
         hints.push({mode:'metro',line:line.id,fromStation:a.name,toStation:b.name,
           fromStationId:a.id,toStationId:b.id,
           stationCount:Math.abs(line.stations.indexOf(a.id)-line.stations.indexOf(b.id)),
-          status:'requires_timetable',
-          note:'Metrô sem partidas verificadas: possibilidade informativa, não comparável às viagens GTFS.'});
+          status:timings?'historical_range_estimate':'requires_timetable',
+          timing:timings,
+          note:timings?'Faixa temporal ilustrativa baseada em benchmark histórico da operadora e frequência típica. Não é uma partida garantida nem rota comparável ao GTFS.':
+          'Metrô sem grade de partidas verificável: possibilidade informativa, não comparável às viagens GTFS.'});
       }
     return hints.slice(0,4);
   }catch(e){return []}
@@ -421,7 +506,7 @@ async function scanHour(ctx,epoch) {
     const info=trips[tripIdx];
     if(!info||!p.active[info[3]])continue;
     ctx.scanned++;
-    if(ctx.scanned>MAX_SCANNED){ctx.partial=true;ctx.exceeded=true;return}
+    if(ctx.scanned>MAX_SCANNED){ctx.partial=true;ctx.partialReasons.scanLimit++;ctx.exceeded=true;return}
     processConnection({from:values[offset],to:values[offset+1],
       dep:p.base+values[offset+2]*1000,arr:p.base+values[offset+3]*1000,
       flags:packed,tripIdx,day:p.day},ctx);
@@ -442,9 +527,12 @@ async function plan(params,seq) {
     return {status:'out_of_calendar',message:'Data fora da validade do GTFS',
       validFrom:meta.validFrom,validThrough:meta.validThrough,itineraries:[],metroHints:[]};
   const backward=mode==='arriveBy';
+  const expanded=params.searchDepth==='expanded';
   const ctx={origin,destination,mode,backward,requested,preference,labels:new Map(),
     onboard:new Map(),ends:new Map(),finals:[],pending:new Set(),
     scanned:0,partial:false,exceeded:false,
+    maxLabels:expanded?24:MAX_LABELS,maxOnboard:expanded?24:MAX_ONBOARD,
+    partialReasons:{labels:0,onboard:0,finals:0,scanLimit:0},
     lo:backward?requested-MAX_HOURS*HOUR:requested,
     hi:backward?requested:requested+MAX_HOURS*HOUR};
   seedStops(ctx,'start');seedStops(ctx,'end');
@@ -459,18 +547,35 @@ async function plan(params,seq) {
     self.postMessage({kind:'progress',seq,done:i+1,total:hours.length,
       found:ctx.finals.length,scanned:ctx.scanned});
   }
-  const itineraries=ranked(ctx,preference);
-  const hints=await metroHints(origin,destination,requested);
+  const graph=await ensureWalkingGraph();
+  let itineraries=ranked(ctx,preference,graph?32:6);
+  if(graph){
+    itineraries=itineraries.filter(t=>verifyWalking(t,ctx,graph));
+    const score=t=>preference==='leastWalking'?t.walkMetersApprox:
+      preference==='leastTransfers'?t.transfers:
+      backward?-Date.parse(t.departure):Date.parse(t.arrival);
+    itineraries.sort((a,b)=>score(a)-score(b)||
+      a.walkMetersApprox-b.walkMetersApprox||a.transfers-b.transfers);
+    itineraries=itineraries.slice(0,6);
+  }
+  const hints=await metroHints(origin,destination,requested,mode);
   return {
-    status:ctx.partial?'partial':'ok',mode,preference,
+    status:graph&&!itineraries.length&&ctx.finals.length?'walking_unavailable':
+      ctx.partial?'partial':'ok',mode,preference,
     requestedAt:stamp(requested),itineraries,metroHints:hints,
     stats:{connectionsScanned:ctx.scanned,hoursScanned:hours.length,
-      truncatedLabels:ctx.partial},
-    pedestrianRouting:'approximate',
+      searchDepth:expanded?'expanded':'standard',
+      labelsPerStopLimit:ctx.maxLabels,onboardLimit:ctx.maxOnboard,
+      truncatedLabels:ctx.partial,partialReasons:ctx.partialReasons},
+    pedestrianRouting:graph?'osm_walk_graph_with_unverified_access_snap':'approximate',
+    walkingNetworkStatus:walkGraphStatus,
+    walkingNetworkSource:graph?.meta?.source||null,
     dataSource:'static_gtfs_browser_worker',
     notes:[
       'Horários de ônibus programados no GTFS, não previsões GPS.',
-      'Caminhadas estimadas em linha reta com fator conservador; rede de ruas não verificada.',
+      graph?
+        'Caminhadas avaliadas na rede OSM; o acesso do ponto de partida ou parada ao caminho ainda exige validação.':
+        'Rede de ruas OSM não instalada: caminhadas em linha reta aproximada, NÃO percursos reais.',
       'Busca limitada a 5 h e no máximo 2 baldeações; resultado parcial quando houver poda.',
       'Metrô apenas informativo até termos grade verificável de partidas.'
     ]

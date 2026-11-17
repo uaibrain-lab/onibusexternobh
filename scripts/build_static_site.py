@@ -34,17 +34,36 @@ def build(target=None):
     public=target/'externo'
     public.mkdir(parents=True)
     static=ROOT/'static'
-    for name in ('app.js','style.css','route-worker.js','service-worker.js'):
+    for name in ('app.js','style.css','route-worker.js','service-worker.js','static-bus.js','walk-network.js','metro-timing.js'):
         shutil.copy2(static/name,public/name)
     html=(static/'index.html').read_text(encoding='utf-8')
     anchor='<html lang="pt-BR">'
     if anchor not in html:
         raise ValueError('Marcador de HTML para modo estático não localizado')
     html=html.replace(anchor,'<html lang="pt-BR" data-app-mode="free-static">',1)
+    loader='<script src="./app.js" defer></script>'
+    if loader not in html:
+        raise ValueError('Script principal não localizado')
+    html=html.replace(loader,
+        '<script src="./static-bus.js" defer></script>\n'+loader,1)
     (public/'index.html').write_text(html,encoding='utf-8')
     (public/'catalog').mkdir(exist_ok=True)
     shutil.copy2(catalog/'metro.json',public/'catalog'/'metro.json')
+    for name in ('routes.json','stops.json','patterns.json','shapes.json','routing-stop-routes.json'):
+        shutil.copy2(catalog/name,public/'catalog'/name)
     shutil.copytree(scan,public/'catalog'/'scan')
+    # The real OSM network is optional until validated. Do NOT fabricate one
+    # from straight-line GTFS stop coordinates.
+    walking=catalog/'walk'/'graph.json.gz'
+    if walking.is_file():
+        import gzip
+        with gzip.open(walking,'rt',encoding='utf-8') as f:
+            graph=json.load(f)
+        if (graph.get('schema')!=1 or graph.get('nodeCount',0)<5 or
+            graph.get('edgeCount',0)<4):
+            raise ValueError('Rede OSM ausente ou corrompida')
+        (public/'catalog'/'walk').mkdir(exist_ok=True)
+        shutil.copy2(walking,public/'catalog'/'walk'/'graph.json.gz')
     # Firebase CLI may run from dist/; public is that directory ('.').
     # Deploy package at /externo/ on a free Firebase Hosting site.
     config={

@@ -1,3 +1,17 @@
+# P9 — Quatro abas em hospedagem estática, ruas OSM e metrô com incerteza
+
+**Entrega em desenvolvimento; nenhum deploy em produção.** As abas **Pontos, Linhas, Metrô e Rotas** foram conectadas a catálogos públicos GTFS para hospedagem grátis. Os veículos ao vivo ainda não estão disponíveis na versão estática, e a interface mostra essa limitação em vez de inventar posições GPS.
+
+A P9 já contém um grafo real do OpenStreetMap para a região de BH (**412.312 nós, 456.495 conexões**), utilizado pelo cálculo A* no próprio navegador. Os deslocamentos a pé seguem vias mapeadas, mas a ligação entre ponto/endereço e calçada, acessibilidade e segurança ainda precisam de homologação física.
+
+O metrô mostra janelas **históricas e estimadas**, não horários exatos ou ETA ao vivo. A Linha 2 e os trechos sem referências oficiais não recebem tempos inventados. A integração exata ônibus↔metrô permanece pendente por falta de horários ferroviários verificáveis.
+
+**Desempenho:** GTFS gratuito por arquivo estático; busca normal ou ampliada (mais lenta), com avisos de resultados parciais. Regressão: 51 testes Python, 22 JS (antes do teste adicional da busca ampliada) e 6 E2E desktop/Android emulado aprovados. Aparelhos físicos e operação de campo não foram testados.
+
+**Detalhes e próximos passos:** [Roteamento P9](docs/ROTEAMENTO-P9-MULTIMODAL.md).
+
+---
+
 # P8 — Mais precisão com roteamento gratuito no navegador
 
 **Fase de desenvolvimento, sem deploy.** O planejador do Ônibus Externo BH agora carrega apenas as conexões GTFS dos grupos de calendário necessários à data consultada, trata viagens acima de 24h, respeita a margem inicial de embarque nas buscas de chegada e rejeita blocos incompletos.
