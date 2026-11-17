@@ -295,6 +295,20 @@ function populateLineStopChooser(stops){
       ?'Selecione um ponto para ver as próximas partidas programadas.'
       :'Escolha o ponto de embarque neste percurso. Localização não autorizada.';
 }
+async function usePreviouslyGrantedLineLocation(selectionSeq){
+  if(state.userPosition||!navigator.geolocation||!navigator.permissions?.query)return;
+  try{
+    const permission=await navigator.permissions.query({name:'geolocation'});
+    if(permission.state!=='granted')return; // Never trigger a new prompt on line open.
+    navigator.geolocation.getCurrentPosition(position=>{
+      if(selectionSeq!==routeSelectionSeq||!lineMode()||!state.geometry?.selected)return;
+      const coords=[position.coords.latitude,position.coords.longitude];
+      state.userPosition=coords;
+      const closest=nearestStopForLine(state.geometry.selected.stops,coords);
+      if(closest)focusLineBoardingStop(closest);
+    },()=>{}, {enableHighAccuracy:false,maximumAge:60000,timeout:7000});
+  }catch(_){/* Permissions API unsupported: selector remains available. */}
+}
 function centerLineStop(stop){
   const coords=[Number(stop.lat),Number(stop.lng)];
   const a=visibleMapRect(),x=(a.left+a.right)/2,y=(a.top+a.bottom)/2;
@@ -365,7 +379,10 @@ async function selectPattern(){
       const best=nearestStopForLine(geo.selected.stops,state.userPosition);
       if(best)focusLineBoardingStop(best,{userInitiated:false});
       else fitCoordinates(geo.selected.coordinates);
-    }else fitCoordinates(geo.selected.coordinates);
+    }else{
+      fitCoordinates(geo.selected.coordinates);
+      usePreviouslyGrantedLineLocation(routeSelectionSeq);
+    }
     drawSoon();scheduleMapStops();
   }
 }
@@ -444,7 +461,26 @@ $('quick-metro').onclick=()=>switchTab('metro',true);
 $('quick-rotas').onclick=()=>switchTab('rotas',true);
 $('sheet-toggle').onclick=()=>{$('sheet').classList.contains('peek')?openSheet():closeSheet()};
 $('grab').onclick=()=>{$('sheet').classList.contains('peek')?openSheet():closeSheet()};
-function askLocation(){if(isStaticOnly){useRouteLocation();return}hideLocationPrompt();if(!window.isSecureContext||!navigator.geolocation){$('nearbyHint').textContent='Localização requer HTTPS ou localhost. Mostrando pontos próximos à UFMG.';openSheet();return}navigator.geolocation.getCurrentPosition(async p=>{const lat=p.coords.latitude,lng=p.coords.longitude;state.userPosition=[lat,lng];state.center=[lat,lng];state.zoom=15.5;drawSoon();scheduleMapStops();try{if(activeTab==='metro'){await loadMetroNearby(lat,lng);switchTab('metro',true)}else{await loadNearbyStops(lat,lng,true);switchTab('pontos',true)}}catch(e){reportError(e)}},()=>{$('nearbyHint').textContent='Localização não autorizada. Você ainda pode buscar pontos no mapa da UFMG.';openSheet()},{enableHighAccuracy:false,timeout:12000,maximumAge:60000})}
+function askLocation(){
+  if(isStaticOnly){
+    if(!window.isSecureContext||!navigator.geolocation){
+      statusLed(false,'Localização exige HTTPS; escolha um ponto no mapa.');return;
+    }
+    navigator.geolocation.getCurrentPosition(async position=>{
+      const lat=position.coords.latitude,lng=position.coords.longitude;
+      state.userPosition=[lat,lng];
+      if(lineMode()&&state.geometry?.selected){
+        const closest=nearestStopForLine(state.geometry.selected.stops,[lat,lng]);
+        if(closest)focusLineBoardingStop(closest);
+      }else{
+        state.center=[lat,lng];state.zoom=15.5;drawSoon();scheduleMapStops();
+        await loadNearbyStops(lat,lng,true).catch(reportError);
+      }
+    },()=>statusLed(null,'Localização não autorizada; selecione ponto ou endereço.'),
+    {enableHighAccuracy:false,maximumAge:60000,timeout:12000});
+    return;
+  }
+  hideLocationPrompt();if(!window.isSecureContext||!navigator.geolocation){$('nearbyHint').textContent='Localização requer HTTPS ou localhost. Mostrando pontos próximos à UFMG.';openSheet();return}navigator.geolocation.getCurrentPosition(async p=>{const lat=p.coords.latitude,lng=p.coords.longitude;state.userPosition=[lat,lng];state.center=[lat,lng];state.zoom=15.5;drawSoon();scheduleMapStops();try{if(activeTab==='metro'){await loadMetroNearby(lat,lng);switchTab('metro',true)}else{await loadNearbyStops(lat,lng,true);switchTab('pontos',true)}}catch(e){reportError(e)}},()=>{$('nearbyHint').textContent='Localização não autorizada. Você ainda pode buscar pontos no mapa da UFMG.';openSheet()},{enableHighAccuracy:false,timeout:12000,maximumAge:60000})}
 $('loc').onclick=askLocation;$('allowLocation').onclick=askLocation;$('skipLocation').onclick=hideLocationPrompt;
 function hideLocationPrompt(){$('locationPrompt').hidden=true;try{sessionStorage.setItem('bh-externo-location-intro-seen','yes')}catch(e){}}
 try{if(sessionStorage.getItem('bh-externo-location-intro-seen')==='yes')hideLocationPrompt()}catch(e){}
