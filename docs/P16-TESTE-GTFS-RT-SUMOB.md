@@ -62,6 +62,26 @@ O novo Worker usa o MESMO endereço `externo-bh-gps-free.hubufmg.workers.dev`.
 O comando Wrangler publica somente o Worker desse projeto e não toca o outro
 Worker do Hub/FUMP. Requer autenticação prévia no Cloudflare.
 
+## 17/11/2026 — Diagnóstico de implantação (HTTP 400)
+
+O teste público retornou `http:400, upstreamError:INVALID_REQUEST,` com
+`source:GTFS_RT` e `matchingRoutes:562055,5102`.
+A validação na branch aceita estes dois parâmetros. Portanto, uma versão antiga
+do Worker publicado é hipótese forte; o 400 **não demonstra falha da SUMOB**.
+
+Foi incluído `GET /api/gps/capabilities`, uma rota sem chamadas a fontes
+externas. Resposta esperada após deploy atualizado:
+
+```json
+{"service":"Externo BH GPS","apiVersion":"p16-gtfs-rt-20261117-1","supportedSources":["CONVENCIONAL","SUPLEMENTAR","GTFS_RT"],"dataSourceVerified":false}
+```
+
+`check_gtfs_rt_free.mjs` agora verifica a versão antes de consultar a
+SUMOB. Em caso de versão incompatível, imprime
+`WORKER_DESATUALIZADO_OU_INCOMPATIVEL`, evitando um falso diagnóstico
+de origem bloqueada. É necessário executar **git pull e wrangler deploy**
+antes do próximo teste.
+
 ## Interpretar JSON do teste
 
 - `http=200`, `corsAuthorized=true`, `feedEntities>0`: feed obtido
