@@ -59,7 +59,81 @@ async function loadRoutes(){try{state.routes=await api('/api/routes')}catch(e){s
     catch(e){console.warn('Link para ponto indisponível',e)}
   }
 }
-async function selectLine(code,{fromStop=false,vehicleKey=null}={}){let route=state.routes.find(r=>r.code.toUpperCase()===String(code).trim().toUpperCase()||`${r.code} — ${r.name}`.toUpperCase()===String(code).trim().toUpperCase());if(!route){$('lineTitle').textContent='Linha não encontrada no catálogo GTFS';return}if(!fromStop){state.selectedStop=null;state.stopCoordinates=null;}state.route=route;state.geometry=null;state.fleet=null;state.pattern='';state.selectedVehicle='';$('lineInput').value=route.code;$('lineTitle').textContent=route.name;const fav=$('lineFavorite');fav.hidden=false;fav.textContent=favorites.routes.includes(route.code)?'★':'☆';fav.setAttribute('aria-pressed',String(favorites.routes.includes(route.code)));fav.onclick=()=>toggleFavorite('routes',route.code);renderFavoriteLines();$('vehicleList').textContent='Carregando veículos…';let [geo,fleet]=await Promise.all([api('/api/route?code='+encodeURIComponent(route.code)),api('/api/fleet?route='+encodeURIComponent(route.code))]);if(state.route?.code!==route.code)return;state.geometry=geo;state.fleet=fleet;let sel=$('patternInput');sel.innerHTML='';let op=document.createElement('option');op.value='';op.textContent=`Sem traçado (${geo.patterns.length} opções)`;sel.append(op);for(let p of geo.patterns){let o=document.createElement('option');o.value=p.id;o.textContent=`${p.headsign||'Sem destino'} · ${p.stops} paradas`;sel.append(o)}renderVehicles();renderStops();drawSoon();if(!fromStop && geo.patterns.length){let preferred=[...geo.patterns].sort((a,b)=>b.tripCount-a.tripCount)[0];$('patternInput').value=preferred.id;await selectPattern();}if(fromStop && state.stopCoordinates){let candidate=vehicleKey&&fleet.vehicles.find(v=>v.source+'|'+v.vehicleId===vehicleKey);if(candidate){focusVehicle(candidate)}else{centerStopInAvailableMap();drawSoon();scheduleMapStops()}}else{let loc=fleet.vehicles.find(v=>diffSeconds(v.lastGpsFixAt)<=120);if(loc){state.center=[loc.latitude,loc.longitude];state.zoom=15;drawSoon();scheduleMapStops()}}}
+// O trajeto com mais viagens e a referência inicial; não é confirmação do veículo.
+let routeSelectionSeq=0;
+const normalizeDestination=s=>String(s||'').trim().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+function itineraryLabel(p, all, primary){
+  const destination=p.headsign||'Destino não informado';
+  const same=all.filter(x=>normalizeDestination(x.headsign)===normalizeDestination(p.headsign))
+                .sort((a,b)=>b.tripCount-a.tripCount);
+  const main=same[0]?.id===p.id;
+  if(p.id===primary?.id)return 'Mais viagens · '+destination;
+  if(normalizeDestination(p.headsign)!==normalizeDestination(primary?.headsign))
+    return (main?'Outro sentido · ':'Outro sentido · rota alternativa · ')+destination;
+  return 'Rota alternativa · '+destination;
+}
+async function selectLine(code,{fromStop=false,vehicleKey=null,destination=null}={}){
+  const route=state.routes.find(r=>r.code.toUpperCase()===String(code).trim().toUpperCase()
+     ||(r.code+' — '+r.name).toUpperCase()===String(code).trim().toUpperCase());
+  if(!route){$('lineTitle').textContent='Linha não encontrada';return}
+  const seq=++routeSelectionSeq;
+  if(!fromStop){state.selectedStop=null;state.stopCoordinates=null;}
+  const stop=fromStop&&state.selectedStop?String(state.selectedStop):null;
+  state.route=route;state.geometry=null;state.fleet=null;state.pattern='';state.selectedVehicle='';
+  $('lineInput').value=route.code;$('lineTitle').textContent=route.name;
+  const fav=$('lineFavorite');fav.hidden=false;
+  fav.textContent=favorites.routes.includes(route.code)?'★':'☆';
+  fav.setAttribute('aria-pressed',String(favorites.routes.includes(route.code)));
+  fav.onclick=()=>toggleFavorite('routes',route.code);
+  renderFavoriteLines();$('vehicleList').textContent='Carregando ônibus…';
+  const query='/api/route?code='+encodeURIComponent(route.code)+(stop?'&stop='+encodeURIComponent(stop):'');
+  const [geo,fleet]=await Promise.all([api(query),api('/api/fleet?route='+encodeURIComponent(route.code))]);
+  if(seq!==routeSelectionSeq||state.route?.code!==route.code)return;
+  state.geometry=geo;state.fleet=fleet;
+  const patterns=[...geo.patterns].sort((a,b)=>b.tripCount-a.tripCount);
+  const primary=patterns[0];
+  const sel=$('patternInput');sel.replaceChildren();
+  const none=document.createElement('option');none.value='';none.textContent='Escolher outro percurso';sel.append(none);
+  for(const p of patterns){
+    const option=document.createElement('option');option.value=p.id;
+    option.textContent=itineraryLabel(p,patterns,primary);
+    sel.append(option);
+  }
+  const desired=normalizeDestination(destination);
+  const candidate=vehicleKey&&fleet.vehicles.find(v=>v.source+'|'+v.vehicleId===vehicleKey);
+  const atStop=stop?patterns.filter(p=>p.servesStop):patterns;
+  const matching=desired?atStop.filter(p=>normalizeDestination(p.headsign)===desired):atStop;
+  let chosen=null;
+  if(stop){
+    // Somente um padrão que atende ESTE ponto e ESTE destino é elegível.
+    if(matching.length){
+      const confirmedShape=candidate?.shapeMatch?.status==='probable'
+          ?String(candidate.shapeMatch.shapeId):null;
+      chosen=(confirmedShape&&matching.find(p=>String(p.shapeId)===confirmedShape))
+          ||matching[0];
+    }
+  }else{
+    chosen=primary;
+  }
+  renderVehicles();renderStops();drawSoon();
+  if(chosen){sel.value=chosen.id;await selectPattern();}
+  else{
+    sel.value='';state.geometry.selected=null;
+    $('patternHint').textContent=stop
+       ?'Nenhum percurso com esse destino foi confirmado neste ponto. Escolha outro sentido para consultar.'
+       :'Escolha o sentido ou uma rota alternativa.';
+  }
+  if(seq!==routeSelectionSeq)return;
+  if(stop&&state.stopCoordinates){
+    if(candidate)focusVehicle(candidate);
+    else{centerStopInAvailableMap();drawSoon();scheduleMapStops()}
+  }else{
+    const first=fleet.vehicles.find(v=>diffSeconds(v.lastGpsFixAt)<=120);
+    // A geometria escolhida permanece como referência; não substituir por
+    // um veículo de outra variante de itinerário.
+    if(!chosen&&first){state.center=[first.latitude,first.longitude];state.zoom=15;drawSoon();scheduleMapStops()}
+  }
+}
 // Keep a selected stop centered in the *visible* map, avoiding the overlaid
 // Hub sheet on mobile and desktop. Never zoom out to all of Belo Horizonte.
 function visibleMapRect(){const w=$canvas.clientWidth,h=$canvas.clientHeight,r=$('sheet').getBoundingClientRect();if(window.innerWidth>=760){let left=Math.max(20,Math.min(w-120,r.right+14));return {left,top:65,right:w-16,bottom:h-18}}let bottom=Math.max(100,Math.min(h-10,r.top-14));return {left:15,top:70,right:w-15,bottom}}
@@ -70,7 +144,29 @@ function vehicleMeta(v){const age=fmtAge(diffSeconds(v.lastGpsFixAt));const sinc
 function vehicleRow(v){let b=document.createElement('button');b.type='button';b.className='vehicle'+(state.selectedVehicle===v.source+'|'+v.vehicleId?' selected':'');b.dataset.vehicleKey=v.source+'|'+v.vehicleId;let top=document.createElement('div');top.className='top';let name=document.createElement('b');name.textContent='Ônibus';let lab=document.createElement('span');lab.className='label';let gpsAge=diffSeconds(v.lastGpsFixAt),stillAge=diffSeconds(v.positionUnchangedSinceAt);if(gpsAge>120)lab.classList.add('old');else if(stillAge>120)lab.classList.add('warn');lab.textContent=gpsAge>300?'Sinal antigo':gpsAge>120?'Sinal atrasado':stillAge>120?'Sem movimento recente':'Localização recente';top.append(name,lab);let m=document.createElement('div');m.className='meta';m.textContent=vehicleMeta(v);m.style.whiteSpace='pre-line';b.append(top,m);b.onclick=()=>focusVehicle(v);return b}
 function tickVehicleAges(){let byId=new Map((state.fleet?.vehicles||[]).map(v=>[v.source+'|'+v.vehicleId,v]));for(let node of $('vehicleList').querySelectorAll('.vehicle')){let v=byId.get(node.dataset.vehicleKey);if(v){let m=node.querySelector('.meta');if(m)m.textContent=vehicleMeta(v)}}}
 function renderVehicles(){let arr=state.fleet?.vehicles||[];let list=$('vehicleList');list.innerHTML='';if(!arr.length){let p=document.createElement('p');p.className='notice';p.textContent='Nenhum ônibus com localização disponível nesta linha.';list.append(p);return}for(let v of arr.slice(0,200))list.append(vehicleRow(v));}
-async function selectPattern(){state.pattern=$('patternInput').value;if(!state.pattern){state.geometry.selected=null;renderStops();drawSoon();return}let geo=await api('/api/route?code='+encodeURIComponent(state.route.code)+'&pattern='+encodeURIComponent(state.pattern));if(geo?.selected && state.pattern===geo.selected.patternId){state.geometry=geo;renderStops();if(state.stopCoordinates&&state.selectedStop)centerStopInAvailableMap();else fitCoordinates(geo.selected.coordinates);drawSoon();scheduleMapStops();}}
+async function selectPattern(){
+  if(!state.route||!state.geometry)return;
+  const code=state.route.code,pattern=$('patternInput').value;
+  state.pattern=pattern;
+  if(!pattern){
+    state.geometry.selected=null;
+    $('patternHint').textContent='Escolha o sentido ou uma rota alternativa.';
+    renderStops();drawSoon();return;
+  }
+  const p=state.geometry.patterns.find(x=>x.id===pattern);
+  $('patternHint').textContent=state.selectedStop&&state.stopCoordinates
+    ?'Percurso de referência passando pelo ponto selecionado · toque acima para mudar.'
+    :(p?.headsign?'Sentido: '+p.headsign+' · toque acima para mudar.':'Traçado de referência · toque acima para mudar.');
+  const geo=await api('/api/route?code='+encodeURIComponent(code)+'&pattern='+encodeURIComponent(pattern));
+  if(state.route?.code!==code||state.pattern!==pattern)return;
+  if(geo?.selected){
+    state.geometry={...state.geometry,selected:geo.selected};
+    renderStops();
+    if(state.stopCoordinates&&state.selectedStop)centerStopInAvailableMap();
+    else fitCoordinates(geo.selected.coordinates);
+    drawSoon();scheduleMapStops();
+  }
+}
 function fitCoordinates(coords){if(!coords.length)return;let la=coords.map(p=>p[0]),lo=coords.map(p=>p[1]);let bounds=[Math.min(...la),Math.min(...lo),Math.max(...la),Math.max(...lo)];state.center=[(bounds[0]+bounds[2])/2,(bounds[1]+bounds[3])/2];let w=$canvas.clientWidth*.81,h=$canvas.clientHeight*.8;for(let z=17;z>=10;z--){let a=mercator(bounds[0],bounds[1],z),b=mercator(bounds[2],bounds[3],z);if(Math.abs(b[0]-a[0])<=w && Math.abs(b[1]-a[1])<=h){state.zoom=z;break}}}
 function zoom(delta,at=null){const old=state.zoom,newZ=Math.max(MIN_Z,Math.min(MAX_Z,old+delta));if(old===newZ)return;let anchor=at||[$canvas.clientWidth/2,$canvas.clientHeight/2];let [cx,cy]=mercator(...state.center,old), world=[cx+anchor[0]-$canvas.clientWidth/2,cy+anchor[1]-$canvas.clientHeight/2];let point=invMercator(...world,old);state.zoom=newZ;let [nx,ny]=mercator(...point,newZ);state.center=invMercator(nx-anchor[0]+$canvas.clientWidth/2,ny-anchor[1]+$canvas.clientHeight/2,newZ);drawSoon();scheduleMapStops()}
 $canvas.addEventListener('wheel',e=>{e.preventDefault();let rc=$canvas.getBoundingClientRect();zoom(e.deltaY<0?.5:-.5,[e.clientX-rc.left,e.clientY-rc.top])},{passive:false});
@@ -314,7 +410,7 @@ for(const r of data.routes){const b=document.createElement('button');b.type='but
   if(r.nextArrival.type==='scheduled'&&r.nextArrival.lastTripToday){
     const last=document.createElement('small');last.className='arrival-last';last.textContent='Última de hoje';eta.append(last)
   }
-}else{eta.textContent='—';const status=document.createElement('small');status.textContent='Sem previsão';eta.append(status)}b.append(n,label,eta);b.onclick=async()=>{const gps=r.nextArrival?.type==='gps_estimate'&&r.nextArrival.vehicleId;const key=gps?r.nextArrival.vehicleSource+'|'+r.nextArrival.vehicleId:null;if(!gps)switchTab('linhas',true);try{await selectLine(r.code,{fromStop:true,vehicleKey:key});if(!gps)switchTab('linhas',true)}catch(e){reportError(e)}};area.append(b)}
+}else{eta.textContent='—';const status=document.createElement('small');status.textContent='Sem previsão';eta.append(status)}b.append(n,label,eta);b.onclick=async()=>{const gps=r.nextArrival?.type==='gps_estimate'&&r.nextArrival.vehicleId;const key=gps?r.nextArrival.vehicleSource+'|'+r.nextArrival.vehicleId:null;if(!gps)switchTab('linhas',true);try{await selectLine(r.code,{fromStop:true,vehicleKey:key,destination:r.destination||r.nextArrival?.destination});if(!gps)switchTab('linhas',true)}catch(e){reportError(e)}};area.append(b)}
 if(data.alternatives?.length){
   const alt=document.createElement('details');alt.className='stop-alternatives';
   const summary=document.createElement('summary');summary.textContent='Outros pontos próximos';alt.append(summary);
