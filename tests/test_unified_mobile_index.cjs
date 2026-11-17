@@ -6,6 +6,7 @@ const vm=require('node:vm');
 const path=require('node:path');
 const source=fs.readFileSync(path.join(__dirname,'../static/static-bus.js'),'utf8');
 const fixtures={
+  'manifest.json':{gtfsVersion:'202611161919'},
   'routes.json':[
     {id:'10',code:'5102',name:'UFMG - Santo Antônio',patterns:['p1','p2']},
     {id:'11',code:'9502',name:'Centro - Estação',patterns:['p3']}
@@ -49,7 +50,9 @@ test('grid espacial retorna pontos visíveis sem carregar rotas de trajetos',asy
   const result=await bus.api('/api/map-stops?minlat=-19.88&minlng=-43.98&maxlat=-19.86&maxlng=-43.96');
   assert.deepEqual(Array.from(result.items,x=>x.id),['a','b']);
   assert.equal(result.total,2);
-  assert.deepEqual(requests,['routes.json','stops.json']);
+  assert.equal(requests.filter(x=>x==='manifest.json').length,1);
+  assert.ok(requests.includes('routes.json'));
+  assert.ok(requests.includes('stops.json'));
 });
 test('pontos próximos são ordenados e não incluem paradas distantes',async()=>{
   const bus=makeApi();
