@@ -45,10 +45,11 @@ def build(target=None):
     (public/'catalog').mkdir(exist_ok=True)
     shutil.copy2(catalog/'metro.json',public/'catalog'/'metro.json')
     shutil.copytree(scan,public/'catalog'/'scan')
+    # Firebase CLI may run from dist/; public is that directory ('.').
     # Deploy package at /externo/ on a free Firebase Hosting site.
     config={
         'hosting':{
-            'public':'dist',
+            'public':'.',
             'ignore':['firebase.json','**/.*','**/node_modules/**'],
             'headers':[
               {'source':'/externo/catalog/scan/**',
