@@ -1,3 +1,4 @@
+import {parseVehiclePositions} from './gtfs-rt.mjs';
 /* Externo BH GPS reader: independent Cloudflare Workers Free candidate.
  * No KV, D1, secret, scheduled task, paid plan, private geolocation or routing.
  * Disabled at the client until public PBH access and Free quotas are verified.
@@ -7,6 +8,10 @@ const FEEDS=Object.freeze({
   SUPLEMENTAR:'https://temporeal.pbh.gov.br/?param=SD'
 });
 const ORIGINS=new Set(['https://hubufmg.web.app','https://hubufmg.firebaseapp.com']);
+// Alternative official SUMOB GTFS-RT feed, publicly catalogued under CC BY 4.0.
+// Endpoint is fixed: callers cannot supply their own URL.
+const REALTIME_URL='http://realtime4.mobilibus.com/web/4ch6j/vehicle-positions?accesskey=982a57efd77a9462bf1665696fb25984';
+const RT_MAX_BODY=8*1024*1024;
 const MAX_BODY=12*1024*1024;
 const MAX_RESPONSE_ROWS=1500;
 const MIN_CACHE_SECONDS=25;
@@ -89,6 +94,37 @@ async function readFeed(source,{fetchFn,cache,ctx,now,requestUrl}){
   }
   return body;
 }
+async function readRealtime({fetchFn,cache,ctx,requestUrl}){
+  const key=new Request(new URL('/__gps_cache/raw/GTFS_RT',requestUrl));
+  if(cache){
+    try{
+      const hit=await cache.match(key);
+      if(hit&&hit.ok){
+        const bytes=await hit.arrayBuffer();
+        if(bytes.byteLength>0&&bytes.byteLength<=RT_MAX_BODY)return bytes;
+      }
+    }catch(_){/* Optional edge cache; fail open to live source. */}
+  }
+  const signal=typeof AbortSignal.timeout==='function'?AbortSignal.timeout(9000):undefined;
+  const response=await fetchFn(REALTIME_URL,{
+    headers:{Accept:'application/x-protobuf,application/octet-stream'},
+    redirect:'manual',signal
+  });
+  if(!response.ok||response.status>=300)throw Error('RT_HTTP_'+response.status);
+  const declared=Number(response.headers.get('content-length')||0);
+  if(declared>RT_MAX_BODY)throw Error('GTFS_RT_TOO_LARGE');
+  const bytes=await response.arrayBuffer();
+  if(bytes.byteLength>RT_MAX_BODY)throw Error('GTFS_RT_TOO_LARGE');
+  if(cache){
+    const put=cache.put(key,new Response(bytes,{
+      headers:{'Content-Type':'application/octet-stream',
+        'Cache-Control':'public, max-age='+MIN_CACHE_SECONDS}
+    })).catch(()=>{});
+    if(ctx?.waitUntil)ctx.waitUntil(put);else await put;
+  }
+  return bytes;
+}
+
 export async function handleGpsRequest(request,{fetchFn=fetch,cache=globalThis.caches?.default,ctx=null,now=Date.now()}={}){
   const origin=request.headers.get('Origin')||'';
   if(origin&&!ORIGINS.has(origin))return reply({available:false,error:'ORIGIN_NOT_ALLOWED'},403,origin);
@@ -101,12 +137,14 @@ export async function handleGpsRequest(request,{fetchFn=fetch,cache=globalThis.c
   const url=new URL(request.url);
   if(url.pathname!=='/api/gps')return reply({available:false,error:'NOT_FOUND'},404,origin);
   const source=url.searchParams.get('source');
-  const raw=url.searchParams.get('nls')||'';
+  const rt=source==='GTFS_RT';
+  const raw=url.searchParams.get(rt?'routes':'nls')||'';
   const names=raw.split(',').filter(Boolean);
-  if(!Object.hasOwn(FEEDS,source)||!names.length||names.length>50||
-     names.some(x=>!/^\d{1,8}$/.test(x))||
+  const pattern=rt?/^[A-Za-z0-9_.:-]{1,70}$/:/^\d{1,8}$/;
+  if((!rt&&!Object.hasOwn(FEEDS,source))||!names.length||names.length>50||
+     names.some(x=>!pattern.test(x))||
      new Set(names).size!==names.length||
-     [...url.searchParams.keys()].some(k=>k!=='source'&&k!=='nls'))
+     [...url.searchParams.keys()].some(k=>k!=='source'&&k!==(rt?'routes':'nls')))
     return reply({available:false,error:'INVALID_REQUEST'},400,origin);
   try{
     // Cache normalized output for repeated line queries at each Free POP.
@@ -128,10 +166,17 @@ export async function handleGpsRequest(request,{fetchFn=fetch,cache=globalThis.c
         }
       }catch(_){/* Cache is always optional, even when corrupted. */}
     }
-    const body=await readFeed(source,{fetchFn,cache,ctx,now,requestUrl:url.href});
-    const result=parseFeed(body,new Set(names),now);
+    let result;
+    if(rt){
+      const bytes=await readRealtime({fetchFn,cache,ctx,requestUrl:url.href});
+      result=parseVehiclePositions(bytes,names,now);
+    }else{
+      const body=await readFeed(source,{fetchFn,cache,ctx,now,requestUrl:url.href});
+      result=parseFeed(body,new Set(names),now);
+    }
     const data={available:true,source,
-      fetchedAt:new Date(now).toISOString(),records:result.records};
+      fetchedAt:new Date(now).toISOString(),records:result.records,
+      ...(rt?{attribution:'Superintendência de Mobilidade Urbana de Belo Horizonte (SUMOB)',license:'CC BY 4.0'}:{})};
     if(cache){
       const put=cache.put(key,new Response(JSON.stringify(data),{
         headers:{'Content-Type':'application/json',
@@ -150,10 +195,14 @@ export async function handleGpsRequest(request,{fetchFn=fetch,cache=globalThis.c
     else if(message==='PBH_NON_ARRAY')reason='PBH_FORMAT_UNEXPECTED';
     else if(message==='GPS_TOO_MANY_MATCHES')reason='GPS_RESULT_LIMIT';
     else if(error instanceof SyntaxError)reason='PBH_INVALID_JSON';
+    else if(/^RT_HTTP_[0-9]{3}$/.test(message))reason='GTFS_RT_HTTP_ERROR';
+    else if(message==='GTFS_RT_PROTO_INVALID')reason='GTFS_RT_INVALID_PROTOBUF';
+    else if(message==='GTFS_RT_TOO_LARGE')reason='GTFS_RT_TOO_LARGE';
+    else if(message==='GTFS_RT_TOO_MANY_ENTITIES')reason='GTFS_RT_TOO_MANY_ENTITIES';
     else if(error?.name==='TimeoutError'||error?.name==='AbortError')
-      reason='PBH_TIMEOUT';
-    else if(error instanceof TypeError)reason='PBH_NETWORK_ERROR';
-    const match=/^PBH_HTTP_([1-5][0-9]{2})$/.exec(message);
+      reason=rt?'GTFS_RT_TIMEOUT':'PBH_TIMEOUT';
+    else if(error instanceof TypeError)reason=rt?'GTFS_RT_NETWORK_ERROR':'PBH_NETWORK_ERROR';
+    const match=/^(?:PBH|RT)_HTTP_([1-5][0-9]{2})$/.exec(message);
     // HTTP status is safe to expose; upstream bodies/headers stay private.
     const upstreamStatus=match?Number(match[1]):null;
     return reply({available:false,error:'GPS_SOURCE_UNAVAILABLE',reason,
