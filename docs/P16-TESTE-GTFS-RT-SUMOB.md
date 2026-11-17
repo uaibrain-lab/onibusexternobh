@@ -1,7 +1,7 @@
 # P16 — Teste gratuito do GPS oficial GTFS Realtime da SUMOB
 
 **17/11/2026. Escopo exclusivo:** uaibrain-lab/onibusexternobh.
-**Estado:** implementação experimental na branch P15/P16, NÃO homologada na origem real.
+**Estado:** acesso e leitura reais da SUMOB aprovados (HTTP 200); interface mobile e uso em escala ainda aguardam homologação.
 **NÃO habilitar:** `static/gps-config.json` continua `"enabled":false`. Não integrar ao Hub nem a produção sem aprovação específica.
 
 ## Por que mudou
