@@ -59,8 +59,9 @@ function parseFeed(body,nls,now){
   }
   return {records:filtered,sourceRows:records.length};
 }
-async function readFeed(source,{fetchFn,cache,ctx,now}){
-  const key=new Request('https://gps-cache.invalid/feed/'+source);
+async function readFeed(source,{fetchFn,cache,ctx,now,requestUrl}){
+  // The Cache API key uses this Worker's real host, never a synthetic .invalid host.
+  const key=new Request(new URL('/__gps_cache/raw/'+source,requestUrl));
   if(cache){
     try{
       const cached=await cache.match(key);
@@ -108,10 +109,37 @@ export async function handleGpsRequest(request,{fetchFn=fetch,cache=globalThis.c
      [...url.searchParams.keys()].some(k=>k!=='source'&&k!=='nls'))
     return reply({available:false,error:'INVALID_REQUEST'},400,origin);
   try{
-    const body=await readFeed(source,{fetchFn,cache,ctx,now});
+    // Cache normalized output for repeated line queries at each Free POP.
+    // Exact NL set is sorted to avoid duplicate cache keys; never store CORS
+    // headers, coordinates of passengers, or a response older than 30s.
+    const normalizedNLs=[...names].sort().join(',');
+    const key=new Request(new URL('/__gps_cache/filtered/'+source+'/'+normalizedNLs,url));
+    if(cache){
+      try{
+        const hit=await cache.match(key);
+        if(hit&&hit.ok){
+          const data=await hit.json();
+          const age=now-Date.parse(data.fetchedAt||'');
+          if(data.available===true&&data.source===source&&
+             Number.isFinite(age)&&age>=0&&age<=30000&&
+             Array.isArray(data.records)){
+            return reply(data,200,origin);
+          }
+        }
+      }catch(_){/* Cache is always optional, even when corrupted. */}
+    }
+    const body=await readFeed(source,{fetchFn,cache,ctx,now,requestUrl:url.href});
     const result=parseFeed(body,new Set(names),now);
-    return reply({available:true,source,
-      fetchedAt:new Date(now).toISOString(),records:result.records},200,origin);
+    const data={available:true,source,
+      fetchedAt:new Date(now).toISOString(),records:result.records};
+    if(cache){
+      const put=cache.put(key,new Response(JSON.stringify(data),{
+        headers:{'Content-Type':'application/json',
+          'Cache-Control':'public, max-age='+MIN_CACHE_SECONDS}
+      })).catch(()=>{});
+      if(ctx?.waitUntil)ctx.waitUntil(put);else await put;
+    }
+    return reply(data,200,origin);
   }catch(error){
     // No raw PBH errors or bodies leak to the public browser.
     return reply({available:false,error:'GPS_SOURCE_UNAVAILABLE'},503,origin);
