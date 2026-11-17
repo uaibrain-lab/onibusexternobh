@@ -42,7 +42,7 @@
     </button>
   </div>
   <div id="body" aria-hidden="true">
-    <div class="notice-top" role="note">Protótipo de dados oficiais PBH/SUMOB. Posições GPS podem estar atrasadas; horários de coleta não significam movimento.</div>
+    <div class="notice-top" role="note">Dados oficiais GTFS/SUMOB. No modo gratuito, os horários são programados; não existe GPS ao vivo confirmado.</div>
     <section id="pontosPane" aria-label="Pontos de ônibus">
       <section id="stopDetail" class="stop-detail" hidden aria-live="polite"></section>
       <div class="flexhead"><h3>Meus pontos favoritos</h3></div><div id="favoriteStops" class="list-rows"></div>
@@ -139,9 +139,10 @@
       <div id="routeMetroHints" class="list-rows"></div>
       <p class="hint">Pesquisa gratuita no catálogo local de pontos, por coordenadas ou selecionando diretamente no mapa. Ainda não há busca completa por endereço: use o mapa para indicar qualquer rua ou imóvel. Dados de ônibus © PBH/SUMOB. Horários de tabela não são GPS.</p>
     </section>
-    <footer class="side-footer"><div id="lastPoll">Aguardando coleta</div><div>Fonte: Prefeitura de Belo Horizonte · protótipo não oficial.</div></footer>
+    <footer class="side-footer"><div id="lastPoll">Horários GTFS (sem GPS ao vivo)</div><div>Fonte: Prefeitura de Belo Horizonte · protótipo não oficial.</div></footer>
   </div>
 </section>
+<script src="./catalog-api.js" defer></script>
 <script src="./app.js" defer></script>
 </body>
 </html>
