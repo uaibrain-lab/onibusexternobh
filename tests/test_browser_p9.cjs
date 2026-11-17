@@ -45,10 +45,21 @@ async function check(name,config){
   await page.locator('#routeResults .route-result').first().waitFor({timeout:150000});
   const count=await page.locator('#routeResults .route-result').count();
   assert.ok(count>0,'No itinerary rendered in Chromium');
+  const routing=await page.evaluate(()=>({
+    confidence:state.routeResults[0]?.confidence,
+    walks:state.routeResults[0]?.legs?.filter(x=>x.mode==='walk')
+       .map(x=>({pathVerified:x.pathVerified,hasGeometry:Array.isArray(x.geometry)}))
+  }));
+  if(await page.locator('#routeResults').count()){
+    assert.ok(routing.confidence?.startsWith('GTFS_scheduled_'),
+      'A complete OSM pedestrian graph must be used in the installed P9 build');
+    assert.ok(routing.walks?.length>0&&routing.walks.every(w=>w.hasGeometry),
+      'Each selected walk must be routed on a real OSM path');
+  }
   const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+4);
   assert.equal(overflow,false,'Page has horizontal overflow');
   if(errors.length)throw Error(name+' page errors: '+errors.join('; '));
-  console.log('P9_BROWSER_OK',JSON.stringify({name,itineraries:count,
+  console.log('P9_BROWSER_OK',JSON.stringify({name,itineraries:count,routing,
    viewport:config.viewport,hasHorizontalOverflow:false}));
   fs.mkdirSync('/tmp/p9-browser',{recursive:true});
   await page.screenshot({path:'/tmp/p9-browser/'+name+'.png',fullPage:false});
