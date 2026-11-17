@@ -1,4 +1,4 @@
-name: Testes P2
+name: Externo — testes e regressões
 
 on:
   push:
@@ -29,5 +29,8 @@ jobs:
             echo "Aguardando importação do código P2; repositório ainda em preparação."
           fi
 
-      - name: Validar JavaScript
-        run: node --check static/app.js
+      - name: Validar JavaScript e PWA
+        run: |
+          node --check static/app.js
+          node --check static/sw.js
+          node --test tests/test_p11_ui.cjs
