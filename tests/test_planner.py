@@ -10,6 +10,7 @@ import zipfile
 
 from scripts.build_routing import build
 from transit.planner import JourneyPlanner, PlannerError
+from transit.walking import PedestrianRouter
 
 
 def table(headers, rows):
@@ -147,6 +148,27 @@ class RoutePlannerTests(unittest.TestCase):
         for itinerary in reverse['itineraries']:
             self.assertFalse(any(leg.get('line') in ('P','Q')
                                  for leg in itinerary['legs']),itinerary)
+
+    def test_local_pedestrian_graph_marks_verified_routes(self):
+        walker=PedestrianRouter('http://127.0.0.1:8002',
+            fetcher=lambda url,payload:
+                {'trip':{'summary':{'length':0.02,'time':20}}})
+        p=JourneyPlanner(self.cat,pedestrian=walker)
+        r=p.plan(self.a,self.c,self.at)
+        self.assertTrue(r['itineraries'],r)
+        self.assertEqual(r['pedestrianRouting'],'local_osm')
+        self.assertTrue(all(t['confidence']=='scheduled_gtfs_with_osm_pedestrian_paths'
+            for t in r['itineraries']))
+        self.assertTrue(all(leg['pathVerified'] for trip in r['itineraries']
+            for leg in trip['legs'] if leg['mode']=='walk'))
+
+    def test_non_traversable_pedestrian_links_are_not_invented(self):
+        walker=PedestrianRouter('http://127.0.0.1:8002',
+            fetcher=lambda url,payload:{'error':'No pedestrian path'})
+        p=JourneyPlanner(self.cat,pedestrian=walker)
+        r=p.plan(self.a,self.c,self.at)
+        self.assertEqual(r['status'],'walking_unavailable',r)
+        self.assertEqual(r['itineraries'],[])
 
     def test_bad_coords_rejected(self):
         with self.assertRaises(PlannerError):
