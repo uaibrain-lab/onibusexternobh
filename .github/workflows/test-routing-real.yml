@@ -38,6 +38,7 @@ jobs:
         run: |
           timeout 150 python - <<'PY'
           import time
+          import resource
           from pathlib import Path
           from transit.planner import JourneyPlanner
           p=JourneyPlanner(Path('catalog'))
@@ -73,4 +74,7 @@ jobs:
               assert 0<=trip['transfers']<=2
               assert trip['departure']<=trip['arrival']
               assert any(leg['mode']=='bus' for leg in trip['legs'])
+          rss_mib=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1024
+          print('ROUTING_PEAK_RSS_MIB',round(rss_mib,1),flush=True)
+          assert rss_mib<1800,'Consumo de memória excessivo para o protótipo'
           PY
