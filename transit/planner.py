@@ -208,8 +208,21 @@ class JourneyPlanner:
                 eligible_days=[day for day in days if self._valid(service,day)]
                 if not eligible_days:
                     continue
+                # Fast rejection: the trip must overlap the requested time
+                # window and contain a stop already reachable in this round.
+                # Otherwise scanning every stop of the city's timetable is wasteful.
+                if not any(stop[0] in prior for stop in stops):
+                    continue
                 for day in eligible_days:
                     midnight=dt.datetime.combine(day,dt.time.min,BRT).timestamp()
+                    earliest=midnight+stops[0][2]
+                    latest=midnight+stops[-1][1]
+                    if backward:
+                        if earliest>search_ts or latest<search_ts-HORIZON_SECONDS:
+                            continue
+                    else:
+                        if latest<search_ts or earliest>search_ts+HORIZON_SECONDS:
+                            continue
                     candidates=[]
                     entries=reversed(stops) if backward else iter(stops)
                     for sid,arr,dep in entries:
