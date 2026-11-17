@@ -41,7 +41,12 @@ test('Abrir 5102 mostra só paradas da linha e sair restaura mapa anterior',asyn
   expect(errors).toEqual([]);
 });
 test('Pesquisa explícita de padaria abre local Photon sem autocomplete',async({page})=>{
-  const calls=[];
+  const calls=[],routingDownloads=[];
+  page.on('request',request=>{
+    if(request.url().includes('/catalog/scan/index.json')||
+       request.url().includes('/catalog/scan/trips.json.gz'))
+      routingDownloads.push(request.url());
+  });
   await page.route('https://photon.komoot.io/api/**',async route=>{
     const url=new URL(route.request().url());
     calls.push(Object.fromEntries(url.searchParams));
@@ -64,6 +69,7 @@ test('Pesquisa explícita de padaria abre local Photon sem autocomplete',async({
   expect(calls.length).toBe(1);
   expect(calls[0].q).toBe('Padaria Santa Marta');
   expect(calls[0].lat).toBe('-19.9208');
+  expect(routingDownloads).toHaveLength(0); // no heavy GTFS scan merely for address
   await page.locator('#routeOriginResults .row-item').first().click();
   const loc=await page.evaluate(()=>state.routeOrigin);
   expect(loc.lat).toBeCloseTo(-19.921,4);
