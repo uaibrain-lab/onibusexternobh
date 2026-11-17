@@ -162,6 +162,28 @@ class JourneyPlanner:
             del current[5:]
         return any(x is label for x in current)
 
+    @staticmethod
+    def _dominates(a,b,backward):
+        """True only if a is no worse in time, walking AND vehicle count."""
+        return (a.time>=b.time if backward else a.time<=b.time) and (
+            a.walked<=b.walked+0.01 and a.rides<=b.rides)
+
+    def _insert_global(self,history,label,backward):
+        prior=history.setdefault(label.stop,[])
+        if any(self._dominates(old,label,backward) for old in prior):
+            return False
+        prior[:]=[old for old in prior if not self._dominates(label,old,backward)]
+        prior.append(label)
+        # Keep representative Pareto labels. Huge fan-out in terminal areas
+        # otherwise produces exponential combinations of redundant options.
+        if len(prior)>12:
+            prior.sort(key=lambda x:(((-x.time if backward else x.time)-
+                                      (0 if backward else 0)) / 60+
+                                      x.walked/60+x.rides*25,
+                                      x.walked,x.rides))
+            del prior[12:]
+        return any(x is label for x in prior)
+
     def _edge_walk(self,source,dest,meters,depart,arrive):
         return {'mode':'walk','from':source,'to':dest,
                 'metersApprox':round(meters * WALK_FACTOR),
@@ -178,7 +200,7 @@ class JourneyPlanner:
                 'departure':self._iso(depart),'arrival':self._iso(arrive),
                 'prediction':'GTFS scheduled'}
 
-    def _transfer(self,labels,backward):
+    def _transfer(self,labels,backward,history):
         # Transfer only between very nearby stop coordinates; not a street route.
         seed=[x for values in labels.values() for x in values]
         # Avoid explosive footpath expansion in busy terminals.
@@ -193,10 +215,11 @@ class JourneyPlanner:
                 t=old.time-seconds if backward else old.time+seconds
                 edge=(self._edge_walk(sid,old.stop,meters,t,old.time) if backward
                       else self._edge_walk(old.stop,sid,meters,old.time,t))
-                self._insert(labels,Label(sid,t,old.walked+meters*WALK_FACTOR,
-                                          old.rides,old,edge),backward)
+                node=Label(sid,t,old.walked+meters*WALK_FACTOR,old.rides,old,edge)
+                if self._insert_global(history,node,backward):
+                    self._insert(labels,node,backward)
 
-    def _scan_round(self,prior,search_ts,backward,stats):
+    def _scan_round(self,prior,search_ts,backward,stats,history):
         next_labels={}
         counts=collections.Counter(code for sid in prior for code in self.stop_routes.get(sid,())
                                     if code in self.files)
@@ -252,7 +275,8 @@ class JourneyPlanner:
                                 edge=self._edge_bus(code,trip_id,headsign,board_sid,sid,
                                                     board_epoch,midnight+arr)
                             node=Label(sid,epoch,earlier.walked,earlier.rides+1,earlier,edge)
-                            self._insert(next_labels,node,backward)
+                            if self._insert_global(history,node,backward):
+                                self._insert(next_labels,node,backward)
                         # Add board possibilities after dropping at this stop.
                         # A trip cannot be entered where boarding is forbidden.
                         # In backward search, the reachable stop is an ALIGHTING stop.
@@ -451,17 +475,18 @@ class JourneyPlanner:
                   else self._edge_walk('origin',sid,meters,search_ts,t))
             self._insert(prior,Label(sid,t,meters*WALK_FACTOR,0,None,edge),backward)
         candidates=[]
+        history={sid:list(labels) for sid,labels in prior.items()}
         stats={'stopScans':0,'limited':False,'rounds':0}
         for rides in range(MAX_RIDES):
             if not prior:
                 break
-            gained=self._scan_round(prior,search_ts,backward,stats)
+            gained=self._scan_round(prior,search_ts,backward,stats,history)
             stats['rounds']=rides+1
             if gained:
                 candidates.extend(self._collect(gained,origin,destination,search_ts,backward))
             if stats['limited']:
                 break
-            self._transfer(gained,backward)
+            self._transfer(gained,backward,history)
             prior=gained
         if preference=='leastWalking':
             key=lambda x:(x['walkMetersApprox'],x['durationMinutes'],x['transfers'])
