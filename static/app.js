@@ -380,6 +380,7 @@ function routeStatus(message,kind='info'){
 function routeInput(which){return $(which==='origin'?'routeOriginInput':'routeDestinationInput')}
 function routeCandidates(which){return $(which==='origin'?'routeOriginResults':'routeDestinationResults')}
 function setRoutePoint(which,point){
+  invalidateRouteResults();
   const lat=Number(point.lat),lng=Number(point.lng);
   if(!Number.isFinite(lat)||!Number.isFinite(lng))return;
   const normalized={lat,lng,label:String(point.label||'Local no mapa')};
@@ -432,15 +433,26 @@ function ensureFreeWorker(){
   freeWorker.postMessage({kind:'init',seq:++freeSeq,baseUrl:freeBase});
   return freeInit;
 }
+function invalidateRouteResults(){
+  cancelFreeCalls();
+  state.routeResults=[];state.routeSelected=0;
+  $('routeResults').replaceChildren();
+  $('routeMetroHints').replaceChildren();
+  drawSoon();
+}
+function cancelFreeCalls(){
+  if(!freeCallbacks.size)return;
+  const seq=++freeSeq;
+  for(const call of freeCallbacks.values())call.reject(Error('Consulta substituída'));
+  freeCallbacks.clear();
+  if(freeWorker)freeWorker.postMessage({kind:'cancel',seq});
+  $('routeSubmit').disabled=false;
+}
 async function freeCall(kind,props={}){
   await ensureFreeWorker();
+  cancelFreeCalls();
   return new Promise((resolve,reject)=>{
     const seq=++freeSeq;
-    for(const [id,previous] of freeCallbacks){
-      if(previous.type===kind){
-        previous.reject(Error('Consulta substituída'));freeCallbacks.delete(id);
-      }
-    }
     freeCallbacks.set(seq,{resolve,reject,type:kind});
     freeWorker.postMessage({kind,seq,baseUrl:freeBase,...props});
   });
@@ -464,7 +476,8 @@ async function searchRoutePlace(which){
       const b=document.createElement('button');b.type='button';b.className='row-item';
       b.textContent=p.label;b.onclick=()=>setRoutePoint(which,p);area.append(b);
     }
-  }catch(e){area.textContent='Busca local indisponível: '+e.message+' — use o mapa.'}
+  }catch(e){if(e.message!=='Consulta substituída')
+    area.textContent='Busca local indisponível: '+e.message+' — use o mapa.'}
 }
 function pickRoutePlace(which){
   state.routePick=which;switchTab('rotas',false);closeSheet();
@@ -483,6 +496,7 @@ function useRouteLocation(){
   {enableHighAccuracy:false,timeout:12000,maximumAge:60000});
 }
 function routeWhenChanged(){
+  invalidateRouteResults();
   const now=$('routeWhen').value==='now',arrive=$('routeWhen').value==='arriveBy';
   $('routeDatetime').hidden=now;$('routeBufferLabel').hidden=!arrive;
 }
@@ -511,7 +525,8 @@ async function submitRoute(){
     state.routeResults=data.itineraries||[];state.routeSelected=0;
     renderRouteResults(data);
   }catch(e){
-    routeStatus('Falha ao calcular rotas neste dispositivo: '+e.message,'warn');
+    if(e.message!=='Consulta substituída')
+      routeStatus('Falha ao calcular rotas neste dispositivo: '+e.message,'warn');
   }finally{btn.disabled=false}
 }
 function renderRouteResults(data){
@@ -628,8 +643,9 @@ for(const which of ['origin','destination']){
   $(id+'Search').onclick=()=>searchRoutePlace(which);
   $(id+'Map').onclick=()=>pickRoutePlace(which);
   routeInput(which).addEventListener('input',()=>{
+    invalidateRouteResults();
     if(which==='origin')state.routeOrigin=null;else state.routeDestination=null;
-    state.routeResults=[];routeCandidates(which).replaceChildren();drawSoon();
+    routeCandidates(which).replaceChildren();
   });
   routeInput(which).addEventListener('keydown',e=>{
     if(e.key==='Enter'){e.preventDefault();searchRoutePlace(which)}
@@ -637,9 +653,20 @@ for(const which of ['origin','destination']){
 }
 $('routeOriginLocation').onclick=useRouteLocation;
 $('routeWhen').onchange=routeWhenChanged;
+for(const id of ['routeDate','routeTime','routeBuffer','routePreference']){
+  $(id).addEventListener('change',()=>invalidateRouteResults());
+}
 $('routeSubmit').onclick=submitRoute;
 initRouteDate();routeWhenChanged();
 // Route calculations use only browser Worker and static data files.
 $('quick-rotas').addEventListener('click',()=>{
   ensureFreeWorker().catch(e=>routeStatus('Catálogo estático indisponível: '+e.message,'warn'));
 });
+
+// P8: cache only public route archives used by this free-static preview.
+if(isStaticOnly&&'serviceWorker' in navigator&&window.isSecureContext){
+  const install=()=>navigator.serviceWorker.register('./service-worker.js',{scope:'./'})
+    .catch(e=>console.warn('Cache offline opcional indisponível',e));
+  if(document.readyState==='complete')install();
+  else window.addEventListener('load',install,{once:true});
+}
