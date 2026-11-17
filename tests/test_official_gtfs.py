@@ -12,7 +12,8 @@ class OfficialGtfsTests(unittest.TestCase):
         with zipfile.ZipFile(path,'w',zipfile.ZIP_DEFLATED) as archive:
             archive.writestr('routes.txt','route_id,route_short_name\n1,1\n')
             archive.writestr('stops.txt','stop_id,stop_name,stop_lat,stop_lon\n1,Stop,-19.9,-43.9\n')
-            archive.writestr('trips.txt','route_id,service_id,trip_id\n'+('1,WK,T%i\n'%i)*60)
+            archive.writestr('trips.txt','route_id,service_id,trip_id\n'+
+                             ''.join('1,WK,T%d\n'%i for i in range(60)))
             archive.writestr('stop_times.txt',
                              'trip_id,arrival_time,departure_time,stop_id,stop_sequence\n'+
                              ('T1,08:00:00,08:00:00,1,1\n')*80)
