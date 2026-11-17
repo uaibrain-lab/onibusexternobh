@@ -380,8 +380,7 @@ function routeStatus(message,kind='info'){
 function routeInput(which){return $(which==='origin'?'routeOriginInput':'routeDestinationInput')}
 function routeCandidates(which){return $(which==='origin'?'routeOriginResults':'routeDestinationResults')}
 function setRoutePoint(which,point){
-  cancelFreeCalls();
-  state.routeResults=[];state.routeSelected=0;
+  invalidateRouteResults();
   const lat=Number(point.lat),lng=Number(point.lng);
   if(!Number.isFinite(lat)||!Number.isFinite(lng))return;
   const normalized={lat,lng,label:String(point.label||'Local no mapa')};
@@ -433,6 +432,13 @@ function ensureFreeWorker(){
   };
   freeWorker.postMessage({kind:'init',seq:++freeSeq,baseUrl:freeBase});
   return freeInit;
+}
+function invalidateRouteResults(){
+  cancelFreeCalls();
+  state.routeResults=[];state.routeSelected=0;
+  $('routeResults').replaceChildren();
+  $('routeMetroHints').replaceChildren();
+  drawSoon();
 }
 function cancelFreeCalls(){
   if(!freeCallbacks.size)return;
@@ -490,7 +496,7 @@ function useRouteLocation(){
   {enableHighAccuracy:false,timeout:12000,maximumAge:60000});
 }
 function routeWhenChanged(){
-  cancelFreeCalls();
+  invalidateRouteResults();
   const now=$('routeWhen').value==='now',arrive=$('routeWhen').value==='arriveBy';
   $('routeDatetime').hidden=now;$('routeBufferLabel').hidden=!arrive;
 }
@@ -637,9 +643,9 @@ for(const which of ['origin','destination']){
   $(id+'Search').onclick=()=>searchRoutePlace(which);
   $(id+'Map').onclick=()=>pickRoutePlace(which);
   routeInput(which).addEventListener('input',()=>{
-    cancelFreeCalls();
+    invalidateRouteResults();
     if(which==='origin')state.routeOrigin=null;else state.routeDestination=null;
-    state.routeResults=[];routeCandidates(which).replaceChildren();drawSoon();
+    routeCandidates(which).replaceChildren();
   });
   routeInput(which).addEventListener('keydown',e=>{
     if(e.key==='Enter'){e.preventDefault();searchRoutePlace(which)}
@@ -648,7 +654,7 @@ for(const which of ['origin','destination']){
 $('routeOriginLocation').onclick=useRouteLocation;
 $('routeWhen').onchange=routeWhenChanged;
 for(const id of ['routeDate','routeTime','routeBuffer','routePreference']){
-  $(id).addEventListener('change',()=>{cancelFreeCalls();state.routeResults=[];drawSoon()});
+  $(id).addEventListener('change',()=>invalidateRouteResults());
 }
 $('routeSubmit').onclick=submitRoute;
 initRouteDate();routeWhenChanged();
