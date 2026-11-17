@@ -9,6 +9,9 @@ on:
       - .github/workflows/browser-p9.yml
       - static/catalog-api.js
       - static/app.js
+      - static/pedestrian.js
+      - static/route-worker.js
+      - static/metro-journeys.js
       - static/style.css
       - static/index.html
       - catalog/pedestrian/index.json
