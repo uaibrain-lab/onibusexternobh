@@ -306,3 +306,22 @@ html,body{max-width:100%;overflow-x:hidden}
   #sheet .quick-tabs button{font-size:11px;padding-inline:0}
   #top .fab{padding:9px}
 }
+
+
+/* P21: explicit line tracking lifecycle and boarding-stop timetable. */
+#lineExit{flex:0 0 auto;min-height:40px;max-width:45%;white-space:nowrap}
+.line-heading{min-width:0;flex-wrap:wrap}
+.line-heading .line-title{min-width:0;flex:1 1 130px;overflow-wrap:anywhere}
+.line-stop-chooser{max-width:100%;overflow:hidden}
+.line-stop-chooser label{line-height:1.4}
+#lineStopSelect{width:100%;max-width:100%;min-height:46px;font-size:14px}
+#lineStopForecast{font-size:12px;line-height:1.5;overflow-wrap:anywhere}
+#routeOriginResults,#routeDestinationResults{max-height:240px;overflow-y:auto;overscroll-behavior:contain}
+#routeOriginResults .row-item,#routeDestinationResults .row-item{
+  display:flex;min-height:44px;text-align:left;line-height:1.4
+}
+#routeOriginResults .name,#routeDestinationResults .name{min-width:0;overflow-wrap:anywhere}
+@media(max-width:360px){
+  #lineExit{font-size:11px;padding:7px 9px}
+  .line-heading .line-title{font-size:12px}
+}
