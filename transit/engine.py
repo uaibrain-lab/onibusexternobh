@@ -5,6 +5,7 @@ No dependencies beyond CPython >=3.9. Local prototype only, not public hosting.
 from __future__ import annotations
 import collections, datetime as dt, json, math, os, pathlib, tempfile, threading, time, urllib.request
 from .matcher import ShapeMatcher, distance_m
+from .eta import GpsArrivalEstimator
 
 BRT=dt.timezone(dt.timedelta(hours=-3))
 FEEDS={'CONVENCIONAL':'https://temporeal.pbh.gov.br/?param=D',
@@ -39,6 +40,7 @@ class TransitEngine:
         for p in self.patterns:self.by_route[p['route']].append(p)
         self.nl_map=json.loads((self.catalog/'gps-nl-map.json').read_text(encoding='utf8'))
         self.matcher=ShapeMatcher(self.shapes,self.patterns)
+        self.eta=GpsArrivalEstimator(self.matcher,self.patterns,self.stops)
         self.stop_routes=collections.defaultdict(set)
         for p in self.patterns:
             route=self.route_by_id.get(p['route'])
@@ -259,19 +261,24 @@ class TransitEngine:
     def stop_detail(self,stop_id,at=None):
         item=self.stops.get(str(stop_id))
         if not item:return None
+        # Reuse the shared cached feeds; never claim a fresh HTTP poll is a new GPS fix.
+        self.refresh()
         now=at or now_brt()
         forecasts=self.timetable.next_by_line(str(stop_id),now)
         routes=[]
-        for code in sorted(self.stop_routes.get(str(stop_id),()),key=lambda c:(not c.isdigit(),c)):
-            route=self.route_by_code.get(code)
-            if not route:continue
-            routes.append({'code':code,'name':route['name'],'nextArrival':forecasts.get(code)})
+        with self.lock:
+            for code in sorted(self.stop_routes.get(str(stop_id),()),key=lambda c:(not c.isdigit(),c)):
+                route=self.route_by_code.get(code)
+                if not route:continue
+                gps=self.eta.estimate(route,str(stop_id),self.vehicles.values(),now)
+                routes.append({'code':code,'name':route['name'],
+                               'nextArrival':gps or forecasts.get(code)})
         routes.sort(key=lambda x:(x['nextArrival'] is None,
                                  x['nextArrival']['minutes'] if x['nextArrival'] else 10**10,
                                  x['code']))
         return {'id':str(stop_id),'name':item[0],'lat':item[1],'lng':item[2],
                 'routes':routes,'asOf':iso(now),
-                'forecastSource':'GTFS scheduled (not GPS)',
+                'forecastSource':('GPS + GTFS scheduled' if any(r['nextArrival'] and r['nextArrival']['type']=='gps_estimate' for r in routes) else 'GTFS scheduled (not GPS)'),
                 'timetableAvailable':self.timetable.error is None and self.timetable.calendar is not None}
 
     def fleet(self,code):
