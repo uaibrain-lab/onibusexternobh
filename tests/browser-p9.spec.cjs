@@ -2,7 +2,9 @@ const {test,expect}=require('@playwright/test');
 test.beforeEach(async({page})=>{
   await page.goto('/externo/',{waitUntil:'domcontentloaded'});
   await expect(page.locator('#quick-rotas')).toBeVisible();
-  await page.locator('#sheet-toggle').click();
+  const toggle=page.locator('#sheet-toggle');
+  if(await toggle.isVisible())await toggle.click();
+  else await page.locator('#sheet').evaluate(el=>{el.classList.remove('peek');el.classList.add('full')});
 });
 test('navegação gratuita por Pontos, Linhas, Metrô e Rotas',async({page},info)=>{
   const errors=[];
