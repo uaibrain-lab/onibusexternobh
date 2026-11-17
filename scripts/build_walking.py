@@ -15,6 +15,7 @@ import math
 import pathlib
 import sys
 
+sys.path.insert(0,str(pathlib.Path(__file__).resolve().parents[1]))
 from transit.matcher import distance_m
 
 # Exclude roads where walking access cannot safely be assumed.
