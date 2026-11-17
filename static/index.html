@@ -35,6 +35,7 @@
       <button type="button" id="quick-pontos" class="on" aria-pressed="true">Pontos</button>
       <button type="button" id="quick-linhas" aria-pressed="false">Linhas</button>
       <button type="button" id="quick-metro" aria-pressed="false">Metrô</button>
+      <button type="button" id="quick-rotas" aria-pressed="false">Rotas</button>
     </div>
     <button type="button" class="sheet-toggle" id="sheet-toggle" aria-label="Expandir lista" aria-expanded="false" aria-controls="body">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
@@ -83,6 +84,60 @@
       <h3>Comunicados recentes da concessionária</h3><div id="metroNews" class="list-rows" aria-live="polite"><p class="muted info-small">Aguardando consulta dos comunicados oficiais…</p></div><p class="hint">Notícias não são alertas de interrupção ativa. Antes de viajar, confira os avisos na operadora.</p>
       <h3>Ampliação da Linha 2</h3><p id="metroPlanned" class="muted info-small"></p>
       <p class="hint">O atendimento da Linha 2 inclui somente Nova Suíça e Amazonas nesta etapa. Estações futuras não são sugeridas como locais de embarque.</p>
+    </section>
+    <section id="rotasPane" hidden aria-label="Planejamento de rotas para ônibus e metrô">
+      <h2>Planejar viagem</h2>
+      <p class="notice">Trajetos de ônibus baseados em viagens e horários programados da PBH. Caminhadas aproximadas; metrô indicado separadamente enquanto não houver tabela de viagens verificável.</p>
+      <div class="route-place">
+        <label for="routeOriginInput"><strong>Origem</strong></label>
+        <input id="routeOriginInput" type="search" placeholder="Endereço, lugar ou ponto no mapa" autocomplete="off" aria-label="Local de partida">
+        <div class="route-place-actions">
+          <button id="routeOriginSearch" type="button" class="subtle">Buscar endereço</button>
+          <button id="routeOriginMap" type="button" class="subtle">Escolher no mapa</button>
+          <button id="routeOriginLocation" type="button" class="subtle">Minha localização</button>
+        </div>
+        <div id="routeOriginResults" class="list-rows" aria-live="polite"></div>
+      </div>
+      <div class="route-place">
+        <label for="routeDestinationInput"><strong>Destino</strong></label>
+        <input id="routeDestinationInput" type="search" placeholder="Endereço, lugar ou ponto no mapa" autocomplete="off" aria-label="Local de destino">
+        <div class="route-place-actions">
+          <button id="routeDestinationSearch" type="button" class="subtle">Buscar endereço</button>
+          <button id="routeDestinationMap" type="button" class="subtle">Escolher no mapa</button>
+        </div>
+        <div id="routeDestinationResults" class="list-rows" aria-live="polite"></div>
+      </div>
+      <div class="route-options">
+        <label for="routeWhen"><strong>Quando?</strong></label>
+        <select id="routeWhen">
+          <option value="now">Sair agora</option>
+          <option value="departAt">Partir em data/horário</option>
+          <option value="arriveBy">Chegar até data/horário</option>
+        </select>
+        <div class="route-datetime" id="routeDatetime" hidden>
+          <label for="routeDate">Data <input id="routeDate" type="date"></label>
+          <label for="routeTime">Horário <input id="routeTime" type="time"></label>
+        </div>
+        <label for="routeBuffer" id="routeBufferLabel" hidden>Antecedência desejada
+          <select id="routeBuffer">
+            <option value="0">Sem margem adicional</option>
+            <option value="10" selected>10 minutos antes</option>
+            <option value="15">15 minutos antes</option>
+            <option value="30">30 minutos antes</option>
+          </select>
+        </label>
+        <label for="routePreference"><strong>Priorizar</strong></label>
+        <select id="routePreference">
+          <option value="fastest">Mais rápido</option>
+          <option value="leastWalking">Andar menos</option>
+          <option value="leastTransfers">Menos baldeações</option>
+        </select>
+      </div>
+      <button id="routeSubmit" type="button" class="btn primary route-plan-button">Encontrar trajetos</button>
+      <div id="routePlanStatus" class="notice" role="status" aria-live="polite">Selecione origem e destino para começar.</div>
+      <div id="routeResults" class="list-rows" aria-live="polite"></div>
+      <div id="routeMetroHints" class="list-rows"></div>
+      <p class="hint">Busca de endereços com OpenStreetMap/Nominatim apenas após pressionar Buscar; sem autocompletar. Dados © OpenStreetMap contributors. Não há previsão GPS de ônibus vinculada à viagem nesta versão.</p>
     </section>
     <footer class="side-footer"><div id="lastPoll">Aguardando coleta</div><div>Fonte: Prefeitura de Belo Horizonte · protótipo não oficial.</div></footer>
   </div>
