@@ -45,6 +45,24 @@ jobs:
           assert len(x['files'])>100, x
           print('Validado:', x['tripCount'],'viagens',x['stopTimeRows'],'registros',len(x['files']),'linhas')
           PY
+      - name: Verificar busca real na base recém-gerada
+        run: |
+          timeout 150 python - <<'PY'
+          import datetime as dt
+          import time
+          from pathlib import Path
+          from transit.planner import JourneyPlanner
+          planner=JourneyPlanner(Path('catalog'))
+          assert planner.ready, planner.failure
+          start=time.monotonic()
+          result=planner.plan({'lat':-19.8695,'lng':-43.9675},
+                              {'lat':-19.918,'lng':-43.938},
+                              '2026-11-18T07:00:00-03:00')
+          seconds=round(time.monotonic()-start,2)
+          print('ROUTING_SMOKE_TEST',result['status'],'itineraries=',len(result['itineraries']),
+                'search_sec=',seconds,'stats=',result.get('stats'))
+          assert result['status'] in ('ok','partial')
+          PY
       - name: Publicar somente dados gerados na branch P5
         run: |
           git config user.name "github-actions[bot]"
@@ -55,6 +73,16 @@ jobs:
             exit 0
           fi
           git commit -m "data(routes): índice GTFS por viagem para planejamento P5"
-          git fetch origin feat/externo-p5-planejador-20261117
-          git rebase origin/feat/externo-p5-planejador-20261117
-          git push origin HEAD:feat/externo-p5-planejador-20261117
+          # Novos commits de interface não devem fazer perder o índice já calculado.
+          # Tentar sempre fast-forward, sem force push ou sobrescrita de histórico.
+          for attempt in $(seq 1 12); do
+            git fetch origin feat/externo-p5-planejador-20261117
+            git rebase origin/feat/externo-p5-planejador-20261117
+            if git push origin HEAD:feat/externo-p5-planejador-20261117; then
+              echo "ROUTING_DATA_PUSH_OK"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "Falha ao publicar índice após 12 tentativas (sem force push)"
+          exit 1
