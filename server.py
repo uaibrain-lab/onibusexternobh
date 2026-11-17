@@ -38,7 +38,8 @@ def run(host='127.0.0.1',port=8765,open_browser=False):
                 if path=='/api/routes': return self.payload(200,engine.routes_listing())
                 if path=='/api/route':
                     code=qs.get('code',[''])[0];pattern=qs.get('pattern',[None])[0]
-                    v=engine.route_geometry(code,pattern)
+                    stop=qs.get('stop',[None])[0]
+                    v=engine.route_geometry(code,pattern,stop)
                     return self.payload(200,v) if v else self.payload(404,{'error':'Linha ou variante não localizada'})
                 if path=='/api/stops':
                     q=qs.get('q',[''])[0][:120]
