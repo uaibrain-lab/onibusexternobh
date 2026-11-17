@@ -5,6 +5,7 @@ on:
     branches:
       - feat/integracao-unica-pontos-gps-metro-rotas-20261117
       - feat/integracao-final-exclusiva-onibus-20261117
+      - feat/gps-worker-free-homologacao-p15-20261117
   pull_request:
     branches:
       - feat/externo-p9-multimodal-gratuito-20261117
@@ -28,6 +29,8 @@ jobs:
         run: |
           node --check static/app.js
           node --check static/static-bus.js
+          node --check static/live-gps.js
+          node --check gps-worker/src/index.mjs
           node --check static/static-arrivals.js
           node --check static/route-worker.js
           node --check static/walk-network.js
@@ -44,6 +47,7 @@ jobs:
           for name in ['index.html','app.js','static-bus.js','static-arrivals.js',
                        'route-worker.js','hub-parity.css','service-worker.js',
                        'catalog/scan/index.json','catalog/metro.json','catalog/manifest.json',
+                       'live-gps.js','gps-config.json','catalog/gps-nl-map.json',
                        'catalog/arrivals/index.json','catalog/arrivals/calendar.json']:
               assert (p/name).is_file(), name
           data=json.loads((p/'catalog/arrivals/index.json').read_text())
@@ -52,6 +56,8 @@ jobs:
           assert 'data-app-mode="free-static"' in (p/'index.html').read_text()
           print('PREVIEW_INTEGRADO_OK',data['stopCount'], 'pontos')
           PY
+      - name: Auditoria de franquia Spark e arquivos sob demanda
+        run: python scripts/audit_static_budget.py --root dist/externo
       - name: Smoke HTTP em /externo/ sem backend de hospedagem
         run: |
           python -m http.server 8765 --directory dist >/tmp/http.log 2>&1 &
