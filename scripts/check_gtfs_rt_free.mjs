@@ -12,6 +12,29 @@ async function run(){
   const url=new URL(endpoint);
   if(url.protocol!=='https:'||url.pathname!=='/api/gps'||url.search||url.hash)
     throw Error('A URL do Worker deve usar HTTPS e terminar em /api/gps');
+  // A 400 from an older Worker can look identical to a malformed query.
+  // Probe the deployed revision before accessing the GTFS-RT source.
+  const probeUrl=new URL(url.href);
+  probeUrl.pathname='/api/gps/capabilities';
+  const probeResponse=await fetch(probeUrl,{
+    headers:{Origin:'https://hubufmg.web.app',Accept:'application/json'},
+    cache:'no-store',signal:AbortSignal.timeout(12000)
+  });
+  const capabilities=await probeResponse.json().catch(()=>null);
+  const expectedVersion='p16-gtfs-rt-20261117-1';
+  if(!probeResponse.ok||capabilities?.apiVersion!==expectedVersion||
+     !capabilities?.supportedSources?.includes('GTFS_RT')){
+    console.error('WORKER_DESATUALIZADO_OU_INCOMPATIVEL',JSON.stringify({
+      http:probeResponse.status,
+      currentVersion:capabilities?.apiVersion||null,
+      expectedVersion,
+      gpsRtAdvertised:Boolean(capabilities?.supportedSources?.includes('GTFS_RT'))
+    },null,2));
+    console.error('Execute git pull na branch P15 e depois wrangler deploy, antes deste teste.');
+    process.exitCode=2;
+    return;
+  }
+  console.log('WORKER_GTFS_RT_VERSION_OK',capabilities.apiVersion);
   url.searchParams.set('source','GTFS_RT');
   url.searchParams.set('routes',routes);
   const start=performance.now();
