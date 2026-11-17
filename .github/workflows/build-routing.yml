@@ -1,10 +1,10 @@
-name: Gerar catálogo de roteamento (P5)
+name: Gerar catálogo de roteamento (P6)
 
 on:
   workflow_dispatch:
   push:
     branches:
-      - feat/externo-p5-planejador-20261117
+      - feat/externo-p6-precisao-roteador-20261117
     paths:
       - scripts/build_routing.py
       - .github/workflows/build-routing.yml
@@ -76,9 +76,9 @@ jobs:
           # Novos commits de interface não devem fazer perder o índice já calculado.
           # Tentar sempre fast-forward, sem force push ou sobrescrita de histórico.
           for attempt in $(seq 1 12); do
-            git fetch origin feat/externo-p5-planejador-20261117
-            git rebase origin/feat/externo-p5-planejador-20261117
-            if git push origin HEAD:feat/externo-p5-planejador-20261117; then
+            git fetch origin feat/externo-p6-precisao-roteador-20261117
+            git rebase origin/feat/externo-p6-precisao-roteador-20261117
+            if git push origin HEAD:feat/externo-p6-precisao-roteador-20261117; then
               echo "ROUTING_DATA_PUSH_OK"
               exit 0
             fi
