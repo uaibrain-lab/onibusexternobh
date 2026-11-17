@@ -3,13 +3,15 @@
  * No predownload of 100+ MB: store at most 16 used hourly GTFS shards.
  */
 'use strict';
-const SHELL='externo-p8-shell-v1',SHARDS='externo-p8-gtfs-hours-v1';
-const MAX_SHARDS=16;
+const SHELL='externo-p9-shell-v1',SHARDS='externo-p9-gtfs-hours-v1',WALKS='externo-p9-pedestrian-v1';
+const MAX_SHARDS=16,MAX_WALK_TILES=28;
 const scope=new URL(self.registration.scope);
 const base=scope.pathname.endsWith('/')?scope.pathname:scope.pathname+'/';
 const shellPaths=[
   base,base+'index.html',base+'app.js',base+'style.css',
-  base+'route-worker.js',base+'catalog/metro.json',
+  base+'route-worker.js',base+'catalog-api.js',base+'pedestrian.js',
+  base+'metro-journeys.js',
+  base+'catalog/metro.json',
   base+'catalog/scan/index.json'
 ];
 self.addEventListener('install',event=>{
@@ -23,7 +25,7 @@ self.addEventListener('activate',event=>{
   event.waitUntil((async()=>{
     const names=await caches.keys();
     await Promise.all(names.filter(n=>
-      n.startsWith('externo-p')&&!([SHELL,SHARDS].includes(n)))
+      n.startsWith('externo-p')&&!([SHELL,SHARDS,WALKS].includes(n)))
       .map(n=>caches.delete(n)));
     await self.clients.claim();
   })());
@@ -42,6 +44,19 @@ async function networkFirst(request,cacheName) {
     if(hit)return hit;
     throw error;
   }
+}
+async function graphCache(request){
+  const cache=await caches.open(WALKS);
+  const hit=await cache.match(request);if(hit)return hit;
+  const response=await fetch(request);
+  if(!response.ok)return response;
+  try{
+    await cache.put(request,response.clone());
+    const keys=await cache.keys();
+    if(keys.length>MAX_WALK_TILES)
+      await Promise.all(keys.slice(0,keys.length-MAX_WALK_TILES).map(req=>cache.delete(req)));
+  }catch(e){}
+  return response;
 }
 async function boundedCache(request){
   const cache=await caches.open(SHARDS);
@@ -69,6 +84,9 @@ self.addEventListener('fetch',event=>{
   if(/^catalog\/scan\/(out|in)\/\d+\/\d{2}\.bin\.gz$/.test(relative)||
      /^catalog\/scan\/(out|in)\/\d{2}\.bin\.gz$/.test(relative)){
     event.respondWith(boundedCache(request));return;
+  }
+  if(/^catalog\/pedestrian\/tiles\/[-\d_]+\.json\.gz$/.test(relative)){
+    event.respondWith(graphCache(request));return;
   }
   if(shellPaths.includes(url.pathname)){
     event.respondWith(networkFirst(request,SHELL));

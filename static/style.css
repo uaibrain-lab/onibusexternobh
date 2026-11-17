@@ -109,11 +109,12 @@ html[data-theme="dark"]{color-scheme:dark;--bg:#14181f;--bg2:#1e242d;--ink:#f5f7
 
 /* P7 free-static preview: legacy Python-only screens are intentionally hidden.
    The original local server variant still keeps all four tabs. */
-html[data-app-mode="free-static"] #quick-pontos,
-html[data-app-mode="free-static"] #quick-linhas,
-html[data-app-mode="free-static"] #pontosPane,
-html[data-app-mode="free-static"] #linhasPane,
 html[data-app-mode="free-static"] #locationPrompt,
 html[data-app-mode="free-static"] .notice-top {display:none!important}
 html[data-app-mode="free-static"] .quick-tabs{justify-content:flex-end;gap:6px}
 html[data-app-mode="free-static"] .quick-tabs button{min-width:64px;font-size:12px}
+
+/* P9: all four tabs work on the free static catalog; only live-GPS status is absent. */
+html[data-app-mode="free-static"] #quick-pontos,
+html[data-app-mode="free-static"] #quick-linhas{display:inline-flex!important}
+html[data-app-mode="free-static"] .quick-tabs{justify-content:space-between}

@@ -1,0 +1,58 @@
+name: P9 - Validacao multimodal gratuita
+
+on:
+  push:
+    branches:
+      - feat/externo-p9-caminhadas-metro-gratis-20261117
+    paths:
+      - static/**
+      - catalog/pedestrian/index.json
+      - scripts/build_static_site.py
+      - tests/**
+      - .github/workflows/test-p9.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Testes legados e indices GTFS
+        run: python -m unittest discover -s tests -v
+      - name: Verificar sintaxe e rotas de frontend
+        run: |
+          node --check static/app.js
+          node --check static/route-worker.js
+          node --check static/catalog-api.js
+          node --check static/pedestrian.js
+          node --check static/metro-journeys.js
+          node --check static/service-worker.js
+          node --test tests/test_static_worker.cjs tests/test_pedestrian.cjs tests/test_metro_journey.cjs tests/test_static_catalog.cjs
+      - name: Benchmark com rede GTFS oficial versionada
+        run: timeout 180 node tests/benchmark_static_worker.cjs
+      - name: Montar preview com todas as quatro abas
+        run: |
+          python scripts/build_static_site.py
+          python - <<'PY'
+          from pathlib import Path
+          root=Path('dist/externo')
+          for f in ('index.html','catalog-api.js','app.js','pedestrian.js',
+                    'metro-journeys.js','route-worker.js','service-worker.js',
+                    'catalog/routes.json','catalog/patterns.json',
+                    'catalog/shapes.json','catalog/stops.json',
+                    'catalog/routing-stop-routes.json'):
+            assert (root/f).is_file(),f
+          html=(root/'index.html').read_text(encoding='utf-8')
+          assert 'catalog-api.js' in html
+          print('P9_STATIC_FULL_UI_OK')
+          PY

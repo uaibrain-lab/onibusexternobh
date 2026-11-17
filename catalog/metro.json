@@ -430,6 +430,26 @@
         "note": "Linha 2 encerra a operação às 22h por testes de sinalização",
         "url": "https://anptrilhos.org.br/linha-2-do-metro-bh-inicia-operacao-comercial-plena/"
       }
-    ]
+    ],
+    "travelModel": {
+      "1": {
+        "referenceFrom": "eldorado",
+        "referenceTo": "vilarinho",
+        "referenceMinutes": 46,
+        "uncertaintyPercent": 30,
+        "source": "https://www.metrobh.com.br/o-primeiro-ano-de-concessao-do-sistema/",
+        "referenceDate": "2024-04-01",
+        "method": "reference end-to-end elapsed time apportioned by distances between active stations; NOT a train timetable"
+      },
+      "2": {
+        "referenceFrom": "nova-suica",
+        "referenceTo": "amazonas",
+        "referenceMinutes": 3,
+        "uncertaintyPercent": 30,
+        "source": "https://www.hojeemdia.com.br/minas/video-conheca-o-trajeto-das-duas-novas-estac-es-da-linha-2-do-metro-de-bh-1.1123686",
+        "referenceDate": "2026-07-03",
+        "method": "historical published approximate 3-minute run; headway not established"
+      }
+    }
   }
 }

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#ffffff">
-<meta name="description" content="Linhas e pontos de ônibus, estações e horários habituais do Metrô BH. Dados PBH/SUMOB e Metrô BH.">
+<meta name="description" content="Planejador de ônibus com GTFS e metrô com faixas de tempo estimadas, sem inventar horários de trem. Dados PBH/SUMOB, Metrô BH e OpenStreetMap.">
 <title>Externo — Hub UFMG · Protótipo</title>
 <link rel="stylesheet" href="./style.css">
 </head>
@@ -42,7 +42,7 @@
     </button>
   </div>
   <div id="body" aria-hidden="true">
-    <div class="notice-top" role="note">Protótipo de dados oficiais PBH/SUMOB. Posições GPS podem estar atrasadas; horários de coleta não significam movimento.</div>
+    <div class="notice-top" role="note">Dados oficiais GTFS/SUMOB. No modo gratuito, os horários são programados; não existe GPS ao vivo confirmado.</div>
     <section id="pontosPane" aria-label="Pontos de ônibus">
       <section id="stopDetail" class="stop-detail" hidden aria-live="polite"></section>
       <div class="flexhead"><h3>Meus pontos favoritos</h3></div><div id="favoriteStops" class="list-rows"></div>
@@ -61,7 +61,7 @@
       <button id="goLine" type="button" class="btn primary">Consultar linha</button>
       <div class="line-heading"><div class="line-title" id="lineTitle">Selecione uma linha</div><button type="button" id="lineFavorite" class="fav-btn" aria-label="Favoritar linha" hidden>☆</button></div>
       <div class="stats"><div><strong id="vTotal">—</strong><small>Veículos encontrados</small></div><div><strong id="vRecent">—</strong><small>GPS recente (até 2 min)</small></div></div>
-      <div class="block"><label for="patternInput"><strong>Percurso de referência</strong></label><select id="patternInput"><option value="">Sem traçado</option></select><p class="hint">O percurso selecionado é uma variante ilustrativa do GTFS. Ele não é atribuído automaticamente aos ônibus.</p></div>
+      <div class="block"><label for="patternInput"><strong>Percurso de referência</strong></label><select id="patternInput"><option value="">Sem traçado</option></select><p class="hint">Traçado do GTFS oficial. Na hospedagem estática, não há associação a posições GPS de veículos.</p></div>
       <div class="block vehicles-block"><div class="flexhead"><b>Ônibus da linha</b><button id="refresh" type="button" class="subtle">Atualizar</button></div><div id="vehicleList" class="vehicle-list"><p class="muted">Selecione uma linha.</p></div></div>
       <div class="block"><h3>Linhas disponíveis</h3><label class="srch" for="allLineSearch"><span aria-hidden="true">⌕</span><input id="allLineSearch" placeholder="Filtrar todas as linhas" aria-label="Filtrar todas as linhas" type="search"></label><div id="allLineList" class="list-rows"></div></div>
     </section>
@@ -139,9 +139,10 @@
       <div id="routeMetroHints" class="list-rows"></div>
       <p class="hint">Pesquisa gratuita no catálogo local de pontos, por coordenadas ou selecionando diretamente no mapa. Ainda não há busca completa por endereço: use o mapa para indicar qualquer rua ou imóvel. Dados de ônibus © PBH/SUMOB. Horários de tabela não são GPS.</p>
     </section>
-    <footer class="side-footer"><div id="lastPoll">Aguardando coleta</div><div>Fonte: Prefeitura de Belo Horizonte · protótipo não oficial.</div></footer>
+    <footer class="side-footer"><div id="lastPoll">Horários GTFS (sem GPS ao vivo)</div><div>Fonte: Prefeitura de Belo Horizonte · protótipo não oficial.</div></footer>
   </div>
 </section>
+<script src="./catalog-api.js" defer></script>
 <script src="./app.js" defer></script>
 </body>
 </html>

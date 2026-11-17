@@ -1,0 +1,56 @@
+name: P9 - Teste visual Android e desktop (Chromium)
+
+on:
+  push:
+    branches:
+      - feat/externo-p9-caminhadas-metro-gratis-20261117
+    paths:
+      - tests/test_browser_p9.cjs
+      - .github/workflows/browser-p9.yml
+      - static/catalog-api.js
+      - static/app.js
+      - static/pedestrian.js
+      - static/route-worker.js
+      - static/metro-journeys.js
+      - static/style.css
+      - static/index.html
+      - catalog/pedestrian/index.json
+      - scripts/build_static_site.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Browser gratuito para emulação mobile/desktop
+        run: |
+          npm install --no-save playwright
+          npx playwright install --with-deps chromium
+      - name: Gerar pacote de hospedagem estática
+        run: python scripts/build_static_site.py
+      - name: Testar navegação e viagens GTFS no navegador
+        run: |
+          python -m http.server 8765 --directory dist >/tmp/p9-http.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          sleep 2
+          timeout 300 node tests/test_browser_p9.cjs
+      - name: Capturas para revisão visual (mesmo em falha)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p9-chromium-android-desktop
+          path: /tmp/p9-browser/*.png
+          if-no-files-found: ignore
+          retention-days: 3
