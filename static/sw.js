@@ -1,6 +1,6 @@
 /* P11: network-first shell, offline fallback; NEVER cache GPS/API, geolocation or OSM tiles. */
-const CACHE='hub-externo-static-p11-r1';
-const SHELL=['./index.html','./app.js','./style.css','./manifest.webmanifest','./icon-192.png','./icon-512.png'];
+const CACHE='hub-externo-static-p14-r1';
+const SHELL=['./index.html','./app.js','./style.css','./hub-parity.css','./manifest.webmanifest','./icon-192.png','./icon-512.png'];
 const shellPaths=new Set(SHELL.map(file=>new URL(file,self.registration.scope).pathname));
 const fallback=new URL('./index.html',self.registration.scope).href;
 
