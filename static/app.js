@@ -26,7 +26,7 @@ function fmtAge(n){if(!Number.isFinite(n))return 'desconhecido';if(n<60)return `
 function fmtTime(iso){try{return new Intl.DateTimeFormat('pt-BR',{hour:'2-digit',minute:'2-digit',second:'2-digit',timeZone:'America/Sao_Paulo'}).format(new Date(iso))}catch(e){return '—'}}
 async function api(path){const base=location.pathname.startsWith('/externo')?'/externo':'';let r=await fetch(base+path,{cache:'no-store'});if(!r.ok)throw Error(`HTTP ${r.status}`);return r.json()}
 function statusLed(ok,label){$('sourceLed').className='dot '+(ok?'ok':'bad');$('sourceText').textContent=label}
-function updateStatus(obj){let errors=Object.entries(obj.sources).filter(([_,x])=>x.lastError);let newest=Math.min(...Object.values(obj.sources).map(x=>diffSeconds(x.lastFetchedAt)));let fresh=Number.isFinite(newest)&&newest<180;statusLed(errors.length===0&&fresh,errors.length?`Falha em ${errors.map(x=>x[0]).join(', ')}`:fresh?'PBH · fontes consultadas':'PBH · aguardando atualização');$('lastPoll').textContent=`Última consulta PBH: ${Number.isFinite(newest)?'há '+fmtAge(newest):'indisponível'}`}
+function updateStatus(obj){state.lastBusStatus=obj;if(activeTab==='metro')return;let errors=Object.entries(obj.sources).filter(([_,x])=>x.lastError);let newest=Math.min(...Object.values(obj.sources).map(x=>diffSeconds(x.lastFetchedAt)));let fresh=Number.isFinite(newest)&&newest<180;statusLed(errors.length===0&&fresh,errors.length?`Falha em ${errors.map(x=>x[0]).join(', ')}`:fresh?'PBH · fontes consultadas':'PBH · aguardando atualização');$('lastPoll').textContent=`Última consulta PBH: ${Number.isFinite(newest)?'há '+fmtAge(newest):'indisponível'}`}
 async function loadRoutes(){state.routes=await api('/api/routes');let dl=$('routeList');dl.innerHTML='';for(let r of state.routes){let op=document.createElement('option');op.value=r.code;op.label=r.name;dl.append(op)}$('lineInput').value='';renderAllLines('');renderFavoriteLines();renderFavoriteStops();await loadNearbyStops(-19.8695,-43.9675,false)}
 async function selectLine(code){let route=state.routes.find(r=>r.code.toUpperCase()===String(code).trim().toUpperCase()||`${r.code} — ${r.name}`.toUpperCase()===String(code).trim().toUpperCase());if(!route){$('lineTitle').textContent='Linha não encontrada no catálogo GTFS';return}state.route=route;state.geometry=null;state.fleet=null;state.pattern='';state.selectedVehicle='';$('lineInput').value=route.code;$('lineTitle').textContent=route.name;const fav=$('lineFavorite');fav.hidden=false;fav.textContent=favorites.routes.includes(route.code)?'★':'☆';fav.setAttribute('aria-pressed',String(favorites.routes.includes(route.code)));fav.onclick=()=>toggleFavorite('routes',route.code);renderFavoriteLines();$('vehicleList').textContent='Carregando veículos…';let [geo,fleet]=await Promise.all([api('/api/route?code='+encodeURIComponent(route.code)),api('/api/fleet?route='+encodeURIComponent(route.code))]);if(state.route?.code!==route.code)return;state.geometry=geo;state.fleet=fleet;let sel=$('patternInput');sel.innerHTML='';let op=document.createElement('option');op.value='';op.textContent=`Sem traçado (${geo.patterns.length} opções)`;sel.append(op);for(let p of geo.patterns){let o=document.createElement('option');o.value=p.id;o.textContent=`${p.headsign||'Sem destino'} · ${p.stops} paradas`;sel.append(o)}renderVehicles();renderStops();drawSoon();if(geo.patterns.length){let preferred=[...geo.patterns].sort((a,b)=>b.tripCount-a.tripCount)[0];$('patternInput').value=preferred.id;await selectPattern();}let loc=fleet.vehicles.find(v=>diffSeconds(v.lastGpsFixAt)<=120);if(loc){state.center=[loc.latitude,loc.longitude];state.zoom=13.5;drawSoon();}}
 function vehicleMeta(v){let match=v.shapeMatch;let shape=match.status==='probable'?`Traçado provável ${match.shapeId} (não confirmado)`:'Traçado ainda indeterminado';return `Último GPS: ${fmtTime(v.lastGpsFixAt)} · há ${fmtAge(diffSeconds(v.lastGpsFixAt))}\nPosição sem mudança: ${fmtAge(diffSeconds(v.positionUnchangedSinceAt))}\n${shape}`}
@@ -52,7 +52,10 @@ function closeSheet(){const sheet=$('sheet');sheet.classList.add('peek');sheet.c
 function switchTab(tab,open=false){activeTab=tab;const pts=tab==='pontos',lin=tab==='linhas',met=tab==='metro';
 $('pontosPane').hidden=!pts;$('linhasPane').hidden=!lin;$('metroPane').hidden=!met;
 for(const [name,on] of [['pontos',pts],['linhas',lin],['metro',met]]){const button=$('quick-'+name);button.classList.toggle('on',on);button.setAttribute('aria-pressed',String(on))}
-state.metroVisible=met;drawSoon();if(open)openSheet()}
+state.metroVisible=met;
+if(met){$('sourceLed').className='dot';$('sourceText').textContent='Metrô BH · horários informativos';loadMetroNews().catch(e=>console.warn('RSS da concessionária indisponível',e))}
+else if(state.lastBusStatus)updateStatus(state.lastBusStatus);
+drawSoon();if(open)openSheet()}
 function renderStops(){const el=$('stopList');el.textContent='';const stops=state.geometry?.selected?.stops||[];$('pontosHelp').textContent=stops.length?`${state.route?.code||''} · ${stops.length} paradas deste percurso de referência. Toque para localizar no mapa.`:'Selecione uma linha na aba Linhas e escolha o percurso de referência para visualizar as paradas.';if(!stops.length){const b=document.createElement('button');b.type='button';b.className='row-item';b.textContent='Escolher linha e percurso';b.onclick=()=>switchTab('linhas',true);el.append(b);return}for(let [i,s] of stops.entries()){const b=document.createElement('button');b.type='button';b.className='row-item';b.dataset.stopId=s.id;const num=document.createElement('span');num.className='num';num.textContent=String(i+1);const text=document.createElement('span');text.className='name';const name=document.createElement('b');name.textContent=s.name;const meta=document.createElement('small');meta.textContent='Ponto '+(i+1)+' · toque para localizar';text.append(name,meta);b.append(num,text);b.onclick=()=>focusStop(s);el.append(b)}}
 function focusStop(stop){state.selectedStop=String(stop.id);state.center=[Number(stop.lat),Number(stop.lng)];state.zoom=Math.max(state.zoom,16);switchTab('pontos',true);$('body').scrollTo({top:0,behavior:'smooth'});for(let node of $('stopList').querySelectorAll('[data-stop-id]'))node.classList.toggle('selected',node.dataset.stopId===String(stop.id));drawSoon();scheduleMapStops();openStopDetail(state.selectedStop).catch(reportError)}
 function renderAllLines(query){const el=$('allLineList');el.textContent='';let arr=state.routes||[];const q=String(query||'').trim().toLocaleLowerCase('pt-BR');if(q)arr=arr.filter(x=>(x.code+' '+x.name).toLocaleLowerCase('pt-BR').includes(q));let limited=arr.slice(0,q?80:40);for(let r of limited){const wrap=document.createElement('div');wrap.className='fav-row';const b=document.createElement('button');b.type='button';b.className='row-item';const n=document.createElement('span');n.className='num';n.textContent=r.code;const t=document.createElement('span');t.className='name';const title=document.createElement('b');title.textContent=r.name||'Sem descrição';const meta=document.createElement('small');meta.textContent=`${r.patternCount} variantes GTFS`;t.append(title,meta);b.append(n,t);b.onclick=()=>selectLine(r.code).then(()=>{openSheet();$('body').scrollTo({top:0,behavior:'smooth'})}).catch(reportError);wrap.append(b,starButton('routes',r.code));el.append(wrap)}if(arr.length>limited.length){const msg=document.createElement('p');msg.className='muted info-small';msg.textContent=`Exibindo ${limited.length} de ${arr.length} linhas. Use a busca para filtrar.`;el.append(msg)}}
@@ -234,3 +237,27 @@ $('metroSearch').addEventListener('input',renderMetroStations);
 $('metroLineSelect').addEventListener('change',e=>showMetroLine(e.target.value));
 $('metroNearMe').onclick=()=>{if(state.userPosition){loadMetroNearby(...state.userPosition).catch(reportError)}else{switchTab('metro',true);askLocation()}};
 setInterval(()=>{if(!document.hidden)loadMetro().catch(e=>console.warn('Metrô indisponível',e))},300000);
+
+
+// Notícias RSS oficiais — sem declarar que qualquer notícia é uma ocorrência ativa.
+let lastMetroNewsAt=0;
+async function loadMetroNews(){
+  if(Date.now()-lastMetroNewsAt<15*60*1000)return;
+  lastMetroNewsAt=Date.now();
+  let data;
+  try{data=await api('/api/metro/news')}catch(e){lastMetroNewsAt=0;throw e}
+  const area=$('metroNews');area.replaceChildren();
+  if(!data.items?.length){
+    const p=document.createElement('p');p.className='muted-empty';
+    p.textContent='Comunicados indisponíveis. Consulte o site oficial do Metrô BH.';area.append(p);
+  }else for(const item of data.items){
+    const a=document.createElement('a');a.className='metro-news';a.href=item.url;
+    a.target='_blank';a.rel='noopener noreferrer';
+    const b=document.createElement('b');b.textContent=item.title;
+    a.append(b);area.append(a);
+  }
+  if(data.status!=='ok'){
+    const p=document.createElement('p');p.className='hint';
+    p.textContent='Consulta de notícias indisponível ou desatualizada; confira os comunicados diretamente com a operadora.';area.append(p);
+  }
+}
