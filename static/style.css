@@ -35,3 +35,24 @@ html[data-theme="dark"]{color-scheme:dark;--bg:#14181f;--bg2:#1e242d;--ink:#f5f7
 @media(max-width:759px){.location-prompt{top:calc(62px + env(safe-area-inset-top,0px));max-height:38vh;overflow:auto}}
 
 .line-heading{display:flex;align-items:center;justify-content:space-between;gap:10px}.line-heading .line-title{flex:1}
+
+/* P4 — metrô: estados operacionais e seleção clara para mapas e painel. */
+.metro-title{display:flex;justify-content:space-between;align-items:center;gap:9px}
+.metro-tag{color:#8655b7;border:1px solid #8655b755;border-radius:999px;padding:4px 8px;font-size:11px;font-weight:700;white-space:nowrap}
+#metroPane>label:not(.srch){display:block;font-size:12px;margin:14px 0 7px}
+#metroLineSelect{margin:0 0 12px;min-height:44px}
+#metroStations{margin-top:9px}
+#metroDetail .row-item{margin:6px 0}
+#metroDetail .name small{display:block;color:var(--mut);font-size:11px}
+.metro-service{display:grid;gap:8px;margin-bottom:12px}
+.metro-service-card{border-left:4px solid #8655b7;border-radius:11px;padding:11px;background:var(--bg2);font-size:13px}
+.metro-service-card strong{display:block}
+.metro-service-card p{margin:5px 0 4px;font-size:12px;line-height:1.5}
+.metro-service-card small{display:block;font-size:11px;color:var(--mut);line-height:1.45;margin-top:4px}
+.metro-service-card .metro-alert,.metro-alert{background:#fff4df;color:#754300;border-radius:9px;padding:9px;margin:9px 0;font-size:12px}
+.metro-alert a{color:inherit;text-decoration:underline}
+.metro-near{margin:0 0 12px;min-height:39px}
+.metro-station .num{min-width:46px;max-width:60px;font-size:11px}
+#metroNearby:empty{display:none}
+#metroNearby{margin-bottom:12px}
+@media(max-width:400px){.quick-tabs{gap:3px}.quick-tabs button{font-size:11px;padding:7px 8px}.sheet-identity span{font-size:9px}}
