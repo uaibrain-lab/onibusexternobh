@@ -1,3 +1,18 @@
+# P9 — Caminhadas em ruas OSM e quatro abas no hosting gratuito
+
+Fase de homologação sem deploy em produção. O planejador calcula horários individuais de ônibus do GTFS no Web Worker local, e agora valida caminhadas pela rede OSM real distribuída em 3.117 blocos geográficos. Nos trechos de acesso que não coincidem com uma via cadastrada, a UI indica incerteza.
+
+As quatro abas **Pontos, Linhas, Metrô e Rotas** agora funcionam em um preview estático Firebase Spark. A posição GPS ao vivo dos veículos não está incluída no modo gratuito; a ausência desse dado não é mostrada como ausência de ônibus.
+
+O metrô tem **janelas temporais orientativas**, calculadas com intervalos divulgados e tempos de referência históricos, inclusive possibilidades condicionais ônibus+metrô. Não há grade individual de partidas ferroviárias verificada e nenhuma baldeação é garantida.
+
+Na preferência Mais rápido, o cálculo GTFS sem verificação pedestre usa busca temporal sem poda Pareto arbitrária. Quando somente alguns candidatos são confrontados com o grafo OSM, a resposta ainda pode ser parcial e não garante melhor rota real.
+
+Testes Chromium Android emulado e desktop aprovados; **não houve validação em celulares físicos nem observação de viagens reais em campo**. Não houve deploy nem contratação de serviços pagos.
+
+**Documentação P9:** [Roteamento multimodal gratuito — estágio de homologação](docs/ROTEAMENTO-P9-MULTIMODAL-GRATUITO.md).
+
+---
 # P8 — Mais precisão com roteamento gratuito no navegador
 
 **Fase de desenvolvimento, sem deploy.** O planejador do Ônibus Externo BH agora carrega apenas as conexões GTFS dos grupos de calendário necessários à data consultada, trata viagens acima de 24h, respeita a margem inicial de embarque nas buscas de chegada e rejeita blocos incompletos.
