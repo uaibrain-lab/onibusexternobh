@@ -1,0 +1,92 @@
+name: P9 - Construir rede real de pedestres OSM sem servidor pago
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/externo-p9-multimodal-gratuito-20261117
+    paths:
+      - scripts/build_walking_graph.py
+      - .github/workflows/p9-walk-osm.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: p9-pedestrian-graph
+  cancel-in-progress: false
+
+jobs:
+  osm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Testes de acesso e barreiras
+        run: python -m unittest tests.test_walking_graph -v
+      - name: Instalar extrator OSM livre
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends osmium-tool
+          python -m pip install --disable-pip-version-check osmium
+      - name: Baixar fonte regional atualizada (uso pontual, sem servidor)
+        run: |
+          curl -fL --retry 3 --retry-delay 12 --connect-timeout 25 --max-time 1200 \
+            https://download.geofabrik.de/south-america/brazil/sudeste-latest.osm.pbf \
+            -o /tmp/sudeste-latest.osm.pbf
+          test "$(stat -c%s /tmp/sudeste-latest.osm.pbf)" -gt 100000000
+      - name: Extrair apenas entorno de BH com todas as referências
+        run: |
+          osmium extract --strategy=complete_ways \
+            -b=-44.19,-20.17,-43.72,-19.71 \
+            -o /tmp/bh-walk.osm.pbf /tmp/sudeste-latest.osm.pbf
+          test -s /tmp/bh-walk.osm.pbf
+      - name: Compilar grafo pedestre e verificar cobertura
+        run: |
+          python scripts/build_walking_graph.py /tmp/bh-walk.osm.pbf \
+            catalog/walk/graph.json.gz \
+            --source "Geofabrik Sudeste / OSM contributors, 2026"
+          python - <<'PY'
+          import gzip,json
+          from pathlib import Path
+          graph=Path('catalog/walk/graph.json.gz')
+          with gzip.open(graph,'rt',encoding='utf-8') as f: data=json.load(f)
+          assert data['schema']==1
+          assert data['nodeCount']>20000, data['nodeCount']
+          assert data['edgeCount']>20000, data['edgeCount']
+          assert graph.stat().st_size<75_000_000,graph.stat().st_size
+          print('P9_OSM_GRAPH_COVERAGE_OK',data['nodeCount'],
+                data['edgeCount'],graph.stat().st_size,flush=True)
+          PY
+      - name: Verificar roteador JS e pacote estático
+        run: |
+          node --check static/walk-network.js
+          node --check static/route-worker.js
+          node --test tests/test_walk_network.cjs
+          python scripts/build_static_site.py
+          test -s dist/externo/catalog/walk/graph.json.gz
+      - name: Publicar somente grafo validado na branch P9
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add catalog/walk/graph.json.gz
+          if git diff --cached --quiet; then
+            echo "Grafo OSM sem mudanças"
+            exit 0
+          fi
+          git commit -m "data(p9): grafo real OSM para caminhadas gratuitas em BH"
+          for attempt in $(seq 1 10); do
+            git fetch origin feat/externo-p9-multimodal-gratuito-20261117
+            git rebase origin/feat/externo-p9-multimodal-gratuito-20261117
+            if git push origin HEAD:feat/externo-p9-multimodal-gratuito-20261117; then
+              echo "P9_WALK_GRAPH_PUSH_OK"
+              exit 0
+            fi
+            sleep 4
+          done
+          exit 1
