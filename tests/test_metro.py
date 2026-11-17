@@ -71,7 +71,10 @@ class MetroTests(unittest.TestCase):
         self.assertEqual(len(detail['busStops']),1)
         self.assertEqual(detail['busStops'][0]['id'],'near')
         self.assertEqual(detail['busStops'][0]['distanceType'],'straight_line')
-        self.assertNotIn('eta',str(detail).lower())
+        self.assertFalse(detail['services'][0]['realtimeAvailable'])
+        self.assertEqual(detail['services'][0]['predictionType'],'unavailable')
+        self.assertNotIn('nextTrainAt',detail)
+        self.assertNotIn('etaMinutes',detail)
 
     def test_nearest_and_invalid_coordinates(self):
         s=self.metro.stations['amazonas']
