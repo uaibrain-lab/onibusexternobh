@@ -35,13 +35,14 @@ test('build contém o mesmo app, PWA e catálogos de horários sob demanda',()=>
                   'metro-timing.js','hub-parity.css','manifest.webmanifest']){
     assert.ok(build.includes(p),p);
   }
-  assert.match(sw,/catalog\/arrivals\/\[0-9a-f\]/);
+  assert.ok(sw.includes('boundedCache(request,ARRIVALS,16)'));
+  assert.ok(sw.includes('catalog\\/arrivals\\/'));
   assert.match(sw,/ARRIVALS/);
   assert.doesNotMatch(sw,/precacheAllHourlyShards/);
 });
 test('segurança de integração com Hub apenas no mesmo domínio',()=>{
   assert.match(page,/href="\.\/hub-parity\.css"/);
-  assert.match(page,/data\.embedded/);
+  assert.match(page,/dataset\.embedded/);
   assert.doesNotMatch(page,/id="bandeco-navigation"/);
   assert.doesNotMatch(app,/firebase\.functions/);
 });
