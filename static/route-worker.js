@@ -67,7 +67,7 @@ async function bootstrap(base) {
   const response=await fetch(root+'index.json',{cache:'no-store'});
   if(!response.ok)throw Error('Catálogo estático não publicado: '+response.status);
   const m=await response.json();
-  if(m.schema!==1||m.format?.indexOf('uint32le/5')!==0)
+  if(![1,2].includes(m.schema)||m.format?.indexOf('uint32le/5')!==0)
     throw Error('Versão do catálogo de roteamento incompatível');
   const version='?v='+encodeURIComponent(m.builtUTC);
   const [s,t]=await Promise.all([
@@ -118,19 +118,24 @@ function serviceActive(serviceIdx,day){
   const wd=['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
   return String(cal[wd[week]])==='1';
 }
-async function bucket(direction,h) {
-  const hours=meta.hours[direction];
-  if(!hours[String(h).padStart(2,'0')])return new Uint32Array(0);
-  const id=direction+':'+h;
+async function bucket(direction,h,group='legacy') {
+  const hh=String(h).padStart(2,'0');
+  const details=meta.schema===2
+    ?meta.hours[direction]?.[group]?.[hh]
+    :meta.hours[direction]?.[hh];
+  if(!details)return new Uint32Array(0);
+  const id=direction+':'+group+':'+h;
   if(bucketCache.has(id))return bucketCache.get(id);
-  const url=root+direction+'/'+String(h).padStart(2,'0')+'.bin.gz?v='+
+  const suffix=meta.schema===2?group+'/'+hh:hh;
+  const url=root+direction+'/'+suffix+'.bin.gz?v='+
     encodeURIComponent(meta.builtUTC);
   const buffer=await loadBinary(url);
-  if(buffer.byteLength%20)throw Error('Arquivo GTFS corrompido: '+id);
-  // Browser and Node targets are little-endian.
+  // Fail closed if an old, incomplete or mismatched CDN shard is returned.
+  if(buffer.byteLength!==details.connections*20)
+    throw Error('Dados GTFS inconsistentes. Atualize a página para recuperar o catálogo: '+id);
   const data=new Uint32Array(buffer);
   bucketCache.set(id,data);
-  if(bucketCache.size>8)bucketCache.delete(bucketCache.keys().next().value);
+  if(bucketCache.size>12)bucketCache.delete(bucketCache.keys().next().value);
   return data;
 }
 function dominates(a,b,backward){
@@ -380,10 +385,20 @@ async function scanHour(ctx,epoch) {
     const d=addDay(bhDay(ctx.requested),dayDiff);
     const base=midnight(d);
     const hour=Math.floor((epoch-base)/HOUR);
-    if(hour<0||hour>=48||!meta.hours[direction][String(hour).padStart(2,'0')])continue;
-    parts.push({day:d,base,hour,ptr:0,active:meta.services.map((_,i)=>serviceActive(i,d))});
+    if(hour<0||hour>=48)continue;
+    const active=meta.services.map((_,i)=>serviceActive(i,d));
+    if(!active.some(Boolean))continue;
+    const groups=meta.schema===2
+      ?[...new Set(meta.services.filter((_,i)=>active[i]).map(s=>s.group))]
+      :['legacy'];
+    for(const group of groups){
+      const detail=meta.schema===2
+        ?meta.hours[direction]?.[group]?.[String(hour).padStart(2,'0')]
+        :meta.hours[direction]?.[String(hour).padStart(2,'0')];
+      if(detail)parts.push({day:d,base,hour,group,ptr:0,active});
+    }
   }
-  const arrays=await Promise.all(parts.map(p=>bucket(direction,p.hour)));
+  const arrays=await Promise.all(parts.map(p=>bucket(direction,p.hour,p.group)));
   for(let i=0;i<parts.length;i++)parts[i].rows=arrays[i];
   // Multiple GTFS service days can overlap the same clock hour due to 24h+ trips.
   // Merge their sorted connections, respecting actual timeline order.
