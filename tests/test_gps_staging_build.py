@@ -29,7 +29,9 @@ class StagingBuildTests(unittest.TestCase):
         scan.mkdir(parents=True)
         self.html = (
             '<!doctype html><html lang="pt-BR"><head>'
-            '<title>Externo — Hub UFMG · Protótipo</title></head><body>'
+            '<title>Externo — Hub UFMG · Protótipo</title>'
+            '<link rel="stylesheet" href="./style.css">'
+            '<link rel="stylesheet" href="./hub-parity.css"></head><body>'
             '<div class="sheet-identity"><strong>Externo</strong>'
             '<span>BELO HORIZONTE</span></div>'
             '<div class="source-pill" aria-live="polite"></div>'
@@ -91,6 +93,8 @@ class StagingBuildTests(unittest.TestCase):
         self.assertIn('noindex,nofollow,noarchive', html)
         self.assertIn('GPS EM TESTE', html)
         self.assertIn('gps-staging-label', html)
+        self.assertIn('./app.js?v=p20-map-ui-20261117', html)
+        self.assertIn('./hub-parity.css?v=p20-map-ui-20261117', html)
         self.assertIn('GPS em homologação', html)
         self.assertIn('HOMOLOGAÇÃO: GPS experimental SUMOB', html)
         self.assertEqual((output / '_redirects').read_text(encoding='utf-8'),
