@@ -102,15 +102,63 @@ antes do próximo teste.
 - Erro 1102 Cloudflare: possível limitação de recursos ou tempo de CPU;
   conferir métricas reais da execução e reduzir consumo antes de considerar ativação.
 
+## 17/11/2026 — Resposta REAL confirmada da Cloudflare/SUMOB
+
+O usuário executou, no Windows PowerShell, a suíte do Worker P16:
+**7 testes aprovados, 0 falhas**. Publicou em seguida
+`externo-bh-gps-free.hubufmg.workers.dev`, versão Cloudflare
+`d58938af-dc93-4a3b-ab98-8143991b48b6`.
+
+A consulta `node scripts/check_gtfs_rt_free.mjs` retornou:
+- `WORKER_GTFS_RT_VERSION_OK p16-gtfs-rt-20261117-1`;
+- HTTP **200**, CORS `true`, sem erro upstream;
+- **1.779 entidades** de telemetria, das quais 1.779 VehiclePosition;
+- **7 posições** para `routes=562055,5102`, todas correspondentes ao **ID público 5102**;
+- posição mais recente com **54 segundos** de idade;
+- tamanho JSON filtrado de **1.796 bytes** e tempo total de requisição de **825 ms**.
+
+O tempo total de 825 ms **NÃO** equivale ao CPU em Workers Free.
+A consulta demonstrou **acesso real e parsing binário**, mas não demonstrou
+compatibilidade de todas as linhas, sentido de cada veículo, CPU, taxa de falhas,
+ETA ou experiência Android.
+
+## Integração opcional da interface, após resposta real
+
+- `static/live-gps.js`: corrigido para solicitar `source=GTFS_RT&routes=5102`
+  usando **código público** da linha, não `route.id=562055` do GTFS estático.
+  Não consulta `gps-nl-map.json` neste provedor; descarta posições velhas,
+  inconsistentes ou de outras linhas, sem atribuir ETA/direção não confirmada.
+- `static/gps-config.json`: `provider=gtfs_rt` e endpoint exato preenchidos,
+  mas **`enabled=false` continua inalterado**.
+- `static/app.js`: atribuição SUMOB/CC BY 4.0 quando há dados, distinção entre
+  ausência de posições e ausência de ônibus; consulta periódica de 45 s
+  apenas quando linha ou ponto selecionado estão visíveis e tela ativa.
+- `tests/test_gtfs_realtime_adapter.cjs`: testes adicionais sobre código
+  público, ausência de ETA, fonte indisponível, off-line, nenhuma posição
+  reportada e reaproveitamento de requisições.
+- Atualização somente na branch de desenvolvimento do Externo. Não houve
+  deploy do site, alteração de Firebase, nem integração com `ru-hoje`.
+
+Testes locais a executar após `git pull`:
+
+```powershell
+node --test tests/test_gtfs_realtime_worker.cjs tests/test_gtfs_realtime_adapter.cjs tests/test_live_gps_adapter.cjs
+```
+
+**Pendência operacional crítica:** conferir no painel Cloudflare o
+`CPU time`/limites de Workers Free nas requisições reais, taxa de erro
+e consumo diário. Não habilitar GPS público se o plano gratuito não sustenta
+o processamento. Também validar a exibição em celulares.
+
 ## Bloqueios de publicação
 
-1. Teste em Worker público comprovando acesso real (não apenas mocks).
+1. **Concluído em 17/11/2026:** teste público HTTP 200 e 7 posições da linha 5102.
 2. Conferir correspondência GTFS `routes.json` ↔ feed GTFS-RT para várias linhas.
 3. Conferir CPU por invocação, erro 1102, cota do Workers Free, cache e latência;
    se acima da franquia gratuita, não ativar.
 4. Conferir comportamento mobile, idade dos dados e permissões CORS.
-5. Adaptar a interface móvel para GTFS_RT **somente após** a origem funcionar.
-   Sem ETA inventado nem 0 ônibus se a fonte falhar.
+5. **Código preparado na branch:** adaptador usa 5102 e preserva fallback.
+   Falta homologar em navegador/Android físico e confirmar interface mobile.
 6. Verificar disponibilização HTTPS do feed, já que o URL catalogado usa HTTP.
 7. Manter plataforma separada do Hub e sem cobrança automática.
 
