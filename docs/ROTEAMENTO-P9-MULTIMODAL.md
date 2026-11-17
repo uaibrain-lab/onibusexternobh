@@ -64,3 +64,21 @@ Nenhuma Cloud Function, Blaze, instância paga, API de geocodificação comercia
 Os dados GTFS continuam sujeitos a validade; a P8 prepara rotina gratuita de renovação por checksum e calendário, mas a publicação de produção permanece manualmente bloqueada até autorização explícita.
 
 **Estado P9:** arquitetura e implementações codificadas, regressões unitárias e E2E emulados aprovados. Grafo real e validação física dependem de confirmação própria, e a pesquisa permanece parcialmente ótima.
+
+
+## Atualização de homologação — grafo OSM real
+
+A geração regional da Geofabrik foi aprovada pelo job https://github.com/uaibrain-lab/onibusexternobh/actions/runs/44103076737, usando o recorte real de BH com **412.312 nós e 456.495 ligações viárias**, comprimidos em **6.113.758 bytes**. O arquivo `catalog/walk/graph.json.gz` já foi instalado na branch P9, sem publicação em produção. O grafo foi testado pelo motor em pesquisa com o GTFS completo (não apenas fixtures). A geometria mapeada continua sujeita a eventuais falhas de OSM e de conexão entre endereço/ponto e rede de ruas.
+
+**Benchmark completo com grafo OSM**: partida 7,92 s, com 15,79 MB de arquivos lidos no primeiro benchmark; chegada 4,02 s, com 3,48 MB adicionais. Ambos com 6 itinerários e `status=partial`. Este benchmark foi anterior à correção que removeu uma segunda requisição desnecessária do grafo; verificar o CI mais recente para os dados finais.
+
+**Resultados parciais diagnosticados**: modo normal 12 rótulos por parada e 12 candidatos por veículo, com mais de 14 mil descartes de rótulos e algumas centenas de candidatos de embarque no cenário de referência. A P9 acrescentou `partialReasons` para diagnosticar o impacto e a opção **Busca ampliada** (`24×24` rótulos por parada e por veículo), que pode melhorar a cobertura, mas não garante solução global ótima, e consome mais CPU/RAM.
+
+**Testes de navegador**: E2E Chromium com três perfis (PC e Android 390px/360px emulados) aprovados: 6 testes passaram em https://github.com/uaibrain-lab/onibusexternobh/actions/runs/44103474173. A validação em dispositivos Android físicos permanece pendente.
+
+## Fontes oficiais de metrô
+
+A operadora confirma os benchmarks históricos de tempo entre Eldorado–Central (18m54s) e Vilarinho–Central (25m30s):
+https://www.metrobh.com.br/metro-bh-diminui-tempo-de-viagem/
+
+A rede P9 utiliza esses valores somente para estimativas de incerteza na Linha 1. Não há prova de partidas programadas exatas para todos os horários ou estações, portanto a integração cronológica completa e verificável **continua pendente**. Não usar as janelas históricas para garantir transferências entre ônibus e metrô.
