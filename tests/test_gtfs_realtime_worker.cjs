@@ -33,6 +33,25 @@ function feed(vehicles){
 }
 const req=path=>new Request('https://externo-bh-gps-free.hubufmg.workers.dev'+path,
  {headers:{Origin:'https://hubufmg.web.app'}});
+test('homologation Pages origin permitted by CORS without wildcard or GPS call',async()=>{
+  const {handleGpsRequest}=await worker;
+  let network=0;
+  const request=new Request('https://externo-bh-gps-free.hubufmg.workers.dev/api/gps/capabilities',{
+    headers:{Origin:'https://externo-bh-hml-uaibrain.pages.dev'}
+  });
+  const res=await handleGpsRequest(request,{
+    cache:null,now:NOW,fetchFn:async()=>{network++;throw Error('no feed')}
+  });
+  assert.equal(res.status,200);
+  assert.equal(res.headers.get('Access-Control-Allow-Origin'),
+               'https://externo-bh-hml-uaibrain.pages.dev');
+  assert.equal(network,0);
+  const forbidden=new Request(request.url,{
+    headers:{Origin:'https://random-stage.pages.dev'}
+  });
+  assert.equal((await handleGpsRequest(forbidden,{cache:null,now:NOW})).status,403);
+});
+
 test('capability probe exposes Worker revision and GTFS-RT support without contacting PBH',async()=>{
   const {handleGpsRequest}=await worker;
   let calls=0;
