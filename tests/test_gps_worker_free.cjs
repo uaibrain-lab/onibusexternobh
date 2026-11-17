@@ -56,7 +56,7 @@ test('no live data is fabricated when PBH fails',async()=>{
    cache:null,now:NOW,fetchFn:async()=>{throw Error('origin offline')}
  });
  assert.equal(result.status,503);
- assert.deepEqual(await result.json(),{available:false,error:'GPS_SOURCE_UNAVAILABLE'});
+ assert.deepEqual(await result.json(),{available:false,error:'GPS_SOURCE_UNAVAILABLE',reason:'WORKER_PROCESSING_ERROR'});
 });
 test('the bridge refuses a non-array feed and oversized body',async()=>{
  const {handleGpsRequest}=await mod;
@@ -101,4 +101,23 @@ test('same NL query uses normalized per-POP cache without repeating PBH fetch',a
  assert.equal(downloads,1);
  assert.equal((await second.json()).records.length,1);
  assert.ok([...items.keys()].some(url=>url.includes('/__gps_cache/filtered/')));
+});
+
+test('Worker reports bounded, safe failure categories without leaking upstream details',async()=>{
+ const {handleGpsRequest}=await mod;
+ const endpoint=request('/api/gps?source=CONVENCIONAL&nls=120');
+ const scenarios=[
+  {upstream:async()=>new Response('restricted',{status:403}),expected:'PBH_HTTP_ERROR'},
+  {upstream:async()=>new Response('[]',{headers:{'Content-Length':String(15*1024*1024)}}),expected:'PBH_RESPONSE_TOO_LARGE'},
+  {upstream:async()=>new Response('{"oops":true}',{status:200}),expected:'PBH_FORMAT_UNEXPECTED'},
+  {upstream:async()=>new Response('{invalid json',{status:200}),expected:'PBH_INVALID_JSON'}
+ ];
+ for(const {upstream,expected} of scenarios){
+  const response=await handleGpsRequest(endpoint,{cache:null,now:NOW,fetchFn:upstream});
+  assert.equal(response.status,503);
+  const data=await response.json();
+  assert.equal(data.error,'GPS_SOURCE_UNAVAILABLE');
+  assert.equal(data.reason,expected);
+  assert.ok(!JSON.stringify(data).includes('restricted'));
+ }
 });
