@@ -5,15 +5,35 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#ffffff">
+<script>
+/* Evita flash no tema errado. A aba Interno do Hub usa a mesma preferencia
+   do sistema e herda o tema pai quando hospedada na mesma origem. */
+(()=>{
+  const root=document.documentElement;
+  root.dataset.embedded=window.parent===window?'false':'true';
+  try{
+    let theme=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';
+    if(window.parent!==window && window.parent.location.origin===location.origin){
+      const inherited=window.parent.document.documentElement.dataset.theme;
+      if(inherited==='light'||inherited==='dark')theme=inherited;
+    }
+    root.dataset.theme=theme;
+    document.querySelector('meta[name="theme-color"]').content=
+      theme==='dark'?'#14181f':'#ffffff';
+  }catch(e){root.dataset.theme='light'}
+})();
+</script>
 <link rel="manifest" href="./manifest.webmanifest">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="description" content="Linhas, pontos e posições de ônibus municipais de Belo Horizonte. Dados oficiais PBH/SUMOB.">
 <title>Externo — Hub UFMG</title>
 <link rel="stylesheet" href="./style.css">
+<link rel="stylesheet" href="./hub-parity.css">
 </head>
 <body>
 <main id="map" aria-label="Mapa dos ônibus externos de Belo Horizonte">
-  <canvas id="mapCanvas" aria-label="Mapa interativo com as posições dos ônibus"></canvas>
+  <canvas id="mapCanvas" aria-label="Mapa interativo de pontos e ônibus" aria-describedby="mapAccessibleHelp"></canvas>
+  <p id="mapAccessibleHelp" class="sr-only">Se não conseguir selecionar um ponto no mapa, abra a aba Pontos e escolha a parada pela lista ou pesquisa.</p>
   <div class="map-controls" role="group" aria-label="Controles do mapa">
     <button id="zoomIn" title="Aproximar" aria-label="Aproximar mapa">+</button>
     <button id="zoomOut" title="Afastar" aria-label="Afastar mapa">−</button>
@@ -29,7 +49,7 @@
   <div class="location-actions"><button type="button" id="allowLocation" class="btn">Usar minha localização</button><button type="button" id="skipLocation" class="subtle">Agora não</button></div>
 </div>
 <div class="source-pill" aria-live="polite"><span id="sourceLed" class="dot"></span><span id="sourceText">Consultando horários</span></div>
-<section id="sheet" class="peek" aria-label="Consulta de linhas e pontos do Externo BH">
+<section id="sheet" class="peek" aria-label="Transporte externo: pontos, linhas e chegadas">
   <button type="button" id="grab" aria-label="Expandir lista de pontos e linhas" aria-expanded="false" aria-controls="body"></button>
   <div class="sheet-head" id="sheet-head">
     <div class="sheet-identity"><strong>Externo</strong><span>BELO HORIZONTE</span></div>
