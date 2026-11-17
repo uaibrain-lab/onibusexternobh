@@ -426,6 +426,23 @@ function ranked(ctx,preference,limit=6) {
   }
   return selected;
 }
+function chooseDiverseItineraries(sorted,limit=6){
+  // Keep the earliest/shortest verified option first, but prevent five near-
+  // duplicate departures from crowding out useful alternatives (e.g. 5106).
+  const picked=[],counts=new Map();
+  for(const trip of sorted){
+    const signature=trip.legs.filter(l=>l.mode==='bus').map(l=>l.line).join('>');
+    const amount=counts.get(signature)||0;
+    if(amount>=2)continue;
+    picked.push(trip);counts.set(signature,amount+1);
+    if(picked.length===limit)return picked;
+  }
+  for(const trip of sorted){
+    if(picked.length===limit)break;
+    if(!picked.includes(trip))picked.push(trip);
+  }
+  return picked;
+}
 async function metroHints(origin,destination,at,railHintMode='departAt'){
   try{
     if(!metro){
@@ -571,7 +588,7 @@ async function plan(params,seq) {
   // P21: verify more than the first 32 timetable candidates on the OSM
   // streets graph. Faster trips can be ranked after a crowd of unwalkable
   // alternatives; pre-cutting them produced false "best route" claims.
-  const candidates=ranked(ctx,preference,graph?(expanded?96:56):6);
+  const candidates=ranked(ctx,preference,graph?(expanded?96:56):24);
   let itineraries=candidates;
   let rejectedWalkCandidates=0;
   if(graph){
@@ -585,8 +602,8 @@ async function plan(params,seq) {
       backward?-Date.parse(t.departure):Date.parse(t.arrival);
     itineraries.sort((a,b)=>score(a)-score(b)||
       a.walkMetersApprox-b.walkMetersApprox||a.transfers-b.transfers);
-    itineraries=itineraries.slice(0,6);
   }
+  itineraries=chooseDiverseItineraries(itineraries,6);
   const hints=await metroHints(origin,destination,requested,mode);
   return {
     status:graph&&!itineraries.length&&ctx.finals.length?'walking_unavailable':
