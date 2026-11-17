@@ -1127,8 +1127,23 @@ async function searchRoutePlace(which){
   area.textContent='Buscando pontos e endereços…';
   // One external geocoding request ONLY after the person's explicit click.
   // Coordinates of the user are never transmitted; the bias is fixed in BH.
-  const local=freeCall('places',{which,query:q})
-    .then(v=>v.items||[]).catch(()=>[]);
+  // Local stop lookup uses the lightweight already loaded catalog.
+  // Do NOT start the 18 MB compressed routing index just to resolve a name.
+  const local=api('/api/stops?q='+encodeURIComponent(q))
+    .then(result=>{
+      const stops=(result.items||[]).slice(0,10).map(p=>({
+        lat:Number(p.lat),lng:Number(p.lng),label:'Ponto: '+p.name,
+        source:'GTFS local'
+      }));
+      const needle=normalizeDestination(q);
+      const metro=(state.metro?.stations||[])
+        .filter(p=>p.active&&normalizeDestination(p.name).includes(needle))
+        .slice(0,3).map(p=>({
+          lat:Number(p.lat),lng:Number(p.lng),label:'Metrô: '+p.name,
+          source:'Catálogo local'
+        }));
+      return [...metro,...stops];
+    }).catch(()=>[]);
   const external=q.length>=3&&typeof GeoPlaces!=='undefined'
     ?GeoPlaces.search(q).then(v=>({items:v})).catch(error=>({items:[],error:error.message}))
     :Promise.resolve({items:[],error:null});
@@ -1380,9 +1395,8 @@ for(const id of ['routeDate','routeTime','routeBuffer','routePreference','routeS
 $('routeSubmit').onclick=submitRoute;
 initRouteDate();routeWhenChanged();
 // Route calculations use only browser Worker and static data files.
-$('quick-rotas').addEventListener('click',()=>{
-  ensureFreeWorker().catch(e=>routeStatus('Catálogo estático indisponível: '+e.message,'warn'));
-});
+// Loading the 18 MB schedule index is deferred until "Encontrar trajetos".
+// Merely opening Rotas and searching an address no longer downloads it.
 
 // P8: cache only public route archives used by this free-static preview.
 if(isStaticOnly&&'serviceWorker' in navigator&&window.isSecureContext){
