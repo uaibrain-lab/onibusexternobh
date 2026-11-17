@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - feat/externo-p9-multimodal-gratuito-20261117
+      - feat/gps-worker-free-homologacao-p15-20261117
     paths:
       - static/app.js
       - static/static-bus.js
@@ -12,6 +13,12 @@ on:
       - static/walk-network.js
       - static/metro-timing.js
       - tests/browser-p9.spec.cjs
+      - tests/browser-p15.spec.cjs
+      - static/live-gps.js
+      - gps-worker/src/index.mjs
+      - static/gps-config.json
+      - tests/test_live_gps_adapter.cjs
+      - .github/workflows/integracao.yml
       - tests/playwright.config.cjs
       - catalog/walk/graph.json.gz
       - .github/workflows/p9-browser.yml
