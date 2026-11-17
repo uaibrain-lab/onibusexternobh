@@ -47,3 +47,14 @@ Sem a instância local, o site mantém caminhada aproximada, explicitamente iden
 - Avaliação de dominância antes de construir etapas completas e formatar datas, evitando milhões de conversões desnecessárias.
 - Truncamento de fronteiras Pareto explicitamente marcado como `status: partial`, em vez de indicar resultado comprovadamente ótimo.
 - Os ganhos de desempenho só são considerados confirmados após o benchmark com o índice schema 3 instalado; consultar logs do workflow.
+
+## Último benchmark validado no GitHub Actions — 17/11/2026
+
+- **45 testes automatizados aprovados** (incluindo casos novos de embarque proibido, transferência, busca reversa e caminhada em rede OSM simulada).
+- Teste de ida: **20,33 s** (6 itinerários; pesquisa das 3 rodadas).
+- Teste de chegada planejada: **23,65 s** (6 itinerários; pesquisa reversa completa).
+- O sistema retornou `partial` nas duas consultas porque houve truncamento de fronteiras de rótulos; isso NÃO permite afirmar otimalidade global.
+- Houve redução frente às pesquisas iniciais próximas de 25–30 segundos, mas **a latência continua alta para uso mobile**.
+- A melhoria depende do Valhalla pedestre local ainda não provisionado, e precisa de homologação em BH antes de lançamento.
+
+Recomendação de arquitetura para produção: adotar um motor consolidado, como MOTIS ou OpenTripPlanner, quando infraestrutura suportar, ou desenvolver um índice RAPTOR/CSA mais eficiente. A P6 mantém a base de dados e o contrato de API independentes da escolha do motor.
