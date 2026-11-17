@@ -41,8 +41,11 @@ def build(target=None):
     if anchor not in html:
         raise ValueError('Marcador de HTML para modo estático não localizado')
     html=html.replace(anchor,'<html lang="pt-BR" data-app-mode="free-static">',1)
-    html=html.replace('<script src="./app.js"></script>',
-                      '<script src="./static-bus.js"></script>\n<script src="./app.js"></script>')
+    loader='<script src="./app.js" defer></script>'
+    if loader not in html:
+        raise ValueError('Script principal não localizado')
+    html=html.replace(loader,
+        '<script src="./static-bus.js" defer></script>\n'+loader,1)
     (public/'index.html').write_text(html,encoding='utf-8')
     (public/'catalog').mkdir(exist_ok=True)
     shutil.copy2(catalog/'metro.json',public/'catalog'/'metro.json')
