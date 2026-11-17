@@ -44,6 +44,9 @@ test('GTFS-RT wire parser accepts official VehiclePosition shape and keeps only 
   ]);
   const result=parseVehiclePositions(raw,['562055'],NOW);
   assert.equal(result.sourceEntities,5);
+  assert.equal(result.vehicleEntities,5);
+  assert.equal(result.missingRouteIds,0);
+  assert.deepEqual([...result.sampleRouteIds].sort(),['5102','562055']);
   assert.equal(result.records.length,1);
   assert.equal(result.records[0].routeId,'562055');
   assert.equal(result.records[0].vehicleId,'A');
@@ -78,6 +81,8 @@ test('optional GTFS RT endpoint reads fixed official source, responds CORS and m
   assert.equal(data.available,true);
   assert.equal(data.source,'GTFS_RT');
   assert.equal(data.feedEntities,2);
+  assert.equal(data.vehicleEntities,2);
+  assert.deepEqual([...data.sampleRouteIds].sort(),['5102','562055']);
   assert.equal(data.records.length,2);
   assert.equal(data.attribution,'Superintendência de Mobilidade Urbana de Belo Horizonte (SUMOB)');
   assert.equal(data.license,'CC BY 4.0');
