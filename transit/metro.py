@@ -67,8 +67,13 @@ class MetroCatalog:
         hhmm = now.strftime('%H:%M')
         first = line['hours']['start']
         last = line['hours']['end']
-        open_now = first <= hhmm < last
         day = now.date().isoformat()
+        opening_alerts = []
+        for rule in self.data['operations'].get('hoursExceptions',[]):
+            if rule['line']==str(line_id) and rule['from']<=day<=rule['through']:
+                last = rule['end']
+                opening_alerts.append({'text':rule['note'],'url':rule['url'],'source':'operator'})
+        open_now = first <= hhmm < last
         interval = None
         note = ''
         if line_id == '1':
@@ -85,7 +90,7 @@ class MetroCatalog:
             note = 'Referência habitual; feriados e operações especiais podem alterar os intervalos.'
         else:
             note = self.data['operations']['headways']['2']['note']
-        notices = []
+        notices = list(opening_alerts)
         for rule in self.data['operations']['exceptional']:
             if rule['line'] != str(line_id) or not rule['from'] <= day <= rule['through']:
                 continue
@@ -94,7 +99,7 @@ class MetroCatalog:
                 notices.append({'text': rule['note'], 'url': rule['url'], 'source': 'operator'})
         return {
             'lineId': str(line_id), 'asOf': now.isoformat(timespec='seconds'),
-            'stationHours': line['hours'], 'stationOpenAtTime': open_now,
+            'stationHours': {'start':first,'end':last}, 'stationOpenAtTime': open_now,
             'typicalHeadwayMinutes': interval if open_now else None,
             'frequencyOnly': True, 'realtimeAvailable': False,
             'predictionType': 'frequency' if interval is not None and open_now else 'unavailable',
