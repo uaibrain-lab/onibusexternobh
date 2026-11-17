@@ -1,22 +1,13 @@
-# Python
 __pycache__/
 *.py[cod]
 .pytest_cache/
 .venv/
 venv/
-
-# Estado de GPS local / segredos
 state/*
 !state/.gitkeep
+*.har
+*.log
+*.tmp
 .env
 .env.*
 !.env.example
-*.log
-
-# Pacotes baixados e dados temporarios
-*.zip
-*.har
-coverage-*.csv
-*.tmp
-.DS_Store
-Thumbs.db
