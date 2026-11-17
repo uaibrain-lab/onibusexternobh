@@ -45,11 +45,17 @@ function diffSeconds(iso){if(!iso)return Infinity;let t=Date.parse(iso);return N
 function fmtAge(n){if(!Number.isFinite(n))return 'desconhecido';if(n<60)return `${n}s`;if(n<3600)return `${Math.floor(n/60)}min ${String(n%60).padStart(2,'0')}s`;return `${Math.floor(n/3600)}h ${Math.floor(n%3600/60)}min`}
 function fmtTime(iso){try{return new Intl.DateTimeFormat('pt-BR',{hour:'2-digit',minute:'2-digit',second:'2-digit',timeZone:'America/Sao_Paulo'}).format(new Date(iso))}catch(e){return '—'}}
 async function api(path,options={}){const base=location.pathname.startsWith('/externo')?'/externo':'';let r=await fetch(base+path,{cache:'no-store',...options});if(!r.ok)throw Error(`HTTP ${r.status}`);return r.json()}
-function statusLed(ok,label){$('sourceLed').className='dot '+(ok?'ok':'bad');$('sourceText').textContent=label}
+function statusLed(health,label){
+  $('sourceLed').className='dot'+(health===true?' ok':health===false?' bad':'');
+  if($('sourceText').textContent!==label)$('sourceText').textContent=label;
+}
 function updateStatus(obj){
   const errors=Object.values(obj.sources||{}).filter(x=>x.lastError);
   const recent=Number(obj.gpsRecent||0)>0;
-  statusLed(recent&&!errors.length,errors.length?'Dados parcialmente indisponíveis':recent?'GPS recente disponível':'Sem posições GPS recentes');
+  if(recent&&!errors.length)return statusLed(true,'GPS recente disponível');
+  if(recent)return statusLed(null,'GPS parcialmente disponível');
+  if(obj.gpsUpdating)return statusLed(null,'Buscando localização dos ônibus…');
+  return statusLed(false,errors.length?'GPS temporariamente indisponível':'Sem GPS recente · horários da tabela');
 }
 async function loadRoutes(){try{state.routes=await api('/api/routes')}catch(e){state.routes=[];statusLed(false,'Sem conexão · chegadas indisponíveis')}let dl=$('routeList');dl.innerHTML='';for(let r of state.routes){let op=document.createElement('option');op.value=r.code;op.label=r.name;dl.append(op)}$('lineInput').value='';renderAllLines('');renderFavoriteLines();renderFavoriteStops();try{await loadNearbyStops(-19.8695,-43.9675,false)}catch(e){$('nearbyHint').textContent='Sem conexão. Seus favoritos continuam disponíveis; chegadas exigem internet.';}
   api('/api/status').then(updateStatus).catch(()=>statusLed(false,'Localizações indisponíveis'));
