@@ -274,3 +274,225 @@ async function loadMetroNews(){
     p.textContent='Consulta de notícias indisponível ou desatualizada; confira os comunicados diretamente com a operadora.';area.append(p);
   }
 }
+
+
+
+// P5 — viagens GTFS. Nenhum GPS é apresentado como ETA de viagem individual.
+function routeClock(date){
+  return new Intl.DateTimeFormat('pt-BR',{hour:'2-digit',minute:'2-digit',
+    timeZone:'America/Sao_Paulo'}).format(new Date(date));
+}
+function initRouteDate(){
+  const now=new Date();
+  $('routeDate').value=new Intl.DateTimeFormat('sv-SE',{year:'numeric',month:'2-digit',day:'2-digit',
+    timeZone:'America/Sao_Paulo'}).format(now);
+  $('routeTime').value=new Intl.DateTimeFormat('en-GB',{hour:'2-digit',minute:'2-digit',hour12:false,
+    timeZone:'America/Sao_Paulo'}).format(now);
+}
+function routeStatus(message,kind='info'){
+  $('routePlanStatus').textContent=message;
+  $('routePlanStatus').dataset.status=kind;
+}
+function routeInput(which){return $(which==='origin'?'routeOriginInput':'routeDestinationInput')}
+function routeCandidates(which){return $(which==='origin'?'routeOriginResults':'routeDestinationResults')}
+function setRoutePoint(which,point){
+  const lat=Number(point.lat),lng=Number(point.lng);
+  if(!Number.isFinite(lat)||!Number.isFinite(lng))return;
+  const normalized={lat,lng,label:String(point.label||'Local no mapa')};
+  if(which==='origin')state.routeOrigin=normalized;
+  else state.routeDestination=normalized;
+  routeInput(which).value=normalized.label;
+  routeCandidates(which).replaceChildren();
+  routeStatus('Locais selecionados. Escolha o horário e pressione Encontrar trajetos.');
+  drawSoon();
+}
+async function searchRoutePlace(which){
+  const q=routeInput(which).value.trim(),area=routeCandidates(which);
+  if(q.length<3){routeStatus('Digite pelo menos 3 caracteres para buscar um endereço.','warn');return}
+  area.textContent='Buscando endereço…';
+  try{
+    const result=await api('/api/places?q='+encodeURIComponent(q));
+    area.replaceChildren();
+    if(!result.items?.length){area.textContent='Nenhum endereço encontrado nesta região.';return}
+    for(const p of result.items){
+      const b=document.createElement('button');b.type='button';b.className='row-item';
+      b.textContent=p.label;b.onclick=()=>setRoutePoint(which,p);area.append(b);
+    }
+  }catch(e){area.textContent='Serviço de endereços indisponível. Você também pode escolher diretamente no mapa.'}
+}
+function pickRoutePlace(which){
+  state.routePick=which;switchTab('rotas',false);closeSheet();
+  routeStatus('Toque no mapa para marcar '+(which==='origin'?'a origem.':'o destino.'));
+  $('mapToast').textContent='Toque no mapa para definir '+(which==='origin'?'a origem':'o destino');
+}
+function useRouteLocation(){
+  if(!window.isSecureContext||!navigator.geolocation){
+    routeStatus('Geolocalização exige HTTPS ou localhost; escolha a origem no mapa.','warn');return}
+  routeStatus('Aguardando autorização de localização…');
+  navigator.geolocation.getCurrentPosition(p=>{
+    const pt={lat:p.coords.latitude,lng:p.coords.longitude,label:'Minha localização'};
+    state.userPosition=[pt.lat,pt.lng];setRoutePoint('origin',pt);
+    state.center=[pt.lat,pt.lng];state.zoom=15;drawSoon();scheduleMapStops();
+  },()=>routeStatus('Localização não autorizada. Você pode buscar o endereço ou selecionar no mapa.','warn'),
+  {enableHighAccuracy:false,timeout:12000,maximumAge:60000});
+}
+function routeWhenChanged(){
+  const now=$('routeWhen').value==='now',arrive=$('routeWhen').value==='arriveBy';
+  $('routeDatetime').hidden=now;$('routeBufferLabel').hidden=!arrive;
+}
+async function submitRoute(){
+  const origin=state.routeOrigin,destination=state.routeDestination;
+  if(!origin||!destination){routeStatus('Escolha a origem e o destino nos resultados de endereço ou no mapa.','warn');return}
+  const when=$('routeWhen').value;
+  let at;
+  if(when!=='now'){
+    const date=$('routeDate').value,time=$('routeTime').value;
+    if(!date||!time){routeStatus('Informe data e horário válidos.','warn');return}
+    const dt=new Date(date+'T'+time+':00-03:00');
+    if(!Number.isFinite(dt.getTime())){routeStatus('Data ou horário inválidos.','warn');return}
+    if(when==='arriveBy')dt.setTime(dt.getTime()-Number($('routeBuffer').value)*60000);
+    at=dt.toISOString();
+  }
+  const btn=$('routeSubmit');btn.disabled=true;
+  routeStatus('Calculando viagens a partir dos horários GTFS…');
+  $('routeResults').replaceChildren();$('routeMetroHints').replaceChildren();
+  try{
+    const base=location.pathname.startsWith('/externo')?'/externo':'';
+    const response=await fetch(base+'/api/plan',{
+      method:'POST',cache:'no-store',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({origin,destination,
+        mode:when==='arriveBy'?'arriveBy':'departAt',
+        at:when==='now'?undefined:at,
+        preference:$('routePreference').value})
+    });
+    const data=await response.json();
+    if(!response.ok)throw Error(data.error||'Não foi possível calcular');
+    state.routeResults=data.itineraries||[];state.routeSelected=0;
+    renderRouteResults(data);
+  }catch(e){
+    routeStatus('Falha ao consultar rotas: '+e.message,'warn');
+  }finally{btn.disabled=false}
+}
+function renderRouteResults(data){
+  const area=$('routeResults');area.replaceChildren();
+  const rail=$('routeMetroHints');rail.replaceChildren();
+  if(data.status==='not_ready'){
+    routeStatus('O catálogo detalhado de viagens ainda não está instalado. Execute a geração oficial no GitHub.','warn');
+  }else if(data.status==='out_of_calendar'){
+    routeStatus(data.message+' Válido de '+data.validFrom+' até '+data.validThrough+'.','warn');
+  }else if(!data.itineraries?.length){
+    routeStatus('Nenhum trajeto de ônibus encontrado nesta janela. Experimente outro horário, origem ou destino.','warn');
+  }else{
+    routeStatus((data.status==='partial'?'Busca limitada por desempenho; ':'')+
+      data.itineraries.length+' itinerário(s) programado(s). Caminhadas são estimativas, não percursos por rua.',
+      data.status==='partial'?'warn':'info');
+  }
+  for(const [index,trip] of (data.itineraries||[]).entries()){
+    const container=document.createElement('div');container.className='route-result';
+    if(index===state.routeSelected)container.classList.add('selected');
+    const select=document.createElement('button');select.type='button';select.className='route-summary';
+    const clock=document.createElement('strong');
+    clock.textContent=routeClock(trip.departure)+' → '+routeClock(trip.arrival)+' · '+trip.durationMinutes+' min';
+    const detail=document.createElement('small');
+    const buses=trip.legs.filter(x=>x.mode==='bus');
+    detail.textContent=buses.map(x=>x.line).join(' + ')+' · '+trip.walkMetersApprox+
+      ' m a pé (estimativa) · '+trip.transfers+' baldeação(ões)';
+    select.append(clock,detail);
+    select.onclick=()=>{state.routeSelected=index;renderRouteResults(data);focusSelectedRoute(trip)};
+    container.append(select);
+    if(index===state.routeSelected){
+      const legs=document.createElement('div');legs.className='route-legs';
+      for(const leg of trip.legs){
+        const item=document.createElement('div');item.className='route-leg';
+        const icon=document.createElement('span');icon.className='route-leg-icon';icon.textContent=leg.mode==='bus'?'🚌':'🚶';
+        const txt=document.createElement('span');txt.className='route-leg-body';
+        const title=document.createElement('strong');
+        if(leg.mode==='bus'){
+          title.textContent='Linha '+leg.line+(leg.headsign?' · '+leg.headsign:'');
+          const desc=document.createElement('small');
+          desc.textContent=routeClock(leg.departure)+' — '+leg.fromName+' → '+
+                           routeClock(leg.arrival)+' — '+leg.toName;
+          txt.append(title,desc);
+        }else{
+          title.textContent='Caminhada ≈ '+leg.metersApprox+' m';
+          const desc=document.createElement('small');
+          desc.textContent=(leg.from==='origin'?'Origem':leg.from==='destination'?'Destino':
+                            'Ponto '+leg.from)+' → '+
+                           (leg.to==='destination'?'Destino':leg.to==='origin'?'Origem':'Ponto '+leg.to)+
+                           ' · percurso pelas ruas ainda não verificado';
+          txt.append(title,desc);
+        }
+        item.append(icon,txt);legs.append(item);
+      }
+      container.append(legs);
+    }
+    area.append(container);
+  }
+  if(data.metroHints?.length){
+    const h=document.createElement('h3');h.textContent='Possibilidades com metrô (sem horário calculado)';
+    rail.append(h);
+    for(const hint of data.metroHints){
+      const card=document.createElement('div');card.className='metro-hint';
+      const strong=document.createElement('strong');strong.textContent='Linha '+hint.line+
+        ': '+hint.fromStation+' → '+hint.toStation;
+      const p=document.createElement('p');p.textContent='Passa por '+hint.stationCount+
+        ' trecho(s) entre estações. Frequência e horários de partida ainda não validados para esta viagem; não comparável às opções de ônibus.';
+      card.append(strong,p);rail.append(card);
+    }
+  }
+  if(data.itineraries?.length)focusSelectedRoute(data.itineraries[0]);
+}
+function focusSelectedRoute(itinerary){
+  if(!itinerary)return;
+  const coords=[state.routeOrigin,state.routeDestination].filter(Boolean)
+     .map(p=>[p.lat,p.lng]);
+  for(const leg of itinerary.legs){
+    if(leg.fromCoords)coords.push(leg.fromCoords);
+    if(leg.toCoords)coords.push(leg.toCoords);
+  }
+  if(coords.length>1){fitCoordinates(coords);drawSoon();scheduleMapStops()}
+}
+function drawRouteLayer(){
+  if(activeTab!=='rotas')return;
+  const trip=state.routeResults[state.routeSelected];
+  if(trip){
+    for(const leg of trip.legs){
+      if(!leg.fromCoords||!leg.toCoords)continue;
+      const [x1,y1]=screen(...leg.fromCoords),[x2,y2]=screen(...leg.toCoords);
+      ctx.save();ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);
+      ctx.strokeStyle='#1265a8';ctx.lineWidth=5;ctx.globalAlpha=.6;ctx.stroke();
+      for(const [x,y] of [[x1,y1],[x2,y2]]){
+        ctx.beginPath();ctx.arc(x,y,5,0,2*Math.PI);ctx.fillStyle='#fff';ctx.fill();
+        ctx.strokeStyle='#1265a8';ctx.lineWidth=2;ctx.stroke();
+      }
+      ctx.restore();
+    }
+  }
+  for(const [which,p] of [['origin',state.routeOrigin],['destination',state.routeDestination]]){
+    if(!p)continue;
+    const [x,y]=screen(p.lat,p.lng);
+    ctx.beginPath();ctx.arc(x,y,9,0,2*Math.PI);
+    ctx.fillStyle=which==='origin'?'#027a48':'#b42318';ctx.fill();
+    ctx.lineWidth=3;ctx.strokeStyle='#fff';ctx.stroke();
+  }
+}
+for(const which of ['origin','destination']){
+  const id=which==='origin'?'routeOrigin':'routeDestination';
+  $(id+'Search').onclick=()=>searchRoutePlace(which);
+  $(id+'Map').onclick=()=>pickRoutePlace(which);
+  routeInput(which).addEventListener('input',()=>{
+    if(which==='origin')state.routeOrigin=null;else state.routeDestination=null;
+    state.routeResults=[];routeCandidates(which).replaceChildren();drawSoon();
+  });
+  routeInput(which).addEventListener('keydown',e=>{
+    if(e.key==='Enter'){e.preventDefault();searchRoutePlace(which)}
+  });
+}
+$('routeOriginLocation').onclick=useRouteLocation;
+$('routeWhen').onchange=routeWhenChanged;
+$('routeSubmit').onclick=submitRoute;
+initRouteDate();routeWhenChanged();
+api('/api/plan/status').then(x=>{
+  if(!x.ready)routeStatus('Índice detalhado do GTFS ainda não disponível neste servidor. A busca por ônibus ficará indisponível até a geração do catálogo.','warn');
+}).catch(()=>{});
