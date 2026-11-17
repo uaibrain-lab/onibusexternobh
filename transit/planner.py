@@ -328,12 +328,12 @@ class JourneyPlanner:
                         if bound is not None and earliest>=bound:
                             stats['timePrunedTrips']=stats.get('timePrunedTrips',0)+1
                             continue
-                    # A single trip reaches each downstream stop at a fixed
-                    # time, regardless of where it was boarded. Of all feasible
-                    # boardings, the least-walking prefix dominates the others.
-                    # This preserves earliest arrival + walking Pareto quality
-                    # while avoiding repeated candidate expansion.
-                    best_board = None
+                    # Every downstream time is fixed for this trip. Preserve
+                    # the lowest-walking boarding and, for arriveBy, the
+                    # latest-time boarding to avoid losing departures that
+                    # allow the user to leave home later.
+                    best_walk = None
+                    best_late = None
                     entries=reversed(stops) if backward else iter(stops)
                     for row in entries:
                         sid,arr,dep=row[:3]
@@ -346,9 +346,16 @@ class JourneyPlanner:
                         epoch=midnight+(dep if backward else arr)
                         if bound is not None and (epoch<=bound if backward else epoch>=bound):
                             break  # stop times monotonic in scan direction
-                        if best_board is not None and (pickup if backward else dropoff)==0:
-                            earlier,board_sid,board_epoch=best_board
-                            if sid!=board_sid:
+                        if (pickup if backward else dropoff)==0:
+                            choices=(best_walk,best_late) if backward else (best_walk,)
+                            for selected in choices:
+                                if selected is None or (selected is best_late and
+                                                        selected is best_walk):
+                                    if selected is None or selected is best_late:
+                                        continue
+                                earlier,board_sid,board_epoch=selected
+                                if sid==board_sid:
+                                    continue
                                 if backward:
                                     edge=self._edge_bus(code,trip_id,headsign,sid,board_sid,
                                                         midnight+dep,board_epoch)
@@ -368,8 +375,13 @@ class JourneyPlanner:
                                                else departure<=search_ts+HORIZON_SECONDS)
                                 if feasible and valid_horizon:
                                     candidate=(label,sid,arrival if backward else departure)
-                                    if best_board is None or label.walked<best_board[0].walked:
-                                        best_board=candidate
+                                    if best_walk is None or label.walked<best_walk[0].walked:
+                                        best_walk=candidate
+                                    if backward and (best_late is None or
+                                        label.time>best_late[0].time or
+                                        (label.time==best_late[0].time and
+                                         label.walked<best_late[0].walked)):
+                                        best_late=candidate
         return next_labels
 
     def _path(self,label,backward):
