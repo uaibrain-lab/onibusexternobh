@@ -98,8 +98,13 @@ function updateStatus(obj){
   state.lastBusStatus=obj;
   if(activeTab==='metro')return;
   if(isStaticOnly){
-    statusLed(null,'GTFS · horários programados, sem GPS ao vivo');
-    $('lastPoll').textContent='Catálogo GTFS local · sem telemetria ao vivo';
+    const recent=Number(obj?.gpsRecent||0);
+    if(recent>0)statusLed(true,'GPS oficial recente · horários de tabela nos pontos');
+    else if(obj?.available)statusLed(null,'GPS sem posições recentes · horários de tabela');
+    else statusLed(null,'GTFS · horários programados, GPS indisponível');
+    $('lastPoll').textContent=recent>0
+      ?'Posições PBH recentes · sem previsão individual validada'
+      :'GTFS programado · GPS opcional não disponível';
     return;
   }
   const errors=Object.values(obj?.sources||{}).filter(x=>x?.lastError);
@@ -143,6 +148,7 @@ async function selectLine(code,{fromStop=false,vehicleKey=null,destination=null}
   const [geo,fleet]=await Promise.all([api(query),api('/api/fleet?route='+encodeURIComponent(route.code))]);
   if(seq!==routeSelectionSeq||state.route?.code!==route.code)return;
   state.geometry=geo;state.fleet=fleet;
+  if(isStaticOnly)updateStatus(await api('/api/status'));
   const patterns=[...geo.patterns].sort((a,b)=>b.tripCount-a.tripCount);
   const primary=patterns[0];
   const sel=$('patternInput');sel.replaceChildren();
@@ -195,7 +201,7 @@ function vehicleMeta(v){let match=v.shapeMatch;let shape=match.status==='probabl
 function vehicleRow(v){let b=document.createElement('button');b.type='button';b.className='vehicle'+(state.selectedVehicle===v.source+'|'+v.vehicleId?' selected':'');b.dataset.vehicleKey=v.source+'|'+v.vehicleId;let top=document.createElement('div');top.className='top';let name=document.createElement('b');name.textContent='Ônibus';let lab=document.createElement('span');lab.className='label';let gpsAge=diffSeconds(v.lastGpsFixAt),stillAge=diffSeconds(v.positionUnchangedSinceAt);if(gpsAge>120)lab.classList.add('old');else if(stillAge>120)lab.classList.add('warn');lab.textContent=gpsAge>300?'Sinal antigo':gpsAge>120?'Sinal atrasado':stillAge>120?'Sem movimento recente':'Localização recente';top.append(name,lab);let m=document.createElement('div');m.className='meta';m.textContent=vehicleMeta(v);m.style.whiteSpace='pre-line';b.append(top,m);b.onclick=()=>focusVehicle(v);return b}
 function tickVehicleAges(){let byId=new Map((state.fleet?.vehicles||[]).map(v=>[v.source+'|'+v.vehicleId,v]));for(let node of $('vehicleList').querySelectorAll('.vehicle')){let v=byId.get(node.dataset.vehicleKey);if(v){let m=node.querySelector('.meta');if(m)m.textContent=vehicleMeta(v)}}}
 function renderVehicles(){
-  if(isStaticOnly||state.fleet?.available===false){
+  if(state.fleet?.available===false){
     $('vTotal').textContent='—';$('vRecent').textContent='—';
     $('vehicleList').textContent='GPS em tempo real ainda não integrado neste modo gratuito. Consulte as linhas, os pontos e os horários GTFS programados.';
     return;
@@ -252,7 +258,7 @@ $('zoomIn').onclick=()=>zoom(1);$('zoomOut').onclick=()=>zoom(-1);$('recenter').
 $('goLine').onclick=()=>selectLine($('lineInput').value).catch(reportError);$('lineInput').onkeydown=e=>{if(e.key==='Enter')$('goLine').click()};$('patternInput').onchange=()=>selectPattern().catch(reportError);
 $('refresh').onclick=()=>refresh().catch(reportError);
 function reportError(e){console.error(e);statusLed(false,'Erro ao consultar dados');$('mapToast').textContent=`Não foi possível atualizar: ${e.message}`}
-async function refresh(){if(document.hidden)return;if(!state.route)return;const code=state.route.code;let [fleet,status]=await Promise.all([api('/api/fleet?route='+encodeURIComponent(code)),api('/api/status')]);if(state.route?.code!==fleet.line)return;state.fleet=fleet;updateStatus(status);renderVehicles();drawSoon()}
+async function refresh(){if(document.hidden||!state.route)return;const code=state.route.code;const fleet=await api('/api/fleet?route='+encodeURIComponent(code));if(state.route?.code!==fleet.line)return;state.fleet=fleet;updateStatus(await api('/api/status'));renderVehicles();drawSoon()}
 // Interface compartilhada com o padrão visual do Hub UFMG / Interno.
 let activeTab='pontos';
 function syncSheetAccessibility(){
@@ -569,6 +575,15 @@ window.addEventListener('resize',()=>{resize();syncSheetAccessibility();if(state
 resize();syncSheetAccessibility();
 loadRoutes().catch(reportError);
 if(isStaticOnly)loadMapStops().catch(reportError);
+if(isStaticOnly){
+  // Only poll an actively selected line when the free GPS adapter was enabled
+  // by an explicit, independently validated deployment configuration.
+  setInterval(()=>{
+    if(!document.hidden&&navigator.onLine&&state.route&&
+       typeof StaticLive!=='undefined'&&StaticLive.enabled())
+      refresh().catch(e=>console.warn('GPS opcional indisponível',e));
+  },45000);
+}
 if(!isStaticOnly){
   setInterval(()=>{if(document.hidden)return;tickVehicleAges();if(state.fleet?.vehicles?.length)drawSoon()},15000);
   setInterval(()=>{if(!document.hidden&&navigator.onLine)refresh().catch(reportError)},35000);
