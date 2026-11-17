@@ -44,7 +44,7 @@ def build(target=None, gps_staging=False):
     public=target/'externo'
     public.mkdir(parents=True)
     static=ROOT/'static'
-    for name in ('app.js','style.css','hub-parity.css','route-worker.js','service-worker.js','static-bus.js','static-arrivals.js','live-gps.js','gps-config.json','walk-network.js','metro-timing.js','manifest.webmanifest','icon-192.png','icon-512.png'):
+    for name in ('app.js','style.css','hub-parity.css','route-worker.js','service-worker.js','static-bus.js','static-arrivals.js','live-gps.js','gps-config.json','place-geocoding.js','walk-network.js','metro-timing.js','manifest.webmanifest','icon-192.png','icon-512.png'):
         shutil.copy2(static/name,public/name)
     html=(static/'index.html').read_text(encoding='utf-8')
     anchor='<html lang="pt-BR">'
@@ -90,9 +90,10 @@ def build(target=None, gps_staging=False):
         html=html.replace(notice,notice+'HOMOLOGAÇÃO: GPS experimental SUMOB. Sem ETA validado. ',1)
         # Stage-specific cache-busting: older HTML/CSS from the P17 build
         # must never mask a corrected canvas/map release in an installed PWA.
-        stage_version='p20-map-ui-20261117'
+        stage_version='p21-lines-geocode-planner-20261117'
         for name in ('app.js','style.css','hub-parity.css',
-                     'live-gps.js','static-bus.js','static-arrivals.js'):
+                     'live-gps.js','static-bus.js','static-arrivals.js',
+                     'place-geocoding.js','route-worker.js'):
             html=html.replace('src="./'+name+'"',
                               'src="./'+name+'?v='+stage_version+'"')
             html=html.replace('href="./'+name+'"',
@@ -112,6 +113,10 @@ def build(target=None, gps_staging=False):
             '/externo/style.css\n'
             '  Cache-Control: no-cache, max-age=0\n'
             '/externo/hub-parity.css\n'
+            '  Cache-Control: no-cache, max-age=0\n'
+            '/externo/place-geocoding.js\n'
+            '  Cache-Control: no-cache, max-age=0\n'
+            '/externo/route-worker.js\n'
             '  Cache-Control: no-cache, max-age=0\n',
             encoding='utf-8')
     (public/'index.html').write_text(html,encoding='utf-8')
