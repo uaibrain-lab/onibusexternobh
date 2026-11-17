@@ -454,8 +454,18 @@ class JourneyPlanner:
                     'message':'Índice GTFS de viagens ainda não gerado.',
                     'itineraries':[],'metroHints':self._metro_hints(origin,destination,at_dt)}
         day=at_dt.strftime('%Y%m%d')
+        # GTFS trip times like 25:10:00 belong to the PREVIOUS calendar
+        # service day. A request just after midnight may therefore remain
+        # valid even when the date is one day past calendar.end_date.
+        through=self.index.get('validThrough')
+        overflow_days=int(self.index.get('maxServiceSeconds',0))//86400
+        if through and overflow_days:
+            effective_through=(dt.datetime.strptime(through,'%Y%m%d').date()+
+                               dt.timedelta(days=overflow_days)).strftime('%Y%m%d')
+        else:
+            effective_through=through
         if (self.index['validFrom'] and day<self.index['validFrom'] or
-            self.index['validThrough'] and day>self.index['validThrough']):
+            effective_through and day>effective_through):
             return {'status':'out_of_calendar',
                     'message':'Data fora da validade do GTFS de viagens. Não extrapolamos horários.',
                     'validFrom':self.index['validFrom'],'validThrough':self.index['validThrough'],
