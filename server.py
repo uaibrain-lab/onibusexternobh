@@ -3,11 +3,13 @@
 import argparse, json, mimetypes, pathlib, threading, urllib.parse, webbrowser
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from transit.engine import TransitEngine
+from transit.metro import MetroCatalog
 
 ROOT=pathlib.Path(__file__).resolve().parent
 
 def run(host='127.0.0.1',port=8765,open_browser=False):
     engine=TransitEngine(ROOT)
+    metro=MetroCatalog(ROOT/'catalog')
     class Handler(BaseHTTPRequestHandler):
         protocol_version='HTTP/1.1'
         def respond(self,status,raw,content_type):
@@ -33,6 +35,22 @@ def run(host='127.0.0.1',port=8765,open_browser=False):
                     path=path[len('/externo'):]
                 elif path=='/externo':
                     path='/'
+                if path=='/api/metro':
+                    return self.payload(200,metro.listing())
+                if path=='/api/metro/news':
+                    return self.payload(200,metro.news())
+                if path=='/api/metro/line':
+                    v=metro.line(qs.get('id',[''])[0])
+                    return self.payload(200,v) if v else self.payload(404,{'error':'Linha de metrô não encontrada'})
+                if path=='/api/metro/station':
+                    v=metro.station(qs.get('id',[''])[0],engine.stops)
+                    return self.payload(200,v) if v else self.payload(404,{'error':'Estação de metrô não encontrada'})
+                if path=='/api/metro/nearby':
+                    try:
+                        v=metro.nearby(qs.get('lat',[''])[0],qs.get('lng',[''])[0])
+                    except (ValueError,TypeError,OverflowError):
+                        return self.payload(400,{'error':'Coordenadas inválidas'})
+                    return self.payload(200,v)
                 if path=='/api/status': return self.payload(200,engine.status())
                 if path=='/api/routes': return self.payload(200,engine.routes_listing())
                 if path=='/api/route':

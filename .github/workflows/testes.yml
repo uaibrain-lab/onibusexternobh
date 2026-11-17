@@ -20,11 +20,20 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Testes offline (após importação da P2)
+      - name: Testes unitários de ônibus e metrô
         run: |
-          if [ -f server.py ] && [ -d tests ]; then
-            python -m unittest discover -s tests -v
-            python -m compileall -q server.py transit tests
-          else
-            echo "Aguardando importação do código P2; repositório ainda em preparação."
-          fi
+          python -m unittest discover -s tests -v
+          python -m compileall -q server.py transit tests
+      - name: Validar sintaxe JavaScript
+        run: node --check static/app.js
+      - name: Validar catálogo de metrô
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from transit.metro import MetroCatalog
+          m=MetroCatalog(Path('catalog'))
+          assert len(m.data['stations']) == 22
+          assert len(m.line('2')['stations']) == 2
+          assert m.stations['nova-suica']['interchange']
+          print('Catálogo do metrô coerente')
+          PY
