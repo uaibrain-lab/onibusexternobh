@@ -212,6 +212,33 @@ class JourneyPlanner:
                 'departure':self._iso(depart),'arrival':self._iso(arrive),
                 'prediction':'GTFS scheduled'}
 
+    @functools.lru_cache(maxsize=25000)
+    def _neighbor_transfers(self, sid, backward):
+        """Compute geographic and OSM footpath adjacency only once per stop.
+
+        Multiple labels reaching the same GTFS stop share the same physical
+        pedestrian transfers; caching prevents repeated graph A* queries.
+        """
+        stop=self.stops.get(sid)
+        if not stop:
+            return ()
+        start=(float(stop[1]),float(stop[2]))
+        result=[]
+        for meters,other_sid in self.nearby(*start,radius=165,limit=40):
+            if other_sid==sid or meters<2:
+                continue
+            route=None
+            if self.walking.ready:
+                target=self.stops[other_sid]
+                end=(float(target[1]),float(target[2]))
+                route=self.walking.route(end if backward else start,
+                                        start if backward else end,max_meters=410)
+                if route is None:
+                    continue
+                meters=route['meters']/WALK_FACTOR
+            result.append((meters,other_sid,route))
+        return tuple(result)
+
     def _transfer(self,labels,backward,stats=None,bound=None):
         # Transfers are still geometric approximations, not validated walking paths.
         seed=[x for values in labels.values() for x in values
@@ -225,23 +252,7 @@ class JourneyPlanner:
             seed.sort(key=best)
             seed=seed[:MAX_TRANSFER_LABELS]
         for old in seed:
-            stop=self.stops.get(old.stop)
-            if not stop:
-                continue
-            for meters,sid in self.nearby(float(stop[1]),float(stop[2]),radius=165,limit=40):
-                if sid==old.stop or meters<2:
-                    continue
-                foot=None
-                if self.walking.ready:
-                    dest=self.stops[sid]
-                    current=(float(stop[1]),float(stop[2]))
-                    neighbor=(float(dest[1]),float(dest[2]))
-                    foot=self.walking.route(neighbor if backward else current,
-                                            current if backward else neighbor,
-                                            max_meters=410)
-                    if foot is None:
-                        continue  # never bridge a disconnected OSM barrier
-                    meters=foot['meters']/WALK_FACTOR
+            for meters,sid,foot in self._neighbor_transfers(old.stop,backward):
                 seconds=self._walk_time(meters)+TRANSFER_BUFFER_SECONDS
                 t=old.time-seconds if backward else old.time+seconds
                 if bound is not None and (t<=bound if backward else t>=bound):
