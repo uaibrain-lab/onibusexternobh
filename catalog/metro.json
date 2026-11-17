@@ -404,6 +404,32 @@
     "fareSource": "https://www.metrobh.com.br/va-de-metro/",
     "lastVerified": "2026-11-17",
     "notice": "Intervalos são frequências, NÃO horários exatos ou ETA GPS. Revalidar alterações junto à operadora.",
-    "forecastLinkNote": "Links oficiais de previsão abrem página externa; não são dados ingeridos no site. Amazonas ainda não possui link listado nessa página."
+    "forecastLinkNote": "Links oficiais de previsão abrem página externa; não são dados ingeridos no site. Amazonas ainda não possui link listado nessa página.",
+    "hoursExceptions": [
+      {
+        "line": "2",
+        "from": "2026-11-03",
+        "through": "2026-11-06",
+        "end": "22:00",
+        "note": "Linha 2 encerra a operação às 22h por testes de sinalização",
+        "url": "https://anptrilhos.org.br/linha-2-do-metro-bh-inicia-operacao-comercial-plena/"
+      },
+      {
+        "line": "2",
+        "from": "2026-11-09",
+        "through": "2026-11-13",
+        "end": "22:00",
+        "note": "Linha 2 encerra a operação às 22h por testes de sinalização",
+        "url": "https://anptrilhos.org.br/linha-2-do-metro-bh-inicia-operacao-comercial-plena/"
+      },
+      {
+        "line": "2",
+        "from": "2026-11-16",
+        "through": "2026-11-20",
+        "end": "22:00",
+        "note": "Linha 2 encerra a operação às 22h por testes de sinalização",
+        "url": "https://anptrilhos.org.br/linha-2-do-metro-bh-inicia-operacao-comercial-plena/"
+      }
+    ]
   }
 }
