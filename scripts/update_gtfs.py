@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Validate and stage a complete official BH GTFS catalog (stdlib only).
 
-Dry-run is the default. --apply replaces local catalog files after validation
-and keeps an on-disk backup on failure. Not a production hot-reload mechanism.
+Dry-run is the default. --apply activates a fully validated, immutable
+catalog version with a single atomic pointer switch on next server restart.
 No GPS data, user coordinates, map tiles, or third-party reports are copied.
 """
 from __future__ import annotations
