@@ -153,7 +153,11 @@ export async function handleGpsRequest(request,{fetchFn=fetch,cache=globalThis.c
     else if(error?.name==='TimeoutError'||error?.name==='AbortError')
       reason='PBH_TIMEOUT';
     else if(error instanceof TypeError)reason='PBH_NETWORK_ERROR';
-    return reply({available:false,error:'GPS_SOURCE_UNAVAILABLE',reason},503,origin);
+    const match=/^PBH_HTTP_([1-5][0-9]{2})$/.exec(message);
+    // HTTP status is safe to expose; upstream bodies/headers stay private.
+    const upstreamStatus=match?Number(match[1]):null;
+    return reply({available:false,error:'GPS_SOURCE_UNAVAILABLE',reason,
+      ...(upstreamStatus!==null?{upstreamStatus}:{})},503,origin);
   }
 }
 export default {fetch(request,env,ctx){return handleGpsRequest(request,{ctx});}};
