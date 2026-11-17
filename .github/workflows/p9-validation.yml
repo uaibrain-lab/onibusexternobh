@@ -11,6 +11,7 @@ on:
       - static/walk-network.js
       - static/static-bus.js
       - tests/test_metro_timing.cjs
+      - tests/benchmark_static_worker.cjs
       - tests/test_walk_network.cjs
       - tests/test_static_bus.cjs
       - tests/test_walking_graph.py
