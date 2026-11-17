@@ -56,3 +56,32 @@ test('closed line2 station not proposed during exceptional early close',()=>{
    Date.parse('2026-11-17T22:15:00-03:00'));
  assert.ok(!h.some(x=>x.line==='2'));
 });
+
+test('late departure plus access walk never proposes a train after station closes',()=>{
+ const {metro,catalog,station}=system();
+ const a=station('eldorado'),b=station('central');
+ const origin=[a.lat+0.008,a.lng];
+ const options=metro.suggest(catalog,origin,[b.lat,b.lng],
+   Date.parse('2026-11-17T22:58:00-03:00'),'departAt');
+ assert.ok(!options.some(x=>x.line==='1'&&x.fromStationId==='eldorado'),
+   'Reaching the station after 23:00 cannot produce a train proposal');
+});
+test('metro+bus combinations remain conditional, never scheduled rail departures',()=>{
+ const {metro,catalog,station}=system();
+ const central=station('central'),eldorado=station('eldorado');
+ const bus={
+  legs:[{mode:'bus',tripId:'scheduled-1',line:'123',
+     fromCoords:[central.lat+0.0002,central.lng],
+     toCoords:[central.lat+0.006,central.lng+0.002],
+     departure:'2026-11-17T15:30:00Z',arrival:'2026-11-17T15:48:00Z'}]
+ };
+ const found=metro.multimodal(catalog,[eldorado.lat,eldorado.lng],
+   [central.lat+0.006,central.lng+0.002],
+   Date.parse('2026-11-17T11:30:00-03:00'),
+   'departAt',[bus]);
+ // Every returned option uses an existing exact GTFS bus trip and a
+ // separate, clearly estimated metro interval. Empty is allowed if
+ // a conservative transfer cannot be confirmed.
+ assert.ok(found.every(x=>x.status==='conditional_bus_metro'));
+ assert.ok(found.every(x=>x.busTripId==='scheduled-1'));
+});
