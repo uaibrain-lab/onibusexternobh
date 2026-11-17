@@ -108,7 +108,7 @@ test('fastest route prefers two correct trips over slower direct bus',async()=>{
   const result=msgs.find(x=>x.kind==='result').data;
   assert.ok(result.itineraries.length>0,result.status);
   const winner=result.itineraries[0];
-  assert.deepEqual(winner.legs.filter(x=>x.mode==='bus').map(x=>x.line),['X','Y']);
+  assert.deepEqual(winner.legs.filter(x=>x.mode==='bus').map(x=>x.line).join(','),'X,Y');
   assert.equal(winner.transfers,1);
   assert.ok(winner.arrival.includes('11:30:')); // 08:30 BH is 11:30 UTC
   for(const itinerary of result.itineraries)
@@ -136,7 +136,7 @@ test('arriveBy searches backwards and returns a trip before deadline',async()=>{
   const data=msgs.find(x=>x.kind==='result').data;
   assert.ok(data.itineraries.length,data.status);
   assert.ok(data.itineraries.every(x=>Date.parse(x.arrival)<=Date.parse('2026-11-17T08:45:00-03:00')));
-  assert.deepEqual(data.itineraries[0].legs.filter(x=>x.mode==='bus').map(x=>x.line),['X','Y']);
+  assert.deepEqual(data.itineraries[0].legs.filter(x=>x.mode==='bus').map(x=>x.line).join(','),'X,Y');
 });
 test('calendar exceptions and expired dates do not invent journeys',async()=>{
   const t=setup();await t.run('init',1);
