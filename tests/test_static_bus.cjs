@@ -3,6 +3,7 @@
 const test=require('node:test'),assert=require('node:assert/strict'),
  fs=require('node:fs'),vm=require('node:vm');
 const data={
+ 'manifest.json':{gtfsVersion:'202611161919'},
  'routes.json':[{id:'A',code:'2020',name:'Centro / Universidade',
    patterns:['p1'],shapes:['s1']}],
  'stops.json':{'101':['Rua Campus',-19.869,-43.967],

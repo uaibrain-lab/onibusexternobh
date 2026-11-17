@@ -7,9 +7,60 @@ const StaticBus=(()=>{
   const cache=new Map();
   const base=new URL('./catalog/',location.href);
   let lines=null,stops=null,patterns=null,shapes=null,stopRoutes=null,routeIndex=null,stopIndex=null;
+  let grid=null,patternsByStop=null;
+  const CELL_DEGREES=0.0125;
+  const cell=(lat,lng)=>Math.floor(lat/CELL_DEGREES)+':'+Math.floor(lng/CELL_DEGREES);
+  function candidates(south,west,north,east){
+    const out=[];
+    if(!grid)return stopIndex||[];
+    const s=Math.floor(south/CELL_DEGREES),n=Math.floor(north/CELL_DEGREES);
+    const w=Math.floor(west/CELL_DEGREES),e=Math.floor(east/CELL_DEGREES);
+    // Invalid/extremely large viewports use the fallback index.
+    if((n-s+1)*(e-w+1)>800)return stopIndex;
+    for(let lat=s;lat<=n;lat++)for(let lng=w;lng<=e;lng++){
+      const items=grid.get(lat+':'+lng);if(items)out.push(...items);
+    }
+    return out;
+  }
+  async function getStopPatterns(){
+    if(patternsByStop)return patternsByStop;
+    patterns ||=await data('patterns.json');
+    const index=new Map();
+    for(const pattern of patterns){
+      for(const id of pattern.stops){
+        const stop=String(id);
+        if(!index.has(stop))index.set(stop,[]);
+        index.get(stop).push(pattern);
+      }
+    }
+    patternsByStop=index;
+    return index;
+  }
+  // Release-scoped requests prevent mixing old route/stop JSON after a GTFS
+  // update on Firebase Hosting. The manifest is always checked against network.
+  let manifestPromise=null;
+  function releaseVersion(){
+    if(!manifestPromise){
+      manifestPromise=fetch(new URL('manifest.json',base),{cache:'no-store'})
+        .then(response=>{
+          if(!response.ok)throw Error('Manifesto GTFS indisponível');
+          return response.json();
+        })
+        .then(data=>{
+          const version=String(data.gtfsVersion||'');
+          if(!/^[0-9A-Za-z_.-]{5,60}$/.test(version))throw Error('Versão GTFS inválida');
+          return version;
+        }).catch(error=>{manifestPromise=null;throw error});
+    }
+    return manifestPromise;
+  }
   async function data(file){
     if(cache.has(file))return cache.get(file);
-    const promise=fetch(new URL(file,base),{cache:'force-cache'}).then(r=>{
+    const promise=releaseVersion().then(version=>{
+      const url=new URL(file,base);
+      url.searchParams.set('v',version);
+      return fetch(url,{cache:'force-cache'});
+    }).then(r=>{
       if(!r.ok)throw Error('Catálogo GTFS não disponível: '+file+' HTTP '+r.status);
       return r.json();
     }).catch(error=>{cache.delete(file);throw error});
@@ -25,6 +76,9 @@ const StaticBus=(()=>{
     routeIndex=new Map(lines.map(r=>[r.code.toUpperCase(),r]));
     stopIndex=Object.entries(stops).map(([id,[name,lat,lng]])=>
       ({id,name,lat:Number(lat),lng:Number(lng)}));
+    grid=new Map();
+    for(const s of stopIndex){const key=cell(s.lat,s.lng);
+      if(!grid.has(key))grid.set(key,[]);grid.get(key).push(s)}
   }
   const fold=s=>String(s||'').normalize('NFD')
     .replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('pt-BR');
@@ -82,7 +136,9 @@ const StaticBus=(()=>{
       const lat=Number(u.searchParams.get('lat')),lng=Number(u.searchParams.get('lng'));
       if(!Number.isFinite(lat)||!Number.isFinite(lng))throw Error('Coordenadas inválidas');
       const radius=2500;
-      const ranked=stopIndex.map(s=>({...s,distanceM:distance(lat,lng,s.lat,s.lng)}))
+      const delta=radius/110000;
+      const ranked=candidates(lat-delta,lng-delta*1.15,lat+delta,lng+delta*1.15)
+        .map(s=>({...s,distanceM:distance(lat,lng,s.lat,s.lng)}))
         .filter(s=>s.distanceM<=radius).sort((a,b)=>a.distanceM-b.distanceM);
       return {items:ranked.slice(0,15),count:ranked.length};
     }
@@ -90,7 +146,7 @@ const StaticBus=(()=>{
       const a=Number(u.searchParams.get('minlat')),b=Number(u.searchParams.get('minlng')),
         c=Number(u.searchParams.get('maxlat')),d=Number(u.searchParams.get('maxlng'));
       if(![a,b,c,d].every(Number.isFinite)||a>c||b>d)throw Error('Limites inválidos');
-      const visible=stopIndex.filter(s=>a<=s.lat&&s.lat<=c&&b<=s.lng&&s.lng<=d);
+      const visible=candidates(a,b,c,d).filter(s=>a<=s.lat&&s.lat<=c&&b<=s.lng&&s.lng<=d);
       return {items:visible.slice(0,550).map(stopObj),
         total:visible.length,truncated:visible.length>550};
     }
@@ -112,10 +168,9 @@ const StaticBus=(()=>{
           console.warn('Horários deste ponto indisponíveis',error);
         }
       }
-      patterns ||=await data('patterns.json');
+      const stopPatterns=await getStopPatterns();
       const destinationGroups=new Map();
-      for(const p of patterns){
-        if(!p.stops.includes(id))continue;
+      for(const p of stopPatterns.get(id)||[]){
         const line=lines.find(r=>r.id===String(p.route));
         if(!line)continue;
         const dest=String(p.headsign||'').trim();
@@ -150,5 +205,5 @@ const StaticBus=(()=>{
     }
     throw Error('Endpoint ainda não disponível no modo estático: '+endpoint);
   }
-  return {api,init};
+  return {api,init,version:releaseVersion};
 })();
