@@ -41,6 +41,12 @@ async function main(){
     DecompressionStream,TextDecoder,Uint8Array,Uint32Array,
     Map,Set,Error,Number,Math,Promise,String,Array,console,
   });
+  context.importScripts=filename=>{
+    if(!['./walk-network.js','./metro-timing.js'].includes(filename))
+      throw Error('Unexpected import in Worker: '+filename);
+    vm.runInContext(fs.readFileSync(path.resolve('static',filename),'utf-8'),context,
+      {filename});
+  };
   vm.runInContext(fs.readFileSync('static/route-worker.js','utf-8'),context,
     {filename:'route-worker.js'});
   const baseUrl='https://local.test/externo/catalog/scan/';
