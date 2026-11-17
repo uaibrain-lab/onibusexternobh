@@ -12,6 +12,14 @@ Esta versão reúne a experiência de quatro abas: **Pontos, Linhas, Metrô e Ro
 
 Detalhes, cronograma e riscos: [docs/INTEGRACAO-UNICA-20261117.md](docs/INTEGRACAO-UNICA-20261117.md).
 
+**P18 — 17/11/2026:** o usuário confirmou que o ambiente independente
+https://externo-bh-hml-uaibrain.pages.dev/externo/ está online.
+A auditoria HTTP do Pages publicado foi adicionada em
+[docs/P18-AUDITORIA-PAGES-PUBLICADO.md](docs/P18-AUDITORIA-PAGES-PUBLICADO.md).
+Execute `node scripts/check_p18_public_site.mjs` no Windows antes de
+considerar a publicação validada; a análise visual mobile continua pendente.
+O GPS padrão no repositório permanece desativado e o Hub não foi alterado.
+
 ## P17 — Site de homologação GPS oficial SUMOB, sem custos obrigatórios
 
 O GPS GTFS Realtime SUMOB foi validado no Worker gratuito com HTTP 200,
