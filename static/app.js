@@ -397,32 +397,128 @@ function makeShareButton(stop){
   return b;
 }
 function renderStopFavoriteButton(){const area=$('stopDetail');if(!state.selectedStop)return;const current=area.querySelector('.stop-head .fav-btn');if(current){current.replaceWith(starButton('stops',state.selectedStop))}}
-async function openStopDetail(id,silent=false){const seq=++stopDetailSeq;const area=$('stopDetail');area.hidden=false;$('pontosPane').classList.add('has-open-stop');if(!silent){area.replaceChildren();let message=document.createElement('p');message.className='muted-empty';message.textContent='Consultando linhas e horários desta parada…';area.append(message)}let data=await api('/api/stop?id='+encodeURIComponent(id));if(seq!==stopDetailSeq||String(state.selectedStop)!==String(id))return;
-if(favorites.stops.includes(String(id))&&favorites.names[id]!==data.name){favorites.names[id]=data.name;saveFavorites()}
-area.replaceChildren();const head=document.createElement('div');head.className='stop-head';const text=document.createElement('div');let title=document.createElement('h2');title.textContent=data.name;const small=document.createElement('small');small.textContent='Próximas chegadas';text.append(title,small);const back=document.createElement('button');back.type='button';back.className='stop-back';back.textContent='‹';back.setAttribute('aria-label','Voltar para pontos');back.onclick=closeStopDetail;head.append(back,text,makeShareButton(data),starButton('stops',data.id));area.append(head);
-if(!data.routes.length){let p=document.createElement('p');p.className='muted-empty';p.textContent='Nenhuma linha vinculada a este ponto na versão atual do GTFS.';area.append(p)}
-for(const r of data.routes){const b=document.createElement('button');b.type='button';b.className='route-arrival';const n=document.createElement('span');n.className='num';n.textContent=r.code;const label=document.createElement('span');label.className='arrival-info';const name=document.createElement('b');name.textContent=r.destination||r.nextArrival?.destination||r.name;const sub=document.createElement('small');sub.textContent=(r.destination?'Sentido / destino · '+r.name:r.name)+(r.nextArrival?.type==='gps_estimate'?' · ver ônibus no mapa':'');label.append(name,sub);const eta=document.createElement('span');eta.className='eta';if(r.nextArrival){eta.textContent=r.nextArrival.type==='gps_estimate'?`≈ ${r.nextArrival.minutes} min`:(r.nextArrival.minutes<=0?'Agora':`${r.nextArrival.minutes} min`);const when=document.createElement('small');when.textContent=r.nextArrival.type==='gps_estimate'?'Estimativa GPS':'Tabela · '+fmtTime(r.nextArrival.at).slice(0,5);eta.append(when);
-  if(r.nextArrival.type==='scheduled'&&r.nextArrival.following?.length){
-    const extra=document.createElement('small');extra.className='arrival-following';
-    extra.textContent='Depois: '+r.nextArrival.following.map(x=>fmtTime(x.at).slice(0,5)).join(' · ');
-    eta.append(extra)
+// Atualizar chegadas sem destruir os botões, a rolagem ou o estado de expansão.
+function updateArrivalButton(button,r){
+  const arrival=r.nextArrival, title=r.destination||arrival?.destination||r.name;
+  let code=button.querySelector('.num'),info=button.querySelector('.arrival-info'),eta=button.querySelector('.eta');
+  if(!code){code=document.createElement('span');code.className='num';button.append(code)}
+  if(!info){info=document.createElement('span');info.className='arrival-info';button.append(info)}
+  if(!eta){eta=document.createElement('span');eta.className='eta';button.append(eta)}
+  code.textContent=r.code;
+  let name=info.querySelector('b'),sub=info.querySelector('small');
+  if(!name){name=document.createElement('b');info.append(name)}
+  if(!sub){sub=document.createElement('small');info.append(sub)}
+  name.textContent=title;
+  sub.textContent=(r.destination?'Sentido · '+r.name:r.name)+(arrival?.type==='gps_estimate'?' · ônibus no mapa':'');
+  const fingerprint=JSON.stringify(arrival||null);
+  if(button.dataset.arrival!==fingerprint){
+    button.dataset.arrival=fingerprint;
+    eta.replaceChildren();
+    if(arrival){
+      eta.append(document.createTextNode(arrival.type==='gps_estimate'
+         ?'≈ '+arrival.minutes+' min':arrival.minutes<=0?'Agora':arrival.minutes+' min'));
+      const detail=document.createElement('small');
+      detail.textContent=arrival.type==='gps_estimate'
+         ?'Estimativa GPS':'Tabela · '+fmtTime(arrival.at).slice(0,5);
+      eta.append(detail);
+      if(arrival.type==='scheduled'&&arrival.following?.length){
+        const following=document.createElement('small');following.className='arrival-following';
+        following.textContent='Depois: '+arrival.following.map(x=>fmtTime(x.at).slice(0,5)).join(' · ');
+        eta.append(following);
+      }
+      if(arrival.type==='scheduled'&&arrival.lastTripToday){
+        const last=document.createElement('small');last.className='arrival-last';
+        last.textContent='Última de hoje';eta.append(last);
+      }
+    }else{
+      eta.append(document.createTextNode('—'));
+      const msg=document.createElement('small');msg.textContent='Sem previsão';eta.append(msg);
+    }
   }
-  if(r.nextArrival.type==='scheduled'&&r.nextArrival.lastTripToday){
-    const last=document.createElement('small');last.className='arrival-last';last.textContent='Última de hoje';eta.append(last)
-  }
-}else{eta.textContent='—';const status=document.createElement('small');status.textContent='Sem previsão';eta.append(status)}b.append(n,label,eta);b.onclick=async()=>{const gps=r.nextArrival?.type==='gps_estimate'&&r.nextArrival.vehicleId;const key=gps?r.nextArrival.vehicleSource+'|'+r.nextArrival.vehicleId:null;if(!gps)switchTab('linhas',true);try{await selectLine(r.code,{fromStop:true,vehicleKey:key,destination:r.destination||r.nextArrival?.destination});if(!gps)switchTab('linhas',true)}catch(e){reportError(e)}};area.append(b)}
-if(data.alternatives?.length){
-  const alt=document.createElement('details');alt.className='stop-alternatives';
-  const summary=document.createElement('summary');summary.textContent='Outros pontos próximos';alt.append(summary);
-  const explanation=document.createElement('p');explanation.className='stop-forecast-note';
-  explanation.textContent='Algumas linhas têm destinos diferentes em pontos próximos. Confira o sentido antes de embarcar.';alt.append(explanation);
-  for(const nearby of data.alternatives){
-    const button=document.createElement('button');button.type='button';button.className='row-item';
-    button.textContent=nearby.name+' · '+nearby.distanceM+' m';button.onclick=()=>focusStop(nearby);alt.append(button);
-  }
-  area.append(alt);
+  button.setAttribute('aria-label',r.code+' para '+title+', '+
+    (arrival?(arrival.type==='gps_estimate'?'GPS estimado, ':'horário de tabela, ')+arrival.minutes+' minutos':'sem previsão')+
+    '. Ver linha e percurso');
+  button.onclick=async()=>{
+    const gps=arrival?.type==='gps_estimate'&&arrival.vehicleId;
+    const key=gps?arrival.vehicleSource+'|'+arrival.vehicleId:null;
+    try{
+      await selectLine(r.code,{fromStop:true,vehicleKey:key,
+        destination:r.destination||arrival?.destination});
+      if(!gps)switchTab('linhas',true);
+    }catch(e){reportError(e)}
+  };
 }
-const note=document.createElement('p');note.className='stop-forecast-note';note.textContent=data.routes.some(r=>r.nextArrival?.type==='gps_estimate')?'≈ GPS estimado. Outros horários seguem a tabela.':(data.timetableAvailable?'Horários da tabela; podem variar.':'Sem horários disponíveis.');area.append(note);renderFavoriteStops();drawSoon()}
+function initStopDetail(area,data){
+  area.replaceChildren();area.dataset.stopId=String(data.id);
+  const head=document.createElement('div');head.className='stop-head';
+  const back=document.createElement('button');back.type='button';back.className='stop-back';
+  back.textContent='‹';back.setAttribute('aria-label','Voltar para pontos');back.onclick=closeStopDetail;
+  const text=document.createElement('div');const title=document.createElement('h2');title.textContent=data.name;
+  const small=document.createElement('small');small.textContent='Próximas chegadas';text.append(title,small);
+  head.append(back,text,makeShareButton(data),starButton('stops',data.id));area.append(head);
+  const arrivals=document.createElement('div');arrivals.className='arrival-rows';area.append(arrivals);
+  const empty=document.createElement('p');empty.className='muted-empty empty-arrivals';area.append(empty);
+  if(data.alternatives?.length){
+    const alt=document.createElement('details');alt.className='stop-alternatives';
+    const summary=document.createElement('summary');summary.textContent='Outros pontos próximos';alt.append(summary);
+    const explanation=document.createElement('p');explanation.className='stop-forecast-note';
+    explanation.textContent='Algumas linhas têm destinos diferentes em pontos próximos. Confira o sentido antes de embarcar.';
+    alt.append(explanation);
+    for(const nearby of data.alternatives){
+      const button=document.createElement('button');button.type='button';button.className='row-item';
+      button.textContent=nearby.name+' · '+nearby.distanceM+' m';
+      button.onclick=()=>focusStop(nearby);alt.append(button);
+    }
+    area.append(alt);
+  }
+  const note=document.createElement('p');note.className='stop-forecast-note';note.dataset.note='1';
+  area.append(note);
+}
+async function openStopDetail(id,silent=false){
+  const seq=++stopDetailSeq,area=$('stopDetail');
+  area.hidden=false;$('pontosPane').classList.add('has-open-stop');
+  if(!silent){area.replaceChildren();const message=document.createElement('p');
+    message.className='muted-empty';message.textContent='Consultando chegadas…';area.append(message)}
+  let data;
+  try{data=await api('/api/stop?id='+encodeURIComponent(id))}
+  catch(e){
+    if(seq!==stopDetailSeq||String(state.selectedStop)!==String(id))return;
+    area.classList.add('stale-arrivals');
+    const note=area.querySelector('[data-note]');
+    if(note)note.textContent='Sem conexão · horários não atualizados.';
+    else area.textContent='Não foi possível consultar o ponto. Tente novamente.';
+    return;
+  }
+  if(seq!==stopDetailSeq||String(state.selectedStop)!==String(id))return;
+  if(favorites.stops.includes(String(id))&&favorites.names[id]!==data.name){
+    favorites.names[id]=data.name;saveFavorites();
+  }
+  if(area.dataset.stopId!==String(data.id)||!area.querySelector('.arrival-rows')){
+    initStopDetail(area,data);
+    renderFavoriteStops();
+  }
+  area.classList.remove('stale-arrivals');
+  const title=area.querySelector('.stop-head h2');if(title&&title.textContent!==data.name)title.textContent=data.name;
+  const rows=area.querySelector('.arrival-rows');
+  const existing=new Map([...rows.querySelectorAll('[data-arrival-key]')].map(el=>[el.dataset.arrivalKey,el]));
+  const seen=new Set();
+  for(const r of data.routes){
+    const key=JSON.stringify([String(r.code),String(r.destination||'')]);
+    seen.add(key);
+    let b=existing.get(key);
+    if(!b){b=document.createElement('button');b.type='button';b.className='route-arrival';
+      b.dataset.arrivalKey=key;rows.append(b)}
+    updateArrivalButton(b,r);
+  }
+  for(const [key,node] of existing){if(!seen.has(key))node.remove()}
+  const empty=area.querySelector('.empty-arrivals');
+  if(empty){empty.hidden=data.routes.length>0;empty.textContent='Nenhuma linha cadastrada para este ponto.'}
+  const note=area.querySelector('[data-note]');
+  if(note)note.textContent=data.routes.some(r=>r.nextArrival?.type==='gps_estimate')
+     ?'≈ Chegada estimada por GPS. Outros horários seguem a tabela.'
+     :data.timetableAvailable?'Horários programados; podem variar.':'Sem horários disponíveis.';
+  drawSoon();
+}
 
 switchTab('pontos');renderStops();
 window.addEventListener('resize',resize);document.addEventListener('visibilitychange',()=>{if(!document.hidden){drawSoon();scheduleMapStops();refresh().catch(reportError)}});
