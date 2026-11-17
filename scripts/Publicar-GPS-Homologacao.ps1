@@ -107,6 +107,7 @@ if ($ReutilizarBuild) {
     $mirrored = @(
       "app.js","live-gps.js","static-bus.js","static-arrivals.js",
       "route-worker.js","walk-network.js","metro-timing.js",
+      "place-geocoding.js",
       "service-worker.js","style.css","hub-parity.css"
     )
     foreach ($name in $mirrored) {
