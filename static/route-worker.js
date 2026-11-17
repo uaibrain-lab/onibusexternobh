@@ -151,7 +151,7 @@ function insert(labels,node,ctx) {
   const kept=existing.filter(other=>!dominates(node,other,ctx.backward));
   kept.push(node);
   if(kept.length>MAX_LABELS){
-    ctx.partial=true;
+    ctx.partial=true;ctx.partialReasons.labels++;
     kept.sort((a,b)=>(a.walk/90+a.rides*15+(ctx.backward?-a.time:a.time)/60000)
                   -(b.walk/90+b.rides*15+(ctx.backward?-b.time:b.time)/60000));
     kept.splice(MAX_LABELS);
@@ -190,7 +190,7 @@ function appendOnboard(map,key,candidate,ctx){
     (ctx.backward?candidate.endTime>=other.endTime:candidate.endTime<=other.endTime)));
   next.push(candidate);
   if(next.length>MAX_ONBOARD){
-    ctx.partial=true;
+    ctx.partial=true;ctx.partialReasons.onboard++;
     next.sort((a,b)=>a.prev.walk-b.prev.walk||a.prev.rides-b.prev.rides);
     next=next.slice(0,MAX_ONBOARD);
   }
@@ -207,7 +207,7 @@ function emit(node,ctx) {
     if(endTime>=ctx.lo&&endTime<=ctx.hi){
       ctx.finals.push({node,time:endTime,meters:rounded(ending)});
       if(ctx.finals.length>1000){
-        ctx.partial=true;ctx.finals.splice(1000);
+        ctx.partial=true;ctx.partialReasons.finals++;ctx.finals.splice(1000);
       }
     }
   }
@@ -506,7 +506,7 @@ async function scanHour(ctx,epoch) {
     const info=trips[tripIdx];
     if(!info||!p.active[info[3]])continue;
     ctx.scanned++;
-    if(ctx.scanned>MAX_SCANNED){ctx.partial=true;ctx.exceeded=true;return}
+    if(ctx.scanned>MAX_SCANNED){ctx.partial=true;ctx.partialReasons.scanLimit++;ctx.exceeded=true;return}
     processConnection({from:values[offset],to:values[offset+1],
       dep:p.base+values[offset+2]*1000,arr:p.base+values[offset+3]*1000,
       flags:packed,tripIdx,day:p.day},ctx);
@@ -530,6 +530,7 @@ async function plan(params,seq) {
   const ctx={origin,destination,mode,backward,requested,preference,labels:new Map(),
     onboard:new Map(),ends:new Map(),finals:[],pending:new Set(),
     scanned:0,partial:false,exceeded:false,
+    partialReasons:{labels:0,onboard:0,finals:0,scanLimit:0},
     lo:backward?requested-MAX_HOURS*HOUR:requested,
     hi:backward?requested:requested+MAX_HOURS*HOUR};
   seedStops(ctx,'start');seedStops(ctx,'end');
@@ -561,7 +562,7 @@ async function plan(params,seq) {
       ctx.partial?'partial':'ok',mode,preference,
     requestedAt:stamp(requested),itineraries,metroHints:hints,
     stats:{connectionsScanned:ctx.scanned,hoursScanned:hours.length,
-      truncatedLabels:ctx.partial},
+      truncatedLabels:ctx.partial,partialReasons:ctx.partialReasons},
     pedestrianRouting:graph?'osm_walk_graph_with_unverified_access_snap':'approximate',
     walkingNetworkStatus:walkGraphStatus,
     walkingNetworkSource:graph?.meta?.source||null,
