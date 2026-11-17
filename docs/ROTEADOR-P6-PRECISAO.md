@@ -5,7 +5,7 @@
 ## Mudanças entregues
 
 1. **Busca por viagens efetivas, sem ranking arbitrário de linhas.** O índice invertido de pontos para `trip_id` impede examinar milhões de registros irrelevantes em cada rodada. A P5 cortava silenciosamente após 135 linhas; a P6 tenta todas as linhas relevantes, com estatísticas do número de candidatos.
-2. **GTFS V2 com regras oficiais.** O gerador mantém `pickup_type` e `drop_off_type` por parada. Embarque/desembarque proibido ou sujeito a acordo não é recomendado. Horários após 24h recebem suporte explícito por dia de serviço e limite de validade.
+2. **GTFS schema 3 (UBR3) com regras oficiais.** O gerador mantém `pickup_type` e `drop_off_type` por parada. Embarque/desembarque proibido ou sujeito a acordo não é recomendado. Horários após 24h recebem suporte explícito por dia de serviço e limite de validade.
 3. **Critérios e temporalidade.** Consulta adiante e retroativa, até 3 embarques, limites temporais e verificação adicional de continuidade cronológica e dos IDs de paradas; rotas que falham nessas verificações são rejeitadas.
 4. **Rede a pé por OpenStreetMap.** `scripts/build_walking.py` usa `osmium` para gerar `catalog/walk-network.json.gz` sobre vias transitáveis a pé, com `oneway:foot`, vias restritas e componentes conectados. `transit/walking.py` usa A* com distância geográfica como heurística inferior. Sem caminho conectado, não sugere baldeação atravessando uma barreira. O acesso do endereço/ponto ao primeiro nó do OSM continua aproximado e explicitamente marcado como não validado.
 5. **Falhas são explícitas.** Sem grafo OSM, a interface avisa que a caminhada é geométrica. Com grafo, a interface usa linhas verdes segmentadas para caminhada e mantém o itinerário do ônibus como traçado meramente esquemático. Respostas limitadas são `partial`, e `GET /externo/api/plan/status` informa o estado dos dados e as limitações de GPS e metrô.
@@ -20,6 +20,10 @@
 - Benchmark com grafo OSM, parser JSON rápido opcional e caches otimizados: **18,12 segundos** para `departAt/fastest` e **14,43 segundos** para `arriveBy/leastTransfers` na primeira medição; seis alternativas nas duas buscas, sem corte explícito. Continua lento para mobile.
 - Uma tentativa com cache GTFS aumentado para 64 linhas chegou a **905 MiB de pico de RAM**, economizando pouco tempo. O cache foi reduzido novamente; RAM e latência precisam ser revalidadas antes de hospedar.
 - A aceleração de leitura via `orjson==3.13.0` é **opcional**, open source; sem ela o projeto continua rodando com o parser JSON da biblioteca padrão. Para instalar no Python do backend local: `py -3 -m pip install orjson==3.13.0`.
+- **P6 UBR3 binário:** 326 arquivos de viagem com 11 bytes por passagem de parada no formato bruto, comprimidos em gzip; 113.692 viagens, dados exatos de paradas, sentidos, horários e flags GTFS. O runtime mantém os dados compactos em memória e a versão JSON antiga fica como fallback.
+- **Comparação de equivalência em dados reais:** quatro linhas amostradas confrontadas com todos os registros da versão JSON anterior, além dos testes sintéticos de políticas de embarque e restrições.
+- **Último benchmark após preservar duas alternativas de embarque na pesquisa reversa:** `departAt/fastest` **14,34 s** e `arriveBy/leastTransfers` **9,67 s**, seis itinerários nas duas consultas, sem atingir os limites explícitos, pico de **375 MiB RAM**, **53 testes** aprovados. No teste anterior, sem essa ampliação de Pareto, foram 10,08 s e 5,91 s, também com 375 MiB. A maior completude da pesquisa reversa implica custo de CPU: ainda requer otimização.
+- **Resultado não garante otimalidade global:** ainda há poda de rótulos por parada, acesso limitado a paradas próximas e até três embarques. Mesmo `status=ok` não é certificado matemático de melhor rota possível.
 
 ## Limitações remanescentes
 
@@ -37,12 +41,13 @@
 
 - `transit/planner.py`: busca temporal com índice invertido, restrições e A* pedestre opcional
 - `transit/walking.py`: grafo A* offline e busca por caminhos conectados
-- `scripts/build_routing.py`: GTFS schema 2
+- `transit/binary_trips.py`: leitor e codificador de viagens binárias compactas com metadados preservados
+- `scripts/build_routing.py`: GTFS schema 3 UBR3 (com JSON legado)
 - `scripts/build_walking.py`: gerador OSM
 - `.github/workflows/build-routing.yml`: índices de ônibus atualizados só na P6
 - `.github/workflows/build-walking.yml`: recorte OSM e geração do grafo pedestre só na P6
 - `.github/workflows/test-routing-real.yml`: testes com índice GTFS verdadeiro
-- `tests/test_gtfs_precision.py`, `tests/test_walking.py`: regras e barreiras
+- `tests/test_gtfs_precision.py`, `tests/test_walking.py`, `tests/test_binary_trips.py`: políticas GTFS, integridade binária e barreiras pedestres
 
 ## Aceite para produção
 
