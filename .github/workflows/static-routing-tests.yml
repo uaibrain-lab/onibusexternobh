@@ -7,6 +7,7 @@ on:
     paths:
       - static/route-worker.js
       - static/app.js
+      - tests/benchmark_static_worker.cjs
       - tests/test_static_worker.cjs
       - .github/workflows/static-routing-tests.yml
       - catalog/scan/index.json
@@ -30,6 +31,8 @@ jobs:
           node --check static/app.js
       - name: Verificar algoritmo CSA com dados GTFS sintéticos
         run: node --test tests/test_static_worker.cjs
+      - name: Benchmark integral sem rede do roteador no dispositivo
+        run: timeout 180 node tests/benchmark_static_worker.cjs
       - name: Validar índices estáticos publicados
         run: |
           python - <<'PY'
