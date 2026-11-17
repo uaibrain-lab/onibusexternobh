@@ -43,7 +43,7 @@ class StagingBuildTests(unittest.TestCase):
             '{"enabled":false,"endpoint":"","refreshSeconds":45}', encoding='utf-8')
         for name in ('app.js', 'style.css', 'hub-parity.css', 'route-worker.js',
                      'service-worker.js', 'static-bus.js', 'static-arrivals.js',
-                     'live-gps.js', 'walk-network.js', 'metro-timing.js',
+                     'live-gps.js', 'place-geocoding.js', 'walk-network.js', 'metro-timing.js',
                      'manifest.webmanifest', 'icon-192.png', 'icon-512.png'):
             (static / name).write_text('static test fixture', encoding='utf-8')
         (scan / 'index.json').write_text(json.dumps({
@@ -93,8 +93,9 @@ class StagingBuildTests(unittest.TestCase):
         self.assertIn('noindex,nofollow,noarchive', html)
         self.assertIn('GPS EM TESTE', html)
         self.assertIn('gps-staging-label', html)
-        self.assertIn('./app.js?v=p20-map-ui-20261117', html)
-        self.assertIn('./hub-parity.css?v=p20-map-ui-20261117', html)
+        self.assertIn('./app.js?v=p21-lines-geocode-planner-20261117', html)
+        self.assertIn('./hub-parity.css?v=p21-lines-geocode-planner-20261117', html)
+        self.assertTrue((output / 'externo/place-geocoding.js').is_file())
         self.assertIn('GPS em homologação', html)
         self.assertIn('HOMOLOGAÇÃO: GPS experimental SUMOB', html)
         self.assertEqual((output / '_redirects').read_text(encoding='utf-8'),
