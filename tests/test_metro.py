@@ -55,6 +55,15 @@ class MetroTests(unittest.TestCase):
         self.assertFalse(s['stationOpenAtTime'])
         self.assertIsNone(s['typicalHeadwayMinutes'])
 
+    def test_line2_closes_early_on_signalling_dates(self):
+        s=self.metro.service('2','2026-11-17T22:15:00-03:00')
+        self.assertEqual(s['stationHours']['end'],'22:00')
+        self.assertFalse(s['stationOpenAtTime'])
+        self.assertTrue(s['alerts'])
+        normal=self.metro.service('2','2026-11-21T22:15:00-03:00')
+        self.assertEqual(normal['stationHours']['end'],'23:00')
+        self.assertTrue(normal['stationOpenAtTime'])
+
     def test_line2_no_fake_eta(self):
         s=self.metro.service('2','2026-11-17T12:00:00-03:00')
         self.assertIsNone(s['typicalHeadwayMinutes'])

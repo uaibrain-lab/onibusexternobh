@@ -2,7 +2,8 @@
 const $=id=>document.getElementById(id);
 const state={routes:[],route:null,geometry:null,fleet:null,pattern:'',selectedVehicle:'',
   center:[-19.8695,-43.9675],zoom:15,markers:[],stopMarkers:[],mapStops:[],selectedStop:null,nearby:[],userPosition:null,tiles:new Map(),frame:0,drag:null,
-  metro:null,metroMarkers:[],metroVisible:false,metroLine:'',selectedMetroStation:''};
+  metro:null,metroMarkers:[],metroVisible:false,metroLine:'',selectedMetroStation:'',
+  routeOrigin:null,routeDestination:null,routePick:null,routeResults:[],routeSelected:0};
 const $canvas=$('mapCanvas'),ctx=$canvas.getContext('2d');
 const MAX_Z=18,MIN_Z=10;
 function mercator(lat,lng,z){const size=256*2**z;let y=Math.max(-85.0511,Math.min(85.0511,lat));return [(lng+180)/360*size,(1-Math.asinh(Math.tan(y*Math.PI/180))/Math.PI)/2*size]}
@@ -12,11 +13,14 @@ function resize(){let dpr=Math.min(window.devicePixelRatio||1,2);$canvas.width=M
 function drawSoon(){if(!state.frame)state.frame=requestAnimationFrame(()=>{state.frame=0;draw()})}
 function getTile(z,x,y){let n=2**z;if(y<0||y>=n)return null;let key=`${z}/${((x%n)+n)%n}/${y}`;let ent=state.tiles.get(key);if(!ent){let img=new Image();ent={img,ready:false,error:false};state.tiles.set(key,ent);img.onload=()=>{ent.ready=true;drawSoon()};img.onerror=()=>{ent.error=true;drawSoon()};img.src=`https://tile.openstreetmap.org/${z}/${((x%n)+n)%n}/${y}.png`;}if(state.tiles.size>180){for(const k of state.tiles.keys()){if(state.tiles.size<=160)break;state.tiles.delete(k)}}return ent}
 function drawTiles(w,h){let z=Math.floor(state.zoom),scale=2**(state.zoom-z),[cx,cy]=mercator(...state.center,z),tx=cx-w/2/scale,ty=cy-h/2/scale;ctx.fillStyle='#d9e4e4';ctx.fillRect(0,0,w,h);let minx=Math.floor(tx/256)-1,maxx=Math.ceil((tx+w/scale)/256)+1,miny=Math.floor(ty/256)-1,maxy=Math.ceil((ty+h/scale)/256)+1;for(let y=miny;y<=maxy;y++)for(let x=minx;x<=maxx;x++){let px=(x*256-tx)*scale,py=(y*256-ty)*scale,tile=getTile(z,x,y);if(tile&&tile.ready){ctx.drawImage(tile.img,px,py,256*scale+.5,256*scale+.5)}else{ctx.fillStyle=((x+y)&1)?'#e8eeea':'#dfe9e6';ctx.fillRect(px,py,256*scale+.5,256*scale+.5);ctx.strokeStyle='#cddad7';ctx.strokeRect(px,py,256*scale,256*scale)}}}
-function draw(){const w=$canvas.clientWidth,h=$canvas.clientHeight;if(!w||!h)return;ctx.clearRect(0,0,w,h);drawTiles(w,h);state.stopMarkers=[];for(const s of state.mapStops){let [x,y]=screen(s.lat,s.lng);if(x<-20||y<-20||x>w+20||y>h+20)continue;const selected=state.selectedStop===s.id;ctx.beginPath();ctx.arc(x,y,selected?8:state.zoom>=15?5:3,0,Math.PI*2);ctx.fillStyle=selected?'#f79009':'#fff';ctx.fill();ctx.lineWidth=selected?3:2;ctx.strokeStyle=selected?'#8d5904':'#344054';ctx.stroke();state.stopMarkers.push({x,y,stop:s})}if(state.geometry?.selected){let selected=state.geometry.selected,coords=selected.coordinates;if(coords.length){ctx.beginPath();coords.forEach(([lat,lng],i)=>{let [x,y]=screen(lat,lng);if(!i)ctx.moveTo(x,y);else ctx.lineTo(x,y)});ctx.strokeStyle='#0c6e6b';ctx.lineWidth=7;ctx.globalAlpha=.25;ctx.stroke();ctx.lineWidth=3;ctx.strokeStyle='#007f75';ctx.globalAlpha=.9;ctx.stroke();ctx.globalAlpha=1;}for(let s of selected.stops){let [x,y]=screen(s.lat,s.lng);if(x<-10||y<-10||x>w+10||y>h+10)continue;ctx.beginPath();ctx.arc(x,y,state.zoom>=14?3:2,0,Math.PI*2);ctx.fillStyle='#fefefe';ctx.fill();ctx.strokeStyle='#168f83';ctx.lineWidth=1.4;ctx.stroke();state.stopMarkers.push({x,y,stop:s})}}
+function draw(){const w=$canvas.clientWidth,h=$canvas.clientHeight;if(!w||!h)return;ctx.clearRect(0,0,w,h);drawTiles(w,h);state.stopMarkers=[];for(const s of state.mapStops){let [x,y]=screen(s.lat,s.lng);if(x<-20||y<-20||x>w+20||y>h+20)continue;const selected=state.selectedStop===s.id;ctx.beginPath();ctx.arc(x,y,selected?8:state.zoom>=15?5:3,0,Math.PI*2);ctx.fillStyle=selected?'#f79009':'#fff';ctx.fill();ctx.lineWidth=selected?3:2;ctx.strokeStyle=selected?'#8d5904':'#344054';ctx.stroke();state.stopMarkers.push({x,y,stop:s})}if(state.geometry?.selected&&activeTab!=='rotas'){let selected=state.geometry.selected,coords=selected.coordinates;if(coords.length){ctx.beginPath();coords.forEach(([lat,lng],i)=>{let [x,y]=screen(lat,lng);if(!i)ctx.moveTo(x,y);else ctx.lineTo(x,y)});ctx.strokeStyle='#0c6e6b';ctx.lineWidth=7;ctx.globalAlpha=.25;ctx.stroke();ctx.lineWidth=3;ctx.strokeStyle='#007f75';ctx.globalAlpha=.9;ctx.stroke();ctx.globalAlpha=1;}for(let s of selected.stops){let [x,y]=screen(s.lat,s.lng);if(x<-10||y<-10||x>w+10||y>h+10)continue;ctx.beginPath();ctx.arc(x,y,state.zoom>=14?3:2,0,Math.PI*2);ctx.fillStyle='#fefefe';ctx.fill();ctx.strokeStyle='#168f83';ctx.lineWidth=1.4;ctx.stroke();state.stopMarkers.push({x,y,stop:s})}}
   drawMetroLayer();
+  drawRouteLayer();
   state.markers=[];let vehicles=state.fleet?.vehicles||[];for(let v of vehicles){let [x,y]=screen(v.latitude,v.longitude);if(x<-25||y<-25||x>w+25||y>h+25)continue;let changedAge=diffSeconds(v.positionUnchangedSinceAt);let stale=diffSeconds(v.lastGpsFixAt)>120,frozen=changedAge>120;let isSelected=state.selectedVehicle===v.source+'|'+v.vehicleId;ctx.save();ctx.translate(x,y);if(isSelected){ctx.beginPath();ctx.arc(0,0,24,0,Math.PI*2);ctx.fillStyle='#38d5ab44';ctx.fill()}ctx.beginPath();ctx.arc(0,0,13,0,Math.PI*2);ctx.fillStyle=stale?'#a6565d':frozen?'#ad7728':'#136c66';ctx.fill();ctx.strokeStyle='#ffffff';ctx.lineWidth=2;ctx.stroke();ctx.rotate((v.heading||0)*Math.PI/180);ctx.fillStyle='#ffffff';ctx.beginPath();ctx.moveTo(0,-9);ctx.lineTo(-5,6);ctx.lineTo(0,3);ctx.lineTo(5,6);ctx.closePath();ctx.fill();ctx.restore();state.markers.push({x,y,id:v.source+'|'+v.vehicleId});}
   if(state.userPosition){const [x,y]=screen(...state.userPosition);ctx.beginPath();ctx.arc(x,y,9,0,Math.PI*2);ctx.fillStyle='#1570ef';ctx.fill();ctx.lineWidth=3;ctx.strokeStyle='#fff';ctx.stroke()}
-  $('mapToast').textContent=state.metroVisible&&state.metro
+  $('mapToast').textContent=activeTab==='rotas'
+    ?'Rotas · viagem GTFS programada; caminhada aproximada (sem trilha de pedestres)'
+    :state.metroVisible&&state.metro
     ?'Metrô · linhas esquemáticas e estações em operação · sem previsão GPS dos trens'
     :state.route?`${vehicles.length} ônibus da linha ${state.route.code} · ${state.geometry?.selected?'Traçado de referência':'Escolha um percurso para vê-lo'}`
     :`${state.mapStops.length} pontos no mapa · toque em um ponto para ver linhas e chegadas`;}
@@ -39,7 +43,15 @@ function zoom(delta,at=null){const old=state.zoom,newZ=Math.max(MIN_Z,Math.min(M
 $canvas.addEventListener('wheel',e=>{e.preventDefault();let rc=$canvas.getBoundingClientRect();zoom(e.deltaY<0?.5:-.5,[e.clientX-rc.left,e.clientY-rc.top])},{passive:false});
 $canvas.addEventListener('pointerdown',e=>{let box=$canvas.getBoundingClientRect();state.drag={x:e.clientX,y:e.clientY,moved:false,at:[e.clientX-box.left,e.clientY-box.top]};$canvas.setPointerCapture(e.pointerId);$canvas.classList.add('dragging')});
 $canvas.addEventListener('pointermove',e=>{if(!state.drag)return;let dx=e.clientX-state.drag.x,dy=e.clientY-state.drag.y;if(Math.abs(dx)+Math.abs(dy)>3)state.drag.moved=true;let [cx,cy]=mercator(...state.center,state.zoom);state.center=invMercator(cx-dx,cy-dy,state.zoom);state.drag.x=e.clientX;state.drag.y=e.clientY;drawSoon()});
-$canvas.addEventListener('pointerup',e=>{const drag=state.drag;state.drag=null;$canvas.classList.remove('dragging');if(drag?.moved){scheduleMapStops();return}if(!drag)return;let p=drag.at, near=state.markers.map(m=>({...m,d:Math.hypot(m.x-p[0],m.y-p[1])})).sort((a,b)=>a.d-b.d)[0];if(near&&near.d<20){state.selectedVehicle=near.id;switchTab('linhas',true);renderVehicles();drawSoon();return}let station=state.metroMarkers.map(m=>({...m,d:Math.hypot(m.x-p[0],m.y-p[1])})).sort((a,b)=>a.d-b.d)[0];if(station&&station.d<23){focusMetroStation(station.station.id);return}let stop=state.stopMarkers.map(m=>({...m,d:Math.hypot(m.x-p[0],m.y-p[1])})).sort((a,b)=>a.d-b.d)[0];if(stop&&stop.d<24){focusStop(stop.stop);return}});
+$canvas.addEventListener('pointerup',e=>{const drag=state.drag;state.drag=null;$canvas.classList.remove('dragging');if(drag?.moved){scheduleMapStops();return}if(!drag)return;let p=drag.at;
+if(state.routePick){
+  const [cx,cy]=mercator(...state.center,state.zoom);
+  const [lat,lng]=invMercator(cx+p[0]-$canvas.clientWidth/2,cy+p[1]-$canvas.clientHeight/2,state.zoom);
+  const which=state.routePick;state.routePick=null;
+  setRoutePoint(which,{lat,lng,label:`Mapa: ${lat.toFixed(5)}, ${lng.toFixed(5)}`});
+  switchTab('rotas',true);drawSoon();return;
+}
+let near=state.markers.map(m=>({...m,d:Math.hypot(m.x-p[0],m.y-p[1])})).sort((a,b)=>a.d-b.d)[0];if(near&&near.d<20){state.selectedVehicle=near.id;switchTab('linhas',true);renderVehicles();drawSoon();return}let station=state.metroMarkers.map(m=>({...m,d:Math.hypot(m.x-p[0],m.y-p[1])})).sort((a,b)=>a.d-b.d)[0];if(station&&station.d<23){focusMetroStation(station.station.id);return}let stop=state.stopMarkers.map(m=>({...m,d:Math.hypot(m.x-p[0],m.y-p[1])})).sort((a,b)=>a.d-b.d)[0];if(stop&&stop.d<24){focusStop(stop.stop);return}});
 $('zoomIn').onclick=()=>zoom(1);$('zoomOut').onclick=()=>zoom(-1);$('recenter').onclick=()=>{state.center=[-19.8695,-43.9675];state.zoom=15;drawSoon();scheduleMapStops();loadNearbyStops(-19.8695,-43.9675,false).catch(reportError)};
 $('goLine').onclick=()=>selectLine($('lineInput').value).catch(reportError);$('lineInput').onkeydown=e=>{if(e.key==='Enter')$('goLine').click()};$('patternInput').onchange=()=>selectPattern().catch(reportError);
 $('refresh').onclick=()=>refresh().catch(reportError);
@@ -49,9 +61,9 @@ async function refresh(){if(document.hidden)return;if(!state.route)return;const 
 let activeTab='pontos';
 function openSheet(full=false){const sheet=$('sheet');sheet.classList.remove('peek');sheet.classList.toggle('full',!!full);$('sheet-toggle').setAttribute('aria-expanded','true');$('grab').setAttribute('aria-expanded','true');$('body').setAttribute('aria-hidden','false')}
 function closeSheet(){const sheet=$('sheet');sheet.classList.add('peek');sheet.classList.remove('full');$('sheet-toggle').setAttribute('aria-expanded','false');$('grab').setAttribute('aria-expanded','false');$('body').setAttribute('aria-hidden','true')}
-function switchTab(tab,open=false){activeTab=tab;const pts=tab==='pontos',lin=tab==='linhas',met=tab==='metro';
-$('pontosPane').hidden=!pts;$('linhasPane').hidden=!lin;$('metroPane').hidden=!met;
-for(const [name,on] of [['pontos',pts],['linhas',lin],['metro',met]]){const button=$('quick-'+name);button.classList.toggle('on',on);button.setAttribute('aria-pressed',String(on))}
+function switchTab(tab,open=false){activeTab=tab;const pts=tab==='pontos',lin=tab==='linhas',met=tab==='metro',rot=tab==='rotas';
+$('pontosPane').hidden=!pts;$('linhasPane').hidden=!lin;$('metroPane').hidden=!met;$('rotasPane').hidden=!rot;
+for(const [name,on] of [['pontos',pts],['linhas',lin],['metro',met],['rotas',rot]]){const button=$('quick-'+name);button.classList.toggle('on',on);button.setAttribute('aria-pressed',String(on))}
 state.metroVisible=met;
 if(met){$('sourceLed').className='dot';$('sourceText').textContent='Metrô BH · horários informativos';loadMetroNews().catch(e=>console.warn('RSS da concessionária indisponível',e))}
 else if(state.lastBusStatus)updateStatus(state.lastBusStatus);
@@ -67,6 +79,7 @@ $('allLineSearch').addEventListener('input',e=>renderAllLines(e.target.value));
 $('quick-pontos').onclick=()=>switchTab('pontos',true);
 $('quick-linhas').onclick=()=>switchTab('linhas',true);
 $('quick-metro').onclick=()=>switchTab('metro',true);
+$('quick-rotas').onclick=()=>switchTab('rotas',true);
 $('sheet-toggle').onclick=()=>{$('sheet').classList.contains('peek')?openSheet():closeSheet()};
 $('grab').onclick=()=>{$('sheet').classList.contains('peek')?openSheet():closeSheet()};
 function askLocation(){hideLocationPrompt();if(!window.isSecureContext||!navigator.geolocation){$('nearbyHint').textContent='Localização requer HTTPS ou localhost. Mostrando pontos próximos à UFMG.';openSheet();return}navigator.geolocation.getCurrentPosition(async p=>{const lat=p.coords.latitude,lng=p.coords.longitude;state.userPosition=[lat,lng];state.center=[lat,lng];state.zoom=15.5;drawSoon();scheduleMapStops();try{if(activeTab==='metro'){await loadMetroNearby(lat,lng);switchTab('metro',true)}else{await loadNearbyStops(lat,lng,true);switchTab('pontos',true)}}catch(e){reportError(e)}},()=>{$('nearbyHint').textContent='Localização não autorizada. Você ainda pode buscar pontos no mapa da UFMG.';openSheet()},{enableHighAccuracy:false,timeout:12000,maximumAge:60000})}
@@ -261,3 +274,225 @@ async function loadMetroNews(){
     p.textContent='Consulta de notícias indisponível ou desatualizada; confira os comunicados diretamente com a operadora.';area.append(p);
   }
 }
+
+
+
+// P5 — viagens GTFS. Nenhum GPS é apresentado como ETA de viagem individual.
+function routeClock(date){
+  return new Intl.DateTimeFormat('pt-BR',{hour:'2-digit',minute:'2-digit',
+    timeZone:'America/Sao_Paulo'}).format(new Date(date));
+}
+function initRouteDate(){
+  const now=new Date();
+  $('routeDate').value=new Intl.DateTimeFormat('sv-SE',{year:'numeric',month:'2-digit',day:'2-digit',
+    timeZone:'America/Sao_Paulo'}).format(now);
+  $('routeTime').value=new Intl.DateTimeFormat('en-GB',{hour:'2-digit',minute:'2-digit',hour12:false,
+    timeZone:'America/Sao_Paulo'}).format(now);
+}
+function routeStatus(message,kind='info'){
+  $('routePlanStatus').textContent=message;
+  $('routePlanStatus').dataset.status=kind;
+}
+function routeInput(which){return $(which==='origin'?'routeOriginInput':'routeDestinationInput')}
+function routeCandidates(which){return $(which==='origin'?'routeOriginResults':'routeDestinationResults')}
+function setRoutePoint(which,point){
+  const lat=Number(point.lat),lng=Number(point.lng);
+  if(!Number.isFinite(lat)||!Number.isFinite(lng))return;
+  const normalized={lat,lng,label:String(point.label||'Local no mapa')};
+  if(which==='origin')state.routeOrigin=normalized;
+  else state.routeDestination=normalized;
+  routeInput(which).value=normalized.label;
+  routeCandidates(which).replaceChildren();
+  routeStatus('Locais selecionados. Escolha o horário e pressione Encontrar trajetos.');
+  drawSoon();
+}
+async function searchRoutePlace(which){
+  const q=routeInput(which).value.trim(),area=routeCandidates(which);
+  if(q.length<3){routeStatus('Digite pelo menos 3 caracteres para buscar um endereço.','warn');return}
+  area.textContent='Buscando endereço…';
+  try{
+    const result=await api('/api/places?q='+encodeURIComponent(q));
+    area.replaceChildren();
+    if(!result.items?.length){area.textContent='Nenhum endereço encontrado nesta região.';return}
+    for(const p of result.items){
+      const b=document.createElement('button');b.type='button';b.className='row-item';
+      b.textContent=p.label;b.onclick=()=>setRoutePoint(which,p);area.append(b);
+    }
+  }catch(e){area.textContent='Serviço de endereços indisponível. Você também pode escolher diretamente no mapa.'}
+}
+function pickRoutePlace(which){
+  state.routePick=which;switchTab('rotas',false);closeSheet();
+  routeStatus('Toque no mapa para marcar '+(which==='origin'?'a origem.':'o destino.'));
+  $('mapToast').textContent='Toque no mapa para definir '+(which==='origin'?'a origem':'o destino');
+}
+function useRouteLocation(){
+  if(!window.isSecureContext||!navigator.geolocation){
+    routeStatus('Geolocalização exige HTTPS ou localhost; escolha a origem no mapa.','warn');return}
+  routeStatus('Aguardando autorização de localização…');
+  navigator.geolocation.getCurrentPosition(p=>{
+    const pt={lat:p.coords.latitude,lng:p.coords.longitude,label:'Minha localização'};
+    state.userPosition=[pt.lat,pt.lng];setRoutePoint('origin',pt);
+    state.center=[pt.lat,pt.lng];state.zoom=15;drawSoon();scheduleMapStops();
+  },()=>routeStatus('Localização não autorizada. Você pode buscar o endereço ou selecionar no mapa.','warn'),
+  {enableHighAccuracy:false,timeout:12000,maximumAge:60000});
+}
+function routeWhenChanged(){
+  const now=$('routeWhen').value==='now',arrive=$('routeWhen').value==='arriveBy';
+  $('routeDatetime').hidden=now;$('routeBufferLabel').hidden=!arrive;
+}
+async function submitRoute(){
+  const origin=state.routeOrigin,destination=state.routeDestination;
+  if(!origin||!destination){routeStatus('Escolha a origem e o destino nos resultados de endereço ou no mapa.','warn');return}
+  const when=$('routeWhen').value;
+  let at;
+  if(when!=='now'){
+    const date=$('routeDate').value,time=$('routeTime').value;
+    if(!date||!time){routeStatus('Informe data e horário válidos.','warn');return}
+    const dt=new Date(date+'T'+time+':00-03:00');
+    if(!Number.isFinite(dt.getTime())){routeStatus('Data ou horário inválidos.','warn');return}
+    if(when==='arriveBy')dt.setTime(dt.getTime()-Number($('routeBuffer').value)*60000);
+    at=dt.toISOString();
+  }
+  const btn=$('routeSubmit');btn.disabled=true;
+  routeStatus('Calculando viagens a partir dos horários GTFS…');
+  $('routeResults').replaceChildren();$('routeMetroHints').replaceChildren();
+  try{
+    const base=location.pathname.startsWith('/externo')?'/externo':'';
+    const response=await fetch(base+'/api/plan',{
+      method:'POST',cache:'no-store',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({origin,destination,
+        mode:when==='arriveBy'?'arriveBy':'departAt',
+        at:when==='now'?undefined:at,
+        preference:$('routePreference').value})
+    });
+    const data=await response.json();
+    if(!response.ok)throw Error(data.error||'Não foi possível calcular');
+    state.routeResults=data.itineraries||[];state.routeSelected=0;
+    renderRouteResults(data);
+  }catch(e){
+    routeStatus('Falha ao consultar rotas: '+e.message,'warn');
+  }finally{btn.disabled=false}
+}
+function renderRouteResults(data){
+  const area=$('routeResults');area.replaceChildren();
+  const rail=$('routeMetroHints');rail.replaceChildren();
+  if(data.status==='not_ready'){
+    routeStatus('O catálogo detalhado de viagens ainda não está instalado. Execute a geração oficial no GitHub.','warn');
+  }else if(data.status==='out_of_calendar'){
+    routeStatus(data.message+' Válido de '+data.validFrom+' até '+data.validThrough+'.','warn');
+  }else if(!data.itineraries?.length){
+    routeStatus('Nenhum trajeto de ônibus encontrado nesta janela. Experimente outro horário, origem ou destino.','warn');
+  }else{
+    routeStatus((data.status==='partial'?'Busca limitada por desempenho; ':'')+
+      data.itineraries.length+' itinerário(s) programado(s). Caminhadas são estimativas, não percursos por rua.',
+      data.status==='partial'?'warn':'info');
+  }
+  for(const [index,trip] of (data.itineraries||[]).entries()){
+    const container=document.createElement('div');container.className='route-result';
+    if(index===state.routeSelected)container.classList.add('selected');
+    const select=document.createElement('button');select.type='button';select.className='route-summary';
+    const clock=document.createElement('strong');
+    clock.textContent=routeClock(trip.departure)+' → '+routeClock(trip.arrival)+' · '+trip.durationMinutes+' min';
+    const detail=document.createElement('small');
+    const buses=trip.legs.filter(x=>x.mode==='bus');
+    detail.textContent=buses.map(x=>x.line).join(' + ')+' · '+trip.walkMetersApprox+
+      ' m a pé (estimativa) · '+trip.transfers+' baldeação(ões)';
+    select.append(clock,detail);
+    select.onclick=()=>{state.routeSelected=index;renderRouteResults(data);focusSelectedRoute(trip)};
+    container.append(select);
+    if(index===state.routeSelected){
+      const legs=document.createElement('div');legs.className='route-legs';
+      for(const leg of trip.legs){
+        const item=document.createElement('div');item.className='route-leg';
+        const icon=document.createElement('span');icon.className='route-leg-icon';icon.textContent=leg.mode==='bus'?'🚌':'🚶';
+        const txt=document.createElement('span');txt.className='route-leg-body';
+        const title=document.createElement('strong');
+        if(leg.mode==='bus'){
+          title.textContent='Linha '+leg.line+(leg.headsign?' · '+leg.headsign:'');
+          const desc=document.createElement('small');
+          desc.textContent=routeClock(leg.departure)+' — '+leg.fromName+' → '+
+                           routeClock(leg.arrival)+' — '+leg.toName;
+          txt.append(title,desc);
+        }else{
+          title.textContent='Caminhada ≈ '+leg.metersApprox+' m';
+          const desc=document.createElement('small');
+          desc.textContent=(leg.from==='origin'?'Origem':leg.from==='destination'?'Destino':
+                            'Ponto '+leg.from)+' → '+
+                           (leg.to==='destination'?'Destino':leg.to==='origin'?'Origem':'Ponto '+leg.to)+
+                           ' · percurso pelas ruas ainda não verificado';
+          txt.append(title,desc);
+        }
+        item.append(icon,txt);legs.append(item);
+      }
+      container.append(legs);
+    }
+    area.append(container);
+  }
+  if(data.metroHints?.length){
+    const h=document.createElement('h3');h.textContent='Possibilidades com metrô (sem horário calculado)';
+    rail.append(h);
+    for(const hint of data.metroHints){
+      const card=document.createElement('div');card.className='metro-hint';
+      const strong=document.createElement('strong');strong.textContent='Linha '+hint.line+
+        ': '+hint.fromStation+' → '+hint.toStation;
+      const p=document.createElement('p');p.textContent='Passa por '+hint.stationCount+
+        ' trecho(s) entre estações. Frequência e horários de partida ainda não validados para esta viagem; não comparável às opções de ônibus.';
+      card.append(strong,p);rail.append(card);
+    }
+  }
+  if(data.itineraries?.length)focusSelectedRoute(data.itineraries[0]);
+}
+function focusSelectedRoute(itinerary){
+  if(!itinerary)return;
+  const coords=[state.routeOrigin,state.routeDestination].filter(Boolean)
+     .map(p=>[p.lat,p.lng]);
+  for(const leg of itinerary.legs){
+    if(leg.fromCoords)coords.push(leg.fromCoords);
+    if(leg.toCoords)coords.push(leg.toCoords);
+  }
+  if(coords.length>1){fitCoordinates(coords);drawSoon();scheduleMapStops()}
+}
+function drawRouteLayer(){
+  if(activeTab!=='rotas')return;
+  const trip=state.routeResults[state.routeSelected];
+  if(trip){
+    for(const leg of trip.legs){
+      if(!leg.fromCoords||!leg.toCoords)continue;
+      const [x1,y1]=screen(...leg.fromCoords),[x2,y2]=screen(...leg.toCoords);
+      ctx.save();ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);
+      ctx.strokeStyle='#1265a8';ctx.lineWidth=5;ctx.globalAlpha=.6;ctx.stroke();
+      for(const [x,y] of [[x1,y1],[x2,y2]]){
+        ctx.beginPath();ctx.arc(x,y,5,0,2*Math.PI);ctx.fillStyle='#fff';ctx.fill();
+        ctx.strokeStyle='#1265a8';ctx.lineWidth=2;ctx.stroke();
+      }
+      ctx.restore();
+    }
+  }
+  for(const [which,p] of [['origin',state.routeOrigin],['destination',state.routeDestination]]){
+    if(!p)continue;
+    const [x,y]=screen(p.lat,p.lng);
+    ctx.beginPath();ctx.arc(x,y,9,0,2*Math.PI);
+    ctx.fillStyle=which==='origin'?'#027a48':'#b42318';ctx.fill();
+    ctx.lineWidth=3;ctx.strokeStyle='#fff';ctx.stroke();
+  }
+}
+for(const which of ['origin','destination']){
+  const id=which==='origin'?'routeOrigin':'routeDestination';
+  $(id+'Search').onclick=()=>searchRoutePlace(which);
+  $(id+'Map').onclick=()=>pickRoutePlace(which);
+  routeInput(which).addEventListener('input',()=>{
+    if(which==='origin')state.routeOrigin=null;else state.routeDestination=null;
+    state.routeResults=[];routeCandidates(which).replaceChildren();drawSoon();
+  });
+  routeInput(which).addEventListener('keydown',e=>{
+    if(e.key==='Enter'){e.preventDefault();searchRoutePlace(which)}
+  });
+}
+$('routeOriginLocation').onclick=useRouteLocation;
+$('routeWhen').onchange=routeWhenChanged;
+$('routeSubmit').onclick=submitRoute;
+initRouteDate();routeWhenChanged();
+api('/api/plan/status').then(x=>{
+  if(!x.ready)routeStatus('Índice detalhado do GTFS ainda não disponível neste servidor. A busca por ônibus ficará indisponível até a geração do catálogo.','warn');
+}).catch(()=>{});

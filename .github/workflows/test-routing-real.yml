@@ -1,0 +1,54 @@
+name: Validacao real do planejador (P5)
+
+on:
+  push:
+    branches:
+      - feat/externo-p5-planejador-20261117
+    paths:
+      - transit/planner.py
+      - tests/test_planner.py
+      - .github/workflows/test-routing-real.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  planner-real:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Testes de unidade e interface
+        run: |
+          python -m unittest discover -s tests -v
+          node --check static/app.js
+      - name: Benchmark com GTFS oficial já indexado
+        run: |
+          timeout 150 python - <<'PY'
+          import time
+          from pathlib import Path
+          from transit.planner import JourneyPlanner
+          p=JourneyPlanner(Path('catalog'))
+          assert p.ready, p.failure
+          pairs=[
+            ({'lat':-19.8695,'lng':-43.9675},{'lat':-19.918,'lng':-43.938},
+             'departAt','fastest'),
+            ({'lat':-19.8695,'lng':-43.9675},{'lat':-19.918,'lng':-43.938},
+             'arriveBy','leastTransfers'),
+          ]
+          for origin,destination,mode,preference in pairs:
+            t0=time.monotonic()
+            r=p.plan(origin,destination,'2026-11-18T08:00:00-03:00',mode,preference)
+            elapsed=time.monotonic()-t0
+            print('ROUTING_BENCH',mode,preference,round(elapsed,2),'sec',
+                  r['status'],len(r['itineraries']),'routes',r.get('stats'),flush=True)
+            assert r['status'] in ('ok','partial')
+            for trip in r['itineraries']:
+              assert 0<=trip['transfers']<=2
+              assert trip['departure']<=trip['arrival']
+              assert any(leg['mode']=='bus' for leg in trip['legs'])
+          PY
