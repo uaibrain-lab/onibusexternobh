@@ -150,6 +150,32 @@ node --test tests/test_gtfs_realtime_worker.cjs tests/test_gtfs_realtime_adapter
 e consumo diário. Não habilitar GPS público se o plano gratuito não sustenta
 o processamento. Também validar a exibição em celulares.
 
+## 17/11/2026 — Métricas Cloudflare do teste real (amostra pequena)
+
+O usuário enviou PDF de Metrics/Observability do Worker publicado, janela
+de 24 horas com filtro **All deployed versions** (não apenas P16).
+
+- 23 invocações no total, distribuídas em várias versões; versão ativa
+  `d58938af` tinha 2 invocações no instante do relatório.
+- 4 subrequests: **3 respostas 4xx da fonte PBH antiga** e **1 resposta
+  2xx da fonte SUMOB `realtime4.mobilibus.com`**.
+- 0 erros de execução; 0 excessos de tempo de CPU; 0 excessos de memória.
+- CPU Time **P50 0,71 ms; P90 6,95 ms; P99 7,15 ms** nas versões
+  agregadas. Mediana exibida para a versão ativa: aproximadamente 0,78 ms.
+- Memória **P50 1,84 MB, P90/P99 2,42 MB**.
+- Limite documentado do Workers Free em 17/11/2026: 10 ms CPU por
+  requisição e 100.000 invocações por dia **compartilhadas pela conta**.
+- Resultado: **compatível na amostra observada, não homologação sob carga**.
+  P99 agregado inclui outras versões; apenas uma consulta de fato chegou
+  à fonte SUMOB. Reavaliar P90/P99, falhas de CPU e contagem diária com
+  tráfego real antes de qualquer uso público em escala.
+
+Próxima etapa: homologação separada do Hub com GPS opt-in, sem ativar
+`static/gps-config.json` da branch de produção e sem modificar `ru-hoje`.
+Verificar no Android a exibição de posições recentes, linha/sentido,
+refresh quando visível, economia de dados e fallback GTFS. Não inferir
+limite garantido de usuários a partir de apenas 23 invocações.
+
 ## Bloqueios de publicação
 
 1. **Concluído em 17/11/2026:** teste público HTTP 200 e 7 posições da linha 5102.
