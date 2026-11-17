@@ -63,7 +63,9 @@ function drawTiles(w,h){let z=Math.floor(state.zoom),scale=2**(state.zoom-z),[cx
 function draw(){const w=$canvas.clientWidth,h=$canvas.clientHeight;if(!w||!h)return;ctx.clearRect(0,0,w,h);drawTiles(w,h);state.stopMarkers=[];
   const bucketSize=state.zoom<14?62:state.zoom<15.5?48:state.zoom<17?34:0;
   const buckets=new Map();
-  for(const stop of state.mapStops){
+  // A selected line must not display unrelated stops, even while
+  // asynchronous viewport stop lookups are still resolving.
+  for(const stop of (lineMode()?[]:state.mapStops)){
     const [x,y]=screen(stop.lat,stop.lng);
     if(x<-20||y<-20||x>w+20||y>h+20)continue;
     if(String(stop.id)===String(state.selectedStop))continue;
@@ -81,7 +83,7 @@ function draw(){const w=$canvas.clientWidth,h=$canvas.clientHeight;if(!w||!h)ret
     if(grouped){ctx.fillStyle='#075f58';ctx.font='bold 11px system-ui';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(String(count),x,y)}
     state.stopMarkers.push({x,y,stop:bucket.stops[0],cluster:grouped?bucket.stops:null});
   }
-if(state.geometry?.selected&&activeTab!=='rotas'){let selected=state.geometry.selected,coords=selected.coordinates;if(coords.length){ctx.beginPath();coords.forEach(([lat,lng],i)=>{let [x,y]=screen(lat,lng);if(!i)ctx.moveTo(x,y);else ctx.lineTo(x,y)});ctx.strokeStyle='#0c6e6b';ctx.lineWidth=7;ctx.globalAlpha=.25;ctx.stroke();ctx.lineWidth=3;ctx.strokeStyle='#007f75';ctx.globalAlpha=.9;ctx.stroke();ctx.globalAlpha=1;}for(let s of selected.stops){let [x,y]=screen(s.lat,s.lng);if(x<-10||y<-10||x>w+10||y>h+10)continue;ctx.beginPath();ctx.arc(x,y,state.zoom>=14?3:2,0,Math.PI*2);ctx.fillStyle='#fefefe';ctx.fill();ctx.strokeStyle='#168f83';ctx.lineWidth=1.4;ctx.stroke();state.stopMarkers.push({x,y,stop:s})}}
+if(state.geometry?.selected&&lineMode()){let selected=state.geometry.selected,coords=selected.coordinates;if(coords.length){ctx.beginPath();coords.forEach(([lat,lng],i)=>{let [x,y]=screen(lat,lng);if(!i)ctx.moveTo(x,y);else ctx.lineTo(x,y)});ctx.strokeStyle='#0c6e6b';ctx.lineWidth=7;ctx.globalAlpha=.25;ctx.stroke();ctx.lineWidth=3;ctx.strokeStyle='#007f75';ctx.globalAlpha=.9;ctx.stroke();ctx.globalAlpha=1;}for(let s of selected.stops){let [x,y]=screen(s.lat,s.lng);if(x<-10||y<-10||x>w+10||y>h+10)continue;ctx.beginPath();ctx.arc(x,y,state.zoom>=14?3:2,0,Math.PI*2);ctx.fillStyle='#fefefe';ctx.fill();ctx.strokeStyle='#168f83';ctx.lineWidth=1.4;ctx.stroke();state.stopMarkers.push({x,y,stop:s})}}
   drawMetroLayer();
   drawRouteLayer();
   state.markers=[];let vehicles=state.fleet?.vehicles||[];for(let v of vehicles){let [x,y]=screen(v.latitude,v.longitude);if(x<-25||y<-25||x>w+25||y>h+25)continue;let changedAge=diffSeconds(v.positionUnchangedSinceAt);let stale=diffSeconds(v.lastGpsFixAt)>120,frozen=Boolean(v.positionUnchangedSinceAt)&&changedAge>120;let isSelected=state.selectedVehicle===v.source+'|'+v.vehicleId;ctx.save();ctx.translate(x,y);if(isSelected){ctx.beginPath();ctx.arc(0,0,24,0,Math.PI*2);ctx.fillStyle='#38d5ab44';ctx.fill()}ctx.beginPath();ctx.arc(0,0,13,0,Math.PI*2);ctx.fillStyle=stale?'#a6565d':frozen?'#ad7728':'#136c66';ctx.fill();ctx.strokeStyle='#ffffff';ctx.lineWidth=2;ctx.stroke();ctx.rotate((v.heading||0)*Math.PI/180);ctx.fillStyle='#ffffff';ctx.beginPath();ctx.moveTo(0,-9);ctx.lineTo(-5,6);ctx.lineTo(0,3);ctx.lineTo(5,6);ctx.closePath();ctx.fill();ctx.restore();state.markers.push({x,y,id:v.source+'|'+v.vehicleId});}
@@ -140,6 +142,30 @@ function updateStatus(obj){
 async function loadRoutes(){state.routes=await api('/api/routes');let dl=$('routeList');dl.innerHTML='';for(let r of state.routes){let op=document.createElement('option');op.value=r.code;op.label=r.name;dl.append(op)}$('lineInput').value='';renderAllLines('');renderFavoriteLines();renderFavoriteStops();await loadNearbyStops(-19.8695,-43.9675,false)}
 // O trajeto com mais viagens e a referência inicial; não é confirmação do veículo.
 let routeSelectionSeq=0;
+// Line tracking is a temporary map layer, never a permanent selection.
+// Keep the exact previous viewport and point detail when entering from Pontos.
+let lineMapSession=null,lineFocusStopId=null,lineStopForecastSeq=0;
+function lineMode(){return activeTab==='linhas'&&Boolean(state.route)}
+function restoreLineMapSession(){
+  if(!lineMapSession)return;
+  const previous=lineMapSession;lineMapSession=null;
+  routeSelectionSeq++;lineStopForecastSeq++;
+  state.route=null;state.geometry=null;state.fleet=null;state.pattern='';
+  state.selectedVehicle='';lineFocusStopId=null;
+  state.center=[...previous.center];state.zoom=previous.zoom;
+  $('lineTitle').textContent='Selecione uma linha';
+  $('lineInput').value='';$('lineFavorite').hidden=true;$('lineExit').hidden=true;
+  $('lineStopChooser').hidden=true;$('lineStopSelect').replaceChildren();
+  $('lineStopForecast').textContent='';
+  $('vehicleList').textContent='Selecione uma linha.';
+  $('vTotal').textContent='—';$('vRecent').textContent='—';
+  renderStops();drawSoon();scheduleMapStops();
+}
+function exitLineTracking(){
+  const back=lineMapSession?.tab==='pontos'?'pontos':'linhas';
+  restoreLineMapSession();
+  switchTab(back,true);
+}
 const normalizeDestination=s=>String(s||'').trim().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
 function itineraryLabel(p, all, primary){
   const destination=p.headsign||'Destino não informado';
@@ -156,9 +182,18 @@ async function selectLine(code,{fromStop=false,vehicleKey=null,destination=null}
      ||(r.code+' — '+r.name).toUpperCase()===String(code).trim().toUpperCase());
   if(!route){$('lineTitle').textContent='Linha não encontrada';return}
   const seq=++routeSelectionSeq;
-  if(!fromStop){if(state.selectedStop)closeStopDetail();else{state.selectedStop=null;state.stopCoordinates=null;}}
+  if(!lineMapSession)lineMapSession={
+    tab:activeTab,center:[...state.center],zoom:state.zoom,
+    stopId:state.selectedStop||null
+  };
   const stop=fromStop&&state.selectedStop?String(state.selectedStop):null;
+  lineFocusStopId=stop;
   state.route=route;state.geometry=null;state.fleet=null;state.pattern='';state.selectedVehicle='';
+  $('lineExit').hidden=false;
+  $('lineExit').textContent=lineMapSession.tab==='pontos'?'Voltar ao ponto':'Fechar linha';
+  // All selected-route map stops belong to this line; other stops are hidden.
+  // The previously open point detail is preserved for the return action.
+  switchTab('linhas',true);
   $('lineInput').value=route.code;$('lineTitle').textContent=route.name;
   const fav=$('lineFavorite');fav.hidden=false;
   fav.textContent=favorites.routes.includes(route.code)?'★':'☆';
@@ -197,6 +232,7 @@ async function selectLine(code,{fromStop=false,vehicleKey=null,destination=null}
   }
   renderVehicles();renderStops();drawSoon();
   if(chosen){sel.value=chosen.id;await selectPattern();}
+  else {$('lineStopChooser').hidden=true;}
   else{
     sel.value='';state.geometry.selected=null;
     $('patternHint').textContent=stop
@@ -208,15 +244,15 @@ async function selectLine(code,{fromStop=false,vehicleKey=null,destination=null}
     if(candidate)focusVehicle(candidate);
     else{centerStopInAvailableMap();drawSoon();scheduleMapStops()}
   }else{
-    const first=fleet.vehicles.find(v=>diffSeconds(v.lastGpsFixAt)<=120);
-    // A geometria escolhida permanece como referência; não substituir por
-    // um veículo de outra variante de itinerário.
-    if(!chosen&&first){state.center=[first.latitude,first.longitude];state.zoom=15;drawSoon();scheduleMapStops()}
+    // Standalone line search focuses the nearest stop on the selected
+    // itinerary when a location permission was previously granted.
+    // Otherwise the user can choose the boarding stop via lineStopSelect.
+    if(!chosen)drawSoon();
   }
 }
 function visibleMapRect(){const w=$canvas.clientWidth,h=$canvas.clientHeight,r=$('sheet').getBoundingClientRect();if(window.innerWidth>=760){let left=Math.max(20,Math.min(w-120,r.right+14));return {left,top:65,right:w-16,bottom:h-18}}let bottom=Math.max(100,Math.min(h-10,r.top-14));return {left:15,top:70,right:w-15,bottom}}
 function centerStopInAvailableMap(){if(!state.stopCoordinates)return;const a=visibleMapRect(),x=(a.left+a.right)/2,y=(a.top+a.bottom)/2;const [px,py]=mercator(...state.stopCoordinates,state.zoom);state.center=invMercator(px-(x-$canvas.clientWidth/2),py-(y-$canvas.clientHeight/2),state.zoom)}
-function focusVehicle(v){state.selectedVehicle=v.source+'|'+v.vehicleId;if(state.stopCoordinates&&state.selectedStop){const rect=visibleMapRect(),w=Math.max(130,rect.right-rect.left),h=Math.max(130,rect.bottom-rect.top);let z=16;for(;z>=14.5;z-=0.25){const stop=mercator(...state.stopCoordinates,z),bus=mercator(v.latitude,v.longitude,z);if(Math.abs(stop[0]-bus[0])<w*.40&&Math.abs(stop[1]-bus[1])<h*.40)break;}state.zoom=Math.max(14.5,z);switchTab('pontos',true);centerStopInAvailableMap(); // The selected stop stays in context.
+function focusVehicle(v){state.selectedVehicle=v.source+'|'+v.vehicleId;if(lineMode()&&lineFocusStopId&&state.geometry?.selected?.stops){const target=state.geometry.selected.stops.find(s=>String(s.id)===String(lineFocusStopId));const saved=state.stopCoordinates; if(target)state.stopCoordinates=[target.lat,target.lng];const rect=visibleMapRect(),w=Math.max(130,rect.right-rect.left),h=Math.max(130,rect.bottom-rect.top);let z=16;for(;z>=14.5;z-=0.25){const stop=mercator(...state.stopCoordinates,z),bus=mercator(v.latitude,v.longitude,z);if(Math.abs(stop[0]-bus[0])<w*.40&&Math.abs(stop[1]-bus[1])<h*.40)break;}state.zoom=Math.max(14.5,z);centerStopInAvailableMap();state.stopCoordinates=saved; // Stay in tracking layer.
  }else{state.center=[v.latitude,v.longitude];state.zoom=Math.max(state.zoom,15);switchTab('linhas',true)}renderVehicles();drawSoon();scheduleMapStops()}
 function vehicleMeta(v){let match=v.shapeMatch||{};let shape=match.status==='probable'?`Traçado provável ${match.shapeId} (não confirmado)`:'Traçado ainda indeterminado';const movement=v.positionUnchangedSinceAt?`Posição sem mudança: ${fmtAge(diffSeconds(v.positionUnchangedSinceAt))}`:'Movimento: não verificado';return `Último GPS: ${fmtTime(v.lastGpsFixAt)} · há ${fmtAge(diffSeconds(v.lastGpsFixAt))}\n${movement}\n${shape}`}
 function vehicleRow(v){let b=document.createElement('button');b.type='button';b.className='vehicle'+(state.selectedVehicle===v.source+'|'+v.vehicleId?' selected':'');b.dataset.vehicleKey=v.source+'|'+v.vehicleId;let top=document.createElement('div');top.className='top';let name=document.createElement('b');name.textContent='Ônibus';let lab=document.createElement('span');lab.className='label';let gpsAge=diffSeconds(v.lastGpsFixAt),stillAge=diffSeconds(v.positionUnchangedSinceAt);if(gpsAge>120)lab.classList.add('old');else if(v.positionUnchangedSinceAt&&stillAge>120)lab.classList.add('warn');lab.textContent=gpsAge>300?'Sinal antigo':gpsAge>120?'Sinal atrasado':v.positionUnchangedSinceAt&&stillAge>120?'Sem movimento recente':'GPS recente';top.append(name,lab);let m=document.createElement('div');m.className='meta';m.textContent=vehicleMeta(v);m.style.whiteSpace='pre-line';b.append(top,m);b.onclick=()=>focusVehicle(v);return b}
@@ -233,12 +269,12 @@ async function selectPattern(){
   const code=state.route.code,pattern=$('patternInput').value;
   state.pattern=pattern;
   if(!pattern){
-    state.geometry.selected=null;
+    state.geometry.selected=null;$('lineStopChooser').hidden=true;lineFocusStopId=null;
     $('patternHint').textContent='Escolha o sentido ou uma rota alternativa.';
     renderStops();drawSoon();return;
   }
   const p=state.geometry.patterns.find(x=>x.id===pattern);
-  $('patternHint').textContent=state.selectedStop&&state.stopCoordinates
+  $('patternHint').textContent=lineFocusStopId
     ?'Percurso de referência passando pelo ponto selecionado · toque acima para mudar.'
     :(p?.headsign?'Sentido: '+p.headsign+' · toque acima para mudar.':'Traçado de referência · toque acima para mudar.');
   const geo=await api('/api/route?code='+encodeURIComponent(code)+'&pattern='+encodeURIComponent(pattern));
@@ -246,8 +282,16 @@ async function selectPattern(){
   if(geo?.selected){
     state.geometry={...state.geometry,selected:geo.selected};
     renderStops();
-    if(state.stopCoordinates&&state.selectedStop)centerStopInAvailableMap();
-    else fitCoordinates(geo.selected.coordinates);
+    populateLineStopChooser(geo.selected.stops||[]);
+    if(lineMode()&&lineFocusStopId){
+      const focus=geo.selected.stops.find(s=>String(s.id)===String(lineFocusStopId));
+      if(focus)focusLineBoardingStop(focus,{userInitiated:false});
+      else {lineFocusStopId=null;fitCoordinates(geo.selected.coordinates)}
+    }else if(lineMode()&&state.userPosition){
+      const best=nearestStopForLine(geo.selected.stops,state.userPosition);
+      if(best)focusLineBoardingStop(best,{userInitiated:false});
+      else fitCoordinates(geo.selected.coordinates);
+    }else fitCoordinates(geo.selected.coordinates);
     drawSoon();scheduleMapStops();
   }
 }
@@ -276,7 +320,13 @@ let near=state.markers.map(m=>({...m,d:Math.hypot(m.x-p[0],m.y-p[1])})).sort((a,
   return
 }});
 $('zoomIn').onclick=()=>zoom(1);$('zoomOut').onclick=()=>zoom(-1);$('recenter').onclick=()=>{state.center=[-19.8695,-43.9675];state.zoom=15;drawSoon();scheduleMapStops();if(!isStaticOnly)loadNearbyStops(-19.8695,-43.9675,false).catch(reportError)};
-$('goLine').onclick=()=>selectLine($('lineInput').value).catch(reportError);$('lineInput').onkeydown=e=>{if(e.key==='Enter')$('goLine').click()};$('patternInput').onchange=()=>selectPattern().catch(reportError);
+$('goLine').onclick=()=>selectLine($('lineInput').value).catch(reportError);
+$('lineExit').onclick=exitLineTracking;
+$('lineStopSelect').onchange=()=>{
+  const stop=state.geometry?.selected?.stops?.find(
+    s=>String(s.id)===$('lineStopSelect').value);
+  if(stop)focusLineBoardingStop(stop,{userInitiated:true});
+};$('lineInput').onkeydown=e=>{if(e.key==='Enter')$('goLine').click()};$('patternInput').onchange=()=>selectPattern().catch(reportError);
 $('refresh').onclick=()=>refresh().catch(reportError);
 function reportError(e){console.error(e);statusLed(false,'Erro ao consultar dados');$('mapToast').textContent=`Não foi possível atualizar: ${e.message}`}
 async function refresh(){if(document.hidden||!state.route)return;const code=state.route.code;const fleet=await api('/api/fleet?route='+encodeURIComponent(code));if(state.route?.code!==fleet.line)return;state.fleet=fleet;updateStatus(await api('/api/status'));renderVehicles();drawSoon()}
@@ -295,7 +345,11 @@ function syncSheetAccessibility(){
 
 function openSheet(full=false){const sheet=$('sheet');sheet.classList.remove('peek');sheet.classList.toggle('full',!!full);$('sheet-toggle').setAttribute('aria-expanded','true');$('grab').setAttribute('aria-expanded','true');syncSheetAccessibility()}
 function closeSheet(){if($('body').contains(document.activeElement))$('sheet-toggle').focus();const sheet=$('sheet');sheet.classList.add('peek');sheet.classList.remove('full');$('sheet-toggle').setAttribute('aria-expanded','false');$('grab').setAttribute('aria-expanded','false');syncSheetAccessibility()}
-function switchTab(tab,open=false){activeTab=tab;const pts=tab==='pontos',lin=tab==='linhas',met=tab==='metro',rot=tab==='rotas';
+function switchTab(tab,open=false){
+  // Leaving a line restores exactly the earlier map and point context.
+  if(activeTab==='linhas'&&tab!=='linhas'&&lineMapSession)
+    restoreLineMapSession();
+  activeTab=tab;const pts=tab==='pontos',lin=tab==='linhas',met=tab==='metro',rot=tab==='rotas';
 $('pontosPane').hidden=!pts;$('linhasPane').hidden=!lin;$('metroPane').hidden=!met;$('rotasPane').hidden=!rot;
 for(const [name,on] of [['pontos',pts],['linhas',lin],['metro',met],['rotas',rot]]){const button=$('quick-'+name);button.classList.toggle('on',on);button.setAttribute('aria-pressed',String(on))}
 state.metroVisible=met;
@@ -303,7 +357,7 @@ if(met){$('sourceLed').className='dot';$('sourceText').textContent='Metrô BH ·
 else if(state.lastBusStatus)updateStatus(state.lastBusStatus);
 drawSoon();if(open)openSheet();else syncSheetAccessibility()}
 function renderStops(){const el=$('stopList');el.textContent='';const stops=state.geometry?.selected?.stops||[];$('pontosHelp').textContent=stops.length?`${state.route?.code||''} · ${stops.length} paradas deste percurso de referência. Toque para localizar no mapa.`:'Selecione uma linha na aba Linhas e escolha o percurso de referência para visualizar as paradas.';if(!stops.length){const b=document.createElement('button');b.type='button';b.className='row-item';b.textContent='Escolher linha e percurso';b.onclick=()=>switchTab('linhas',true);el.append(b);return}for(let [i,s] of stops.entries()){const b=document.createElement('button');b.type='button';b.className='row-item';b.dataset.stopId=s.id;const num=document.createElement('span');num.className='num';num.textContent=String(i+1);const text=document.createElement('span');text.className='name';const name=document.createElement('b');name.textContent=s.name;const meta=document.createElement('small');meta.textContent='Ponto '+(i+1)+' · toque para localizar';text.append(name,meta);b.append(num,text);b.onclick=()=>focusStop(s);el.append(b)}}
-function focusStop(stop){state.selectedStop=String(stop.id);updatePointLink(state.selectedStop);state.stopCoordinates=[Number(stop.lat),Number(stop.lng)];state.selectedVehicle="";state.center=[Number(stop.lat),Number(stop.lng)];state.zoom=Math.max(state.zoom,16);switchTab('pontos',true);centerStopInAvailableMap();$('body').scrollTo({top:0,behavior:'smooth'});for(let node of $('stopList').querySelectorAll('[data-stop-id]'))node.classList.toggle('selected',node.dataset.stopId===String(stop.id));drawSoon();scheduleMapStops();openStopDetail(state.selectedStop).catch(reportError)}
+function focusStop(stop){if(lineMapSession)restoreLineMapSession();state.selectedStop=String(stop.id);updatePointLink(state.selectedStop);state.stopCoordinates=[Number(stop.lat),Number(stop.lng)];state.selectedVehicle="";state.center=[Number(stop.lat),Number(stop.lng)];state.zoom=Math.max(state.zoom,16);switchTab('pontos',true);centerStopInAvailableMap();$('body').scrollTo({top:0,behavior:'smooth'});for(let node of $('stopList').querySelectorAll('[data-stop-id]'))node.classList.toggle('selected',node.dataset.stopId===String(stop.id));drawSoon();scheduleMapStops();openStopDetail(state.selectedStop).catch(reportError)}
 function renderAllLines(query){const el=$('allLineList');el.textContent='';let arr=state.routes||[];const q=String(query||'').trim().toLocaleLowerCase('pt-BR');if(q)arr=arr.filter(x=>(x.code+' '+x.name).toLocaleLowerCase('pt-BR').includes(q));let limited=arr.slice(0,q?80:40);for(let r of limited){const wrap=document.createElement('div');wrap.className='fav-row';const b=document.createElement('button');b.type='button';b.className='row-item';const n=document.createElement('span');n.className='num';n.textContent=r.code;const t=document.createElement('span');t.className='name';const title=document.createElement('b');title.textContent=r.name||'Sem descrição';const meta=document.createElement('small');meta.textContent=`${r.patternCount} variantes GTFS`;t.append(title,meta);b.append(n,t);b.onclick=()=>selectLine(r.code).then(()=>{openSheet();$('body').scrollTo({top:0,behavior:'smooth'})}).catch(reportError);wrap.append(b,starButton('routes',r.code));el.append(wrap)}if(arr.length>limited.length){const msg=document.createElement('p');msg.className='muted info-small';msg.textContent=`Exibindo ${limited.length} de ${arr.length} linhas. Use a busca para filtrar.`;el.append(msg)}}
 let stopSearchSeq=0;
 async function searchAllStops(query){const seq=++stopSearchSeq;const el=$('stopSearchResult');el.textContent='';const q=String(query||'').trim();if(q.length<2)return;try{const data=await api('/api/stops?q='+encodeURIComponent(q));if(seq!==stopSearchSeq)return;const stops=data.items||[];if(!stops.length){const m=document.createElement('p');m.className='muted info-small';m.textContent='Nenhum ponto localizado.';el.append(m);return}for(const stop of stops){const b=document.createElement('button');b.type='button';b.className='row-item';const badge=document.createElement('span');badge.className='num';badge.textContent='●';const name=document.createElement('span');name.className='name';const title=document.createElement('b');title.textContent=stop.name;const subtitle=document.createElement('small');subtitle.textContent='Localizar no mapa';name.append(title,subtitle);b.append(badge,name);b.onclick=()=>focusStop(stop);el.append(b)}if(data.truncated){const m=document.createElement('p');m.className='muted info-small';m.textContent='Exibindo os primeiros pontos; refine sua busca.';el.append(m)}}catch(e){if(seq===stopSearchSeq){el.textContent='Não foi possível buscar os pontos.';console.error(e)}}}
