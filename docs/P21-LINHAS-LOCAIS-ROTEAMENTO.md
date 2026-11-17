@@ -53,6 +53,9 @@ PR #19 (draft). SEM merge, SEM deploy no Hub/ru-hoje/Firebase.
   Cache por aba por 30 min, espera mínima de 1300 ms entre buscas
   distintas, sem retries de fundo. Fallback para catálogo GTFS local,
   seleção no mapa e coordenadas caso Photon falhe.
+- A pesquisa por pontos do GTFS agora consulta o catálogo local leve,
+  sem inicializar os ~18 MiB comprimidos do índice de conexões. O motor
+  de itinerários só é carregado quando o usuário toca em Encontrar trajetos.
 - A busca digitada é enviada ao serviço externo apenas mediante ação
   explícita, com informação visível na tela. O cálculo GTFS continua
   em Web Worker no dispositivo, sem backend pago.
