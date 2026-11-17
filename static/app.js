@@ -74,7 +74,7 @@ if(state.geometry?.selected&&activeTab!=='rotas'){let selected=state.geometry.se
     ?'Rotas · ônibus em horários GTFS; traços esquemáticos; caminhada aproximada'
     :state.metroVisible&&state.metro
     ?'Metrô · linhas esquemáticas e estações em operação · sem previsão GPS dos trens'
-    :state.route?`${vehicles.length} ônibus da linha ${state.route.code} · ${state.geometry?.selected?'Traçado de referência':'Escolha um percurso para vê-lo'}`
+    :state.route?`${state.fleet?.available?(vehicles.length?vehicles.length+' posição(ões) GPS observada(s)':'Sem posições GPS recentes'):'GPS indisponível'} · Linha ${state.route.code} · ${state.geometry?.selected?'Traçado de referência':'Escolha um percurso para vê-lo'}`
     :`${state.mapStops.length} pontos no mapa · toque em um ponto para ver linhas e chegadas`;}
 
 function diffSeconds(iso){if(!iso)return Infinity;let t=Date.parse(iso);return Number.isFinite(t)?Math.max(0,Math.floor((Date.now()-t)/1000)):Infinity}
@@ -102,9 +102,12 @@ function updateStatus(obj){
     if(recent>0)statusLed(obj?.partial?null:true,obj?.partial?'GPS parcialmente disponível · horários de tabela nos pontos':'GPS oficial recente · horários de tabela nos pontos');
     else if(obj?.available)statusLed(null,'GPS sem posições recentes · horários de tabela');
     else statusLed(null,'GTFS · horários programados, GPS indisponível');
+    const sumob=Boolean(obj?.sources?.GTFS_RT);
     $('lastPoll').textContent=recent>0
-      ?'Posições PBH recentes · sem previsão individual validada'
-      :'GTFS programado · GPS opcional não disponível';
+      ?(sumob?'Posições oficiais SUMOB · CC BY 4.0 · sem ETA validado':'Posições oficiais PBH · sem ETA validado')
+      :(obj?.available
+        ?(sumob?'SUMOB sem posições recentes desta linha · horários programados':'GPS sem posições recentes · horários programados')
+        :'GTFS programado · GPS opcional não disponível');
     return;
   }
   const errors=Object.values(obj?.sources||{}).filter(x=>x?.lastError);
@@ -203,10 +206,10 @@ function tickVehicleAges(){let byId=new Map((state.fleet?.vehicles||[]).map(v=>[
 function renderVehicles(){
   if(state.fleet?.available===false){
     $('vTotal').textContent='—';$('vRecent').textContent='—';
-    $('vehicleList').textContent='GPS em tempo real ainda não integrado neste modo gratuito. Consulte as linhas, os pontos e os horários GTFS programados.';
+    $('vehicleList').textContent='GPS indisponível no momento. Os pontos, as linhas e os horários programados continuam disponíveis.';
     return;
   }
-  let arr=state.fleet?.vehicles||[];$('vTotal').textContent=arr.length;$('vRecent').textContent=arr.filter(v=>diffSeconds(v.lastGpsFixAt)<=120).length;let list=$('vehicleList');list.innerHTML='';if(!arr.length){let p=document.createElement('p');p.className='notice';p.textContent='Nenhum GPS recente ou recente o suficiente (até 10 minutos) foi encontrado para esta linha. A linha pode estar sem operação ou sem sinal.';list.append(p);return}for(let v of arr.slice(0,200))list.append(vehicleRow(v));}
+  let arr=state.fleet?.vehicles||[];$('vTotal').textContent=arr.length;$('vRecent').textContent=arr.filter(v=>diffSeconds(v.lastGpsFixAt)<=120).length;let list=$('vehicleList');list.innerHTML='';if(!arr.length){let p=document.createElement('p');p.className='notice';p.textContent='Nenhuma posição GPS recente foi recebida para esta linha. Isso não significa que não haja ônibus circulando. Consulte os horários programados.';list.append(p);return}for(let v of arr.slice(0,200))list.append(vehicleRow(v));}
 async function selectPattern(){
   if(!state.route||!state.geometry)return;
   const code=state.route.code,pattern=$('patternInput').value;
