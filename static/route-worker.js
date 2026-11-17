@@ -150,11 +150,11 @@ function insert(labels,node,ctx) {
   for(const other of existing)if(dominates(other,node,ctx.backward))return false;
   const kept=existing.filter(other=>!dominates(node,other,ctx.backward));
   kept.push(node);
-  if(kept.length>MAX_LABELS){
+  if(kept.length>ctx.maxLabels){
     ctx.partial=true;ctx.partialReasons.labels++;
     kept.sort((a,b)=>(a.walk/90+a.rides*15+(ctx.backward?-a.time:a.time)/60000)
                   -(b.walk/90+b.rides*15+(ctx.backward?-b.time:b.time)/60000));
-    kept.splice(MAX_LABELS);
+    kept.splice(ctx.maxLabels);
   }
   labels.set(node.stop,kept);
   return kept.includes(node);
@@ -189,10 +189,10 @@ function appendOnboard(map,key,candidate,ctx){
     candidate.prev.rides<=other.prev.rides&&
     (ctx.backward?candidate.endTime>=other.endTime:candidate.endTime<=other.endTime)));
   next.push(candidate);
-  if(next.length>MAX_ONBOARD){
+  if(next.length>ctx.maxOnboard){
     ctx.partial=true;ctx.partialReasons.onboard++;
     next.sort((a,b)=>a.prev.walk-b.prev.walk||a.prev.rides-b.prev.rides);
-    next=next.slice(0,MAX_ONBOARD);
+    next=next.slice(0,ctx.maxOnboard);
   }
   map.set(key,next);
 }
@@ -527,9 +527,11 @@ async function plan(params,seq) {
     return {status:'out_of_calendar',message:'Data fora da validade do GTFS',
       validFrom:meta.validFrom,validThrough:meta.validThrough,itineraries:[],metroHints:[]};
   const backward=mode==='arriveBy';
+  const expanded=params.searchDepth==='expanded';
   const ctx={origin,destination,mode,backward,requested,preference,labels:new Map(),
     onboard:new Map(),ends:new Map(),finals:[],pending:new Set(),
     scanned:0,partial:false,exceeded:false,
+    maxLabels:expanded?24:MAX_LABELS,maxOnboard:expanded?24:MAX_ONBOARD,
     partialReasons:{labels:0,onboard:0,finals:0,scanLimit:0},
     lo:backward?requested-MAX_HOURS*HOUR:requested,
     hi:backward?requested:requested+MAX_HOURS*HOUR};
@@ -562,6 +564,8 @@ async function plan(params,seq) {
       ctx.partial?'partial':'ok',mode,preference,
     requestedAt:stamp(requested),itineraries,metroHints:hints,
     stats:{connectionsScanned:ctx.scanned,hoursScanned:hours.length,
+      searchDepth:expanded?'expanded':'standard',
+      labelsPerStopLimit:ctx.maxLabels,onboardLimit:ctx.maxOnboard,
       truncatedLabels:ctx.partial,partialReasons:ctx.partialReasons},
     pedestrianRouting:graph?'osm_walk_graph_with_unverified_access_snap':'approximate',
     walkingNetworkStatus:walkGraphStatus,
