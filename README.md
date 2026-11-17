@@ -26,3 +26,11 @@ Testes: `py -3 -m unittest discover -s tests -v`.
 **Importante:** esta primeira revisão apenas inicializa o repositório. O código e o catálogo da P2 devem ser importados antes que os comandos de execução funcionem. Não há implantação pública, serviço permanente ou consulta de GPS em produção.
 
 Dados: PBH/SUMOB. Mapa-base: © OpenStreetMap contributors. Verificar licenças, políticas de redistribuição e limites de uso antes da publicação pública.
+
+## Direção de design — futura aba Externo do Hub UFMG
+
+O design deve reproduzir a navegação da [aba Interno do Hub UFMG](https://github.com/uaibrain-lab/ru-hoje/blob/main/public/interno/index.html): mapa ocupando a tela, painel flutuante à esquerda no desktop e inferior expansível no celular, botões **Pontos** / **Linhas**, tema automático e seleção de parada com centralização do mapa.
+
+Requisitos completos: [docs/INTEGRACAO-HUB-UFMG.md](docs/INTEGRACAO-HUB-UFMG.md).
+
+**Situação:** a versão de código P2 com esse visual foi preparada e testada localmente, mas o código-fonte ainda precisa ser importado ao repositório pela branch de homologação (o diretório `main` ainda só contém a documentação). Não há deploy público.
