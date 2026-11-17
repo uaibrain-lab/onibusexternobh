@@ -104,7 +104,10 @@ function nearby(lat,lng,radius=1050,limit=22) {
 function neighbors(idx) {
   if(nearCache.has(idx))return nearCache.get(idx);
   const s=stops[idx];
-  const list=nearby(s[2],s[3],165,10).filter(([m,id])=>id!==idx&&m>=2);
+  // Allow real-world between-stop transfers across adjacent streets (up
+  // to 300m straight line). The OSM walk graph later verifies viable paths.
+  // The old 165m/10 stop cap could exclude a faster 2-line journey.
+  const list=nearby(s[2],s[3],300,18).filter(([m,id])=>id!==idx&&m>=2);
   if(nearCache.size>20000)nearCache.clear();
   nearCache.set(idx,list);
   return list;
