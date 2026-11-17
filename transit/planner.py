@@ -243,18 +243,47 @@ class JourneyPlanner:
                     else:
                         if latest<search_ts or earliest>search_ts+HORIZON_SECONDS:
                             continue
-                    candidates=[]
+                    # A single trip reaches each downstream stop at a fixed
+                    # time, regardless of where it was boarded. Of all feasible
+                    # boardings, the least-walking prefix dominates the others.
+                    # This preserves earliest arrival + walking Pareto quality
+                    # while avoiding repeated candidate expansion.
+                    best_board = None
                     entries=reversed(stops) if backward else iter(stops)
                     for row in entries:
                         sid,arr,dep=row[:3]
-                        # 0=regular. 1=not available; 2/3=require arrangements
-                        # not supported by this app, so never promise boarding.
                         pickup = int(row[3]) if len(row)>3 else 0
                         dropoff = int(row[4]) if len(row)>4 else 0
                         stats['stopScans']+=1
                         if stats['stopScans']>MAX_STOP_SCANS:
                             stats['limited']=True
                             return next_labels
+                        epoch=midnight+(dep if backward else arr)
+                        if best_board is not None and (pickup if backward else dropoff)==0:
+                            earlier,board_sid,board_epoch=best_board
+                            if sid!=board_sid:
+                                if backward:
+                                    edge=self._edge_bus(code,trip_id,headsign,sid,board_sid,
+                                                        midnight+dep,board_epoch)
+                                else:
+                                    edge=self._edge_bus(code,trip_id,headsign,board_sid,sid,
+                                                        board_epoch,midnight+arr)
+                                self._insert(next_labels,
+                                             Label(sid,epoch,earlier.walked,earlier.rides+1,earlier,edge),
+                                             backward)
+                        if sid in prior and (dropoff if backward else pickup)==0:
+                            for label in prior[sid]:
+                                departure=midnight+dep
+                                arrival=midnight+arr
+                                feasible=(label.time>=arrival+TRANSFER_BUFFER_SECONDS
+                                          if backward else departure>=label.time+TRANSFER_BUFFER_SECONDS)
+                                valid_horizon=(departure>=search_ts-HORIZON_SECONDS if backward
+                                               else departure<=search_ts+HORIZON_SECONDS)
+                                if feasible and valid_horizon:
+                                    candidate=(label,sid,arrival if backward else departure)
+                                    if best_board is None or label.walked<best_board[0].walked:
+                                        best_board=candidate
+        return next_labels
 
     def _path(self,label,backward):
         legs=[]
