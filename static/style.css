@@ -62,3 +62,46 @@ html[data-theme="dark"]{color-scheme:dark;--bg:#14181f;--bg2:#1e242d;--ink:#f5f7
 .metro-forecast-link:focus-visible,.metro-forecast-link:hover{outline:2px solid #8655b7}
 .metro-news{display:block;text-decoration:none;color:var(--ink);background:var(--bg2);border-radius:10px;border-left:3px solid #8655b7;padding:10px 12px;font-size:12px;line-height:1.5}
 .metro-news:hover{text-decoration:underline}
+
+
+/* P5: planejador de viagens; campos amplos e alvos tocáveis. */
+.route-place{background:var(--bg2);border-radius:13px;padding:12px;margin-bottom:10px}
+.route-place label{display:block;font-size:13px;margin-bottom:6px}
+.route-place>input{width:100%;border:1px solid var(--line);background:var(--bg);border-radius:9px;padding:11px;min-height:44px;font-size:13px}
+.route-place-actions{display:flex;flex-wrap:wrap;gap:5px;margin-top:9px}
+.route-place-actions .subtle{font-size:11px;min-height:35px}
+.route-place .list-rows{max-height:230px;overflow:auto;margin-top:7px}
+.route-place .row-item{font-size:12px;line-height:1.4;min-height:43px}
+.route-options{display:grid;gap:7px;margin:12px 0}
+.route-options>label{font-size:12px}
+.route-options>select{min-height:43px}
+.route-options label select{display:block;min-height:43px;margin-top:6px}
+.route-datetime{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.route-datetime>label{font-size:12px;min-width:0}
+.route-datetime input{display:block;width:100%;min-width:0;min-height:44px;padding:8px 7px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink)}
+.route-plan-button{min-height:46px;margin:7px 0 12px}
+#routePlanStatus{line-height:1.5;margin-bottom:12px}
+#routePlanStatus[data-status="warn"]{border-left:3px solid #d09124}
+.route-result{border:1px solid var(--line);border-radius:13px;background:var(--bg2);overflow:hidden}
+.route-result.selected{border-color:#1570ef}
+.route-summary{display:grid;gap:6px;text-align:left;border:0;background:transparent;padding:12px;width:100%;min-height:63px}
+.route-summary strong{font-size:14px}
+.route-summary small{font-size:11px;color:var(--mut)}
+.route-legs{margin:0 10px 12px;padding:10px;background:var(--bg);border-radius:10px}
+.route-leg{display:flex;align-items:flex-start;gap:9px;padding:8px 0;border-bottom:1px solid var(--line)}
+.route-leg:last-child{border-bottom:0}
+.route-leg-icon{width:26px;flex:none;text-align:center}
+.route-leg-body{display:grid;gap:4px;font-size:12px;min-width:0}
+.route-leg-body strong{font-size:12px}
+.route-leg-body small{color:var(--mut);font-size:11px;line-height:1.5}
+.metro-hint{border-left:4px solid #8655b7;background:var(--bg2);border-radius:11px;padding:10px 12px;font-size:12px}
+.metro-hint p{margin:5px 0 0;color:var(--mut);font-size:11px;line-height:1.5}
+#routeMetroHints{margin-top:13px}
+#routeMetroHints h3{margin:4px 0}
+@media(max-width:420px){
+  .sheet-identity span{display:none}
+  .sheet-head{gap:4px;padding-left:8px;padding-right:8px}
+  .quick-tabs{gap:2px}
+  .quick-tabs button{font-size:11px;padding:7px 7px;min-height:35px}
+}
+@media(max-width:345px){.sheet-identity strong{font-size:12px}.sheet-toggle{width:29px;height:29px}.quick-tabs button{font-size:10px;padding:6px}}
