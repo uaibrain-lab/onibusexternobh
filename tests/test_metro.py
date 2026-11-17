@@ -88,5 +88,30 @@ class MetroTests(unittest.TestCase):
         self.assertIsNone(self.metro.line('3'))
 
 
+    def test_operator_station_links(self):
+        links=[s['officialForecastUrl'] for s in self.metro.data['stations']
+               if s.get('officialForecastUrl')]
+        self.assertEqual(len(links),21)
+        self.assertTrue(all(u.startswith('https://da.gd/') for u in links))
+        self.assertNotIn('officialForecastUrl',self.metro.stations['amazonas'])
+
+    def test_rss_official_news_and_failure_fallback(self):
+        metro=MetroCatalog(ROOT/'catalog')
+        rss=b'''<?xml version="1.0" encoding="UTF-8"?>
+        <rss version="2.0"><channel>
+          <item><title>Aviso oficial</title>
+          <link>https://www.metrobh.com.br/aviso-de-teste/</link>
+          <pubDate>Tue, 17 Nov 2026 10:00:00 GMT</pubDate></item>
+          <item><title>URL externa proibida</title><link>https://fake.example/</link></item>
+        </channel></rss>'''
+        fetched=metro.news(fetcher=lambda url:rss,ttl=0)
+        self.assertEqual(fetched['status'],'ok')
+        self.assertEqual(len(fetched['items']),1)
+        self.assertEqual(fetched['items'][0]['title'],'Aviso oficial')
+        down=metro.news(fetcher=lambda url:b'<invalid',ttl=0)
+        self.assertEqual(down['status'],'stale')
+        self.assertEqual(down['items'],fetched['items'])
+
+
 if __name__ == '__main__':
     unittest.main()
