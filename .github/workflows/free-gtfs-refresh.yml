@@ -1,0 +1,117 @@
+name: P8 - Verificar e renovar GTFS oficial sem servicos pagos
+
+# A agenda só é ativada pelo GitHub quando este workflow estiver na branch
+# padrão do repositório. Nesta P8, push apenas valida a implementação.
+on:
+  schedule:
+    - cron: '23 09 * * *'
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/externo-p8-precisao-atualizacao-gratuita-20261117
+    paths:
+      - .github/workflows/free-gtfs-refresh.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: p8-gtfs-refresh-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  check-and-rebuild:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Baixar GTFS oficial da PBH com limite e tentativas
+        run: |
+          curl --fail --location --retry 3 --retry-delay 8 \
+            --connect-timeout 20 --max-time 240 \
+            https://s3.amazonaws.com/mobilibus-uploads/gtfs/GTFSBHTRANS.zip \
+            -o /tmp/GTFSBHTRANS.zip
+      - name: Validar ZIP, calendário e verificar alterações
+        id: source
+        run: |
+          python scripts/check_official_gtfs.py /tmp/GTFSBHTRANS.zip catalog/source-gtfs.sha256
+      - name: Verificar alerta de calendário próximo do vencimento
+        run: |
+          python - <<'PY'
+          from datetime import date,datetime,timedelta
+          import os
+          valid=os.environ['VALID_THROUGH']
+          expiry=datetime.strptime(valid,'%Y%m%d').date()
+          if expiry <= date.today()+timedelta(days=14):
+              print('::warning::GTFS oficial expira em breve:',valid,
+                    'Verifique se a fonte publicou versão nova')
+          PY
+        env:
+          VALID_THROUGH: ${{ steps.source.outputs.validThrough }}
+      - name: Regenerar índice GTFS por viagens, com integridade
+        if: steps.source.outputs.changed == 'true'
+        run: |
+          python scripts/build_routing.py /tmp/GTFSBHTRANS.zip catalog
+          python scripts/build_static_scan.py catalog
+      - name: Homologar índices, calendário, navegador e pacote estático
+        if: steps.source.outputs.changed == 'true'
+        run: |
+          python -m unittest discover -s tests -v
+          node --check static/app.js
+          node --check static/route-worker.js
+          node --test tests/test_static_worker.cjs
+          timeout 180 node tests/benchmark_static_worker.cjs
+          python scripts/build_static_site.py --output /tmp/p8-preview
+          python - <<'PY'
+          from pathlib import Path
+          import json
+          x=json.loads(Path('catalog/scan/index.json').read_text(encoding='utf-8'))
+          assert x['schema']==2
+          assert x['connectionCount']>1000000
+          assert x['validThrough']>=__import__('datetime').date.today().strftime('%Y%m%d')
+          p=Path('/tmp/p8-preview/externo/catalog/scan/index.json')
+          assert p.is_file()
+          print('FREE_GTFS_REFRESH_VALIDATED')
+          PY
+      - name: Registrar checksum somente após validação integral
+        if: steps.source.outputs.changed == 'true'
+        run: |
+          echo "${{ steps.source.outputs.sha256 }}" > catalog/source-gtfs.sha256
+      - name: Atualizar somente catálogos versionados no GitHub
+        if: steps.source.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A catalog/routing catalog/routing-index.json \
+            catalog/routing-stops.json catalog/routing-stop-routes.json \
+            catalog/scan catalog/source-gtfs.sha256
+          if git diff --cached --quiet; then
+            echo "Nenhuma alteracao de catalogo"
+            exit 0
+          fi
+          git commit -m "data(p8): renovacao validada do GTFS oficial"
+          for attempt in $(seq 1 10); do
+            git fetch origin "${GITHUB_REF_NAME}"
+            git rebase "origin/${GITHUB_REF_NAME}"
+            if git push origin "HEAD:${GITHUB_REF_NAME}"; then
+              echo "FREE_GTFS_REFRESH_PUSH_OK"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "GTFS validado, mas publicacao falhou: catalogo anterior preservado"
+          exit 1
+      - name: Reportar feed sem mudança
+        if: steps.source.outputs.changed != 'true'
+        run: echo "GTFS_UNCHANGED -- nenhum rebuild ou commit necessario"
+
+# Nenhuma etapa aciona Firebase, Cloud Functions, VPS ou outro servico pago.
+# A publicação na hospedagem permanece deliberadamente desativada.
