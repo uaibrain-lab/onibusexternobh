@@ -462,13 +462,20 @@ async function verifyPedestrianItinerary(option,ctx){
   return real;
 }
 async function verifyPedestrianOptions(options,ctx,preference){
-  if(!pedestrian||!await pedestrian.init())return {options:options.slice(0,6),verified:false};
+  if(!pedestrian||!await pedestrian.init())
+    return {options:options.slice(0,6),verified:false,limited:false};
   const pool=[];
+  let inspected=0;
   for(const option of options.slice(0,24)){
+    inspected++;
     const real=await verifyPedestrianItinerary(option,ctx);
     if(real)pool.push(real);
     if(pool.length>=12)break;
   }
+  // Only the first 24 scheduled candidates are OSM-checked. Even an exact
+  // GTFS time-only scan cannot guarantee global walking-verified optimality
+  // after this candidate limit and the changed travel times.
+  const limited=options.length>inspected;
   // Re-rank after correct street distances change travel times/walk metrics.
   const order=(a,b)=>ctx.backward?
     Date.parse(b.departure)-Date.parse(a.departure):
@@ -478,7 +485,7 @@ async function verifyPedestrianOptions(options,ctx,preference){
     :preference==='leastTransfers'
       ?a.transfers-b.transfers||order(a,b)
       :order(a,b)||a.walkMetersApprox-b.walkMetersApprox);
-  return {options:pool.slice(0,6),verified:true};
+  return {options:pool.slice(0,6),verified:true,limited};
 }
 async function metroHints(origin,destination,at,mode='departAt'){
   try{
@@ -640,10 +647,11 @@ async function plan(params,seq) {
     hints.push(...feederHints);
   }
   return {
-    status:ctx.partial?'partial':'ok',mode,preference,
+    status:ctx.partial||pedestrianCheck.limited?'partial':'ok',mode,preference,
     requestedAt:stamp(requested),itineraries,metroHints:hints,
     stats:{connectionsScanned:ctx.scanned,hoursScanned:hours.length,
-      truncatedLabels:ctx.partial,pedestrianGraph:pedestrianCheck.verified,
+      truncatedLabels:ctx.partial,pedestrianCandidatesLimited:pedestrianCheck.limited,
+      pedestrianGraph:pedestrianCheck.verified,
       timeOptimalBusScan:preference==='fastest'&&!ctx.partial},
     pedestrianRouting:pedestrianCheck.verified?'osm_real_graph':'approximate',
     dataSource:'static_gtfs_browser_worker',
