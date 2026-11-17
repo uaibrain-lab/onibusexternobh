@@ -47,7 +47,8 @@ const StaticBus=(()=>{
       const all=patterns.filter(p=>String(p.route)===route.id);
       const out={code:route.code,name:route.name,patterns:all.map(p=>({
         id:p.id,shapeId:String(p.shape),headsign:p.headsign,stops:p.stops.length,
-        tripCount:p.tripCount}))};
+        tripCount:p.tripCount,direction:p.direction??'',
+        ...(u.searchParams.has('stop')?{servesStop:p.stops.includes(u.searchParams.get('stop'))}:{})}))};
       const pid=u.searchParams.get('pattern');
       if(pid){
         const selected=all.find(p=>p.id===pid);
@@ -98,12 +99,54 @@ const StaticBus=(()=>{
       if(!stops[id])throw Error('Ponto não encontrado');
       stopRoutes ||=await data('routing-stop-routes.json');
       const codes=stopRoutes[id]||[];
-      const routes=codes.map(code=>({code,name:routeIndex.get(code.toUpperCase())?.name||code,
-        nextArrival:null}));
+      let forecast=null;
+      let timetableAvailable=false;
+      let expired=false;
+      if(typeof StaticArrivals!=='undefined'){
+        try{
+          forecast=await StaticArrivals.lookup(id);
+          timetableAvailable=forecast.available;
+          expired=forecast.expired;
+        }catch(error){
+          // Failed timetable loading must not hide the stop or its GTFS lines.
+          console.warn('Horários deste ponto indisponíveis',error);
+        }
+      }
+      patterns ||=await data('patterns.json');
+      const destinationGroups=new Map();
+      for(const p of patterns){
+        if(!p.stops.includes(id))continue;
+        const line=lines.find(r=>r.id===String(p.route));
+        if(!line)continue;
+        const dest=String(p.headsign||'').trim();
+        if(!destinationGroups.has(line.code))destinationGroups.set(line.code,new Set());
+        destinationGroups.get(line.code).add(dest);
+      }
+      const routes=[];
+      for(const code of codes){
+        const line=routeIndex.get(String(code).toUpperCase());
+        const destinations=destinationGroups.get(String(code))||new Set(['']);
+        const name=line?.name||String(code);
+        for(const destination of destinations){
+          const arrival=forecast?.byDirection.get(String(code)+'\u0000'+destination)||null;
+          routes.push({code:String(code),name,destination,nextArrival:arrival});
+        }
+        // A scheduled destination can exist without a geometry headsign match.
+        if(forecast){
+          for(const [key,arrival] of forecast.byDirection){
+            const [route,destination]=key.split('\u0000');
+            if(route===String(code)&&!destinations.has(destination))
+              routes.push({code:String(code),name,destination,nextArrival:arrival});
+          }
+        }
+      }
+      routes.sort((a,b)=>(a.nextArrival?0:1)-(b.nextArrival?0:1)||
+        ((a.nextArrival?.minutes??99999)-(b.nextArrival?.minutes??99999))||
+        a.code.localeCompare(b.code));
       return {id,name:stops[id][0],lat:stops[id][1],lng:stops[id][2],
-        asOf:new Date().toISOString(),
-        routes,forecastSource:'GTFS static, without individual departures',
-        timetableAvailable:false};
+        asOf:new Date().toISOString(),routes,
+        forecastSource:expired?'GTFS expirado':'GTFS scheduled (not GPS)',
+        timetableAvailable,expired};
     }
     throw Error('Endpoint ainda não disponível no modo estático: '+endpoint);
   }

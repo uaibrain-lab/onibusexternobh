@@ -5,6 +5,8 @@ No dependencies beyond CPython >=3.9. Local prototype only, not public hosting.
 from __future__ import annotations
 import collections, datetime as dt, json, math, os, pathlib, tempfile, threading, time, urllib.request
 from .matcher import ShapeMatcher, distance_m
+from .eta import GpsArrivalEstimator
+from .catalog_store import resolve_catalog
 
 BRT=dt.timezone(dt.timedelta(hours=-3))
 FEEDS={'CONVENCIONAL':'https://temporeal.pbh.gov.br/?param=D',
@@ -26,12 +28,16 @@ def parse_hr(s):
 class TransitEngine:
     def __init__(self, root, fetcher=None, ttl=35):
         self.root=pathlib.Path(root)
-        self.catalog=self.root/'catalog'
+        self.catalog=resolve_catalog(self.root/'catalog')
         self.state_file=self.root/'state'/'vehicles.json'
         self.routes=json.loads((self.catalog/'routes.json').read_text(encoding='utf8'))
         self.route_by_code={r['code']:r for r in self.routes}
         self.route_by_id={r['id']:r for r in self.routes}
         self.stops=json.loads((self.catalog/'stops.json').read_text(encoding='utf8'))
+        # Roughly 1.1km cells at BH latitude; queries only visit adjacent cells.
+        self.stop_grid=collections.defaultdict(list)
+        for sid, entry in self.stops.items():
+            self.stop_grid[(math.floor(entry[1]/.01),math.floor(entry[2]/.01))].append((sid,entry))
         self.shapes=json.loads((self.catalog/'shapes.json').read_text(encoding='utf8'))
         self.patterns=json.loads((self.catalog/'patterns.json').read_text(encoding='utf8'))
         self.pattern_by_id={p['id']:p for p in self.patterns}
@@ -39,12 +45,16 @@ class TransitEngine:
         for p in self.patterns:self.by_route[p['route']].append(p)
         self.nl_map=json.loads((self.catalog/'gps-nl-map.json').read_text(encoding='utf8'))
         self.matcher=ShapeMatcher(self.shapes,self.patterns)
+        self.eta=GpsArrivalEstimator(self.matcher,self.patterns,self.stops)
         self.stop_routes=collections.defaultdict(set)
+        self.stop_directions=collections.defaultdict(set)
         for p in self.patterns:
             route=self.route_by_id.get(p['route'])
             if route:
                 for stop in p['stops']:
                     self.stop_routes[stop].add(route['code'])
+                    if p.get('headsign'):
+                        self.stop_directions[stop].add((route['code'],p['headsign']))
         # Lazy import to avoid circular dependency with shared BRT helpers.
         from .timetable import Timetable
         self.timetable=Timetable(self.catalog)
@@ -55,6 +65,11 @@ class TransitEngine:
         self.sources={name:{'lastFetchedAt':None,'lastError':None,'responseRecords':0}
                       for name in FEEDS}
         self.last_attempt_monotonic=0.
+        self.refresh_in_progress=False
+        self._background_refresh_queued=False
+        # Aggregate coverage only: no passenger identifiers or exact user coordinates.
+        self.eta_coverage=collections.Counter()
+        self.eta_coverage_started=now_brt()
         self._restore()
 
     def _restore(self):
@@ -162,51 +177,105 @@ class TransitEngine:
             self.vehicles[key]=prior
 
     def refresh(self, force=False):
+        """Download outside the state lock; concurrent users read the last snapshot.
+
+        The first caller may wait for PBH. Other callers are never held hostage
+        by a slow remote response, and only one polling cycle runs at a time.
+        """
         with self.lock:
-            if not force and self.last_attempt_monotonic and time.monotonic()-self.last_attempt_monotonic<self.ttl:
+            if self.refresh_in_progress:
                 return
+            if (not force and self.last_attempt_monotonic and
+                    time.monotonic()-self.last_attempt_monotonic<self.ttl):
+                return
+            self.refresh_in_progress=True
             self.last_attempt_monotonic=time.monotonic()
-            changed=False
+        try:
+            # Network I/O happens with NO engine state lock held.
+            responses={}
             for name,url in FEEDS.items():
                 try:
                     records=self.fetcher(url)
-                    fetched=now_brt()
-                    ignored=self._parse(name,records,fetched)
-                    self.sources[name]={'lastFetchedAt':iso(fetched),
-                                        'lastError':None,'responseRecords':len(records),
-                                        'discarded':ignored}
-                    changed=True
+                    responses[name]=(records,now_brt(),None)
                 except Exception as exc:
-                    self.sources[name]['lastError']=f'{type(exc).__name__}: {str(exc)[:160]}'
-            # Prevent persistent storage from indefinitely accumulating old vehicles.
-            cutoff=now_brt()-dt.timedelta(minutes=30)
-            for key,val in list(self.vehicles.items()):
-                if (parse_iso(val['lastGpsFixAt']) or cutoff-dt.timedelta(seconds=1))<cutoff:
-                    del self.vehicles[key]
-            if changed:
-                self._save()
+                    responses[name]=(None,None,exc)
+            with self.lock:
+                changed=False
+                for name,(records,fetched,error) in responses.items():
+                    if error is not None:
+                        self.sources[name]['lastError']=(
+                            f'{type(error).__name__}: {str(error)[:160]}')
+                        continue
+                    try:
+                        ignored=self._parse(name,records,fetched)
+                        self.sources[name]={'lastFetchedAt':iso(fetched),
+                            'lastError':None,'responseRecords':len(records),
+                            'discarded':ignored}
+                        changed=True
+                    except Exception as exc:
+                        # A malformed feed must not erase the last good positions.
+                        self.sources[name]['lastError']=(
+                            f'{type(exc).__name__}: {str(exc)[:160]}')
+                cutoff=now_brt()-dt.timedelta(minutes=30)
+                for key,val in list(self.vehicles.items()):
+                    fix=parse_iso(val.get('lastGpsFixAt'))
+                    if fix is None or fix<cutoff:
+                        del self.vehicles[key]
+                if changed:
+                    self._save()
+        finally:
+            with self.lock:
+                self.refresh_in_progress=False
 
-    def status(self):
-        self.refresh()
+    def refresh_in_background(self):
+        """Start at most one due GPS poll, without delaying a passenger request."""
+        with self.lock:
+            if self.refresh_in_progress or self._background_refresh_queued:
+                return False
+            if (self.last_attempt_monotonic and
+                    time.monotonic()-self.last_attempt_monotonic<self.ttl):
+                return False
+            self._background_refresh_queued=True
+
+        def collect():
+            try:
+                self.refresh()
+            finally:
+                with self.lock:
+                    self._background_refresh_queued=False
+
+        try:
+            threading.Thread(target=collect,daemon=True,name='bh-gps-refresh').start()
+        except Exception:
+            with self.lock:
+                self._background_refresh_queued=False
+            raise
+        return True
+
+    def status(self,poll=True):
+        if poll:self.refresh()
         with self.lock:
             reference=now_brt()
             recent=sum(0<=(reference-parse_iso(v['lastGpsFixAt'])).total_seconds()<=120
                        for v in self.vehicles.values())
             return {'now':iso(reference),'gpsRecent':recent,
                     'vehiclesKnown':len(self.vehicles), 'sources':self.sources,
+                    'gpsUpdating':bool(self.refresh_in_progress or self._background_refresh_queued),
                     'refreshIntervalSec':self.ttl}
 
     def routes_listing(self):
         return [{'code':r['code'],'name':r['name'],'id':r['id'],
                  'patternCount':len(r['patterns'])} for r in self.routes]
 
-    def route_geometry(self,code,pattern_id=None):
+    def route_geometry(self,code,pattern_id=None,stop_id=None):
         route=self.route_by_code.get(str(code))
         if route is None:return None
         patterns=[self.pattern_by_id[x] for x in route['patterns']]
         info={'code':route['code'],'name':route['name'],'patterns':[
             {'id':p['id'],'shapeId':p['shape'],'headsign':p['headsign'],
-             'stops':len(p['stops']),'tripCount':p['tripCount']}
+             'stops':len(p['stops']),'tripCount':p['tripCount'],
+             'direction':p.get('direction',''),
+             **({'servesStop':str(stop_id) in p['stops']} if stop_id else {})}
             for p in patterns]}
         if pattern_id:
             p=self.pattern_by_id.get(pattern_id)
@@ -233,49 +302,145 @@ class TransitEngine:
             if len(found)>=n:break
         return {'items':found,'truncated':len(found)>=n,'query':query}
 
+    def _viewport_candidates(self, a, b, c, d):
+        """Spatial buckets for static stops, falling back for huge world bounds."""
+        row0,row1=math.floor(a/.01),math.floor(c/.01)
+        col0,col1=math.floor(b/.01),math.floor(d/.01)
+        if (row1-row0+1)*(col1-col0+1)>1200:
+            return self.stops.items()
+        return ((sid,entry) for row in range(row0,row1+1)
+                for col in range(col0,col1+1)
+                for sid,entry in self.stop_grid.get((row,col),()))
+
     def nearby_stops(self,lat,lng,limit=15,radius_m=2500):
-        """Return nearest stops; never request or store user's coordinates upstream."""
-        lat=float(lat);lng=float(lng)
-        if not (-90<=lat<=90 and -180<=lng<=180):raise ValueError('invalid coordinate')
+        """Return nearest stops; never store caller coordinates or contact PBH."""
+        lat=float(lat);lng=float(lng);radius_m=float(radius_m)
+        if not (-90<=lat<=90 and -180<=lng<=180 and 0<radius_m<=10000):
+            raise ValueError('invalid coordinate or radius')
+        lat_span=radius_m/111320
+        lng_span=min(180,radius_m/(111320*max(.01,math.cos(math.radians(lat)))))
         ranked=[]
-        for sid,entry in self.stops.items():
+        for sid,entry in self._viewport_candidates(lat-lat_span,lng-lng_span,
+                                                    lat+lat_span,lng+lng_span):
             dist=distance_m((lat,lng),(entry[1],entry[2]))
             if dist<=radius_m:
                 ranked.append((dist,sid,entry))
-        ranked.sort(key=lambda x:x[0])
+        ranked.sort(key=lambda x:(x[0],x[1]))
         return {'items':[{'id':sid,'name':e[0],'lat':e[1],'lng':e[2],
                           'distanceM':round(dist)} for dist,sid,e in ranked[:max(1,min(50,int(limit)))]],
                 'count':len(ranked)}
 
     def map_stops(self, minlat,minlng,maxlat,maxlng,limit=550):
-        """Stops in viewport, with cap for efficient rendering in canvas."""
+        """Return bounded viewport stops, nearest viewport center first if capped."""
         a,b,c,d=map(float,(minlat,minlng,maxlat,maxlng))
-        if not (-90<=a<=c<=90 and -180<=b<=d<=180):raise ValueError('invalid bounds')
+        if not (-90<=a<=c<=90 and -180<=b<=d<=180):
+            raise ValueError('invalid bounds')
         limit=max(1,min(750,int(limit)))
-        visible=[{'id':sid,'name':e[0],'lat':e[1],'lng':e[2]}
-                 for sid,e in self.stops.items() if a<=e[1]<=c and b<=e[2]<=d]
-        return {'items':visible[:limit],'total':len(visible),'truncated':len(visible)>limit}
+        visible=[(sid,e) for sid,e in self._viewport_candidates(a,b,c,d)
+                 if a<=e[1]<=c and b<=e[2]<=d]
+        count=len(visible)
+        if count>limit:
+            midlat,midlng=(a+c)/2,(b+d)/2
+            # Deterministic nearby-first cap instead of arbitrary GTFS file order.
+            visible.sort(key=lambda x:((x[1][1]-midlat)**2+((x[1][2]-midlng)
+                *math.cos(math.radians(midlat)))**2,x[0]))
+        return {'items':[{'id':sid,'name':e[0],'lat':e[1],'lng':e[2]}
+                          for sid,e in visible[:limit]],
+                'total':count,'truncated':count>limit}
 
-    def stop_detail(self,stop_id,at=None):
+    def alternative_stops(self, stop_id, radius_m=100, limit=3):
+        """Nearby stops with different advertised headsigns for shared lines.
+
+        Geographic proximity does NOT prove the platform or side of the road.
+        Passenger receives candidate stops to inspect, never an invented side.
+        """
+        stop_id=str(stop_id)
+        point=self.stops.get(stop_id)
+        if point is None:return []
+        directions=self.stop_directions.get(stop_id,set())
+        if not directions:return []
+        scored=[]
+        for sid,other in self.stops.items():
+            if sid==stop_id:continue
+            shared=self.stop_routes.get(sid,set()) & self.stop_routes.get(stop_id,set())
+            if not shared:continue
+            alt_dir=self.stop_directions.get(sid,set())
+            distinct=any(code in shared and not any(code==cc and head==hh for cc,hh in directions)
+                         for code,head in alt_dir)
+            if not distinct:continue
+            distance=distance_m((point[1],point[2]),(other[1],other[2]))
+            if distance>radius_m:continue
+            scored.append((distance,sid,other))
+        scored.sort(key=lambda x:x[0])
+        return [{'id':sid,'name':other[0], 'lat':other[1], 'lng':other[2],
+                 'distanceM':round(distance)} for distance,sid,other in scored[:limit]]
+
+    def stop_detail(self,stop_id,at=None,poll=True):
         item=self.stops.get(str(stop_id))
         if not item:return None
+        # Never hold the state lock while requesting external feed URLs.
+        # The normal TTL shares the response across all stop lookups.
+        if poll:self.refresh()
         now=at or now_brt()
-        forecasts=self.timetable.next_by_line(str(stop_id),now)
+        forecasts=self.timetable.next_by_direction(str(stop_id),now)
         routes=[]
-        for code in sorted(self.stop_routes.get(str(stop_id),()),key=lambda c:(not c.isdigit(),c)):
-            route=self.route_by_code.get(code)
-            if not route:continue
-            routes.append({'code':code,'name':route['name'],'nextArrival':forecasts.get(code)})
+        with self.lock:
+            # Aggregate without retaining which stop a user opened.
+            if (now-self.eta_coverage_started).total_seconds()>3600:
+                self.eta_coverage.clear()
+                self.eta_coverage_started=now
+            self.eta_coverage['stopQueries']+=1
+            by_route=collections.defaultdict(list)
+            for vehicle in self.vehicles.values():
+                for rid in vehicle.get('routeIds',[]):
+                    by_route[rid].append(vehicle)
+            for code in sorted(self.stop_routes.get(str(stop_id),()),key=lambda c:(not c.isdigit(),c)):
+                route=self.route_by_code.get(code)
+                if not route:continue
+                gps=self.eta.estimate(route,str(stop_id),by_route.get(route['id'],()),now)
+                # Each GTFS headsign is a distinct passenger-facing direction.
+                # A GPS estimate may replace only the matching headsign, never
+                # the earliest timetable entry for a different destination.
+                directions={dest:forecast for (line,dest),forecast in forecasts.items() if line==code}
+                if gps:
+                    direction=str(gps.get('destination') or '').strip()
+                    if direction:
+                        directions[direction]=gps
+                    else:
+                        gps=None
+                if not directions:
+                    directions={'':None}
+                for direction,arrival in directions.items():
+                    self.eta_coverage['linesChecked']+=1
+                    self.eta_coverage['gpsEstimates' if arrival and arrival.get('type')=='gps_estimate' else 'timetableFallbacks' if arrival else 'unavailable']+=1
+                    routes.append({'code':code,'name':route['name'],
+                                   'destination':direction,
+                                   'nextArrival':arrival})
         routes.sort(key=lambda x:(x['nextArrival'] is None,
                                  x['nextArrival']['minutes'] if x['nextArrival'] else 10**10,
                                  x['code']))
         return {'id':str(stop_id),'name':item[0],'lat':item[1],'lng':item[2],
                 'routes':routes,'asOf':iso(now),
-                'forecastSource':'GTFS scheduled (not GPS)',
+                'forecastSource':('GPS + GTFS scheduled' if any(r['nextArrival'] and r['nextArrival']['type']=='gps_estimate' for r in routes) else 'GTFS scheduled (not GPS)'),
+                'alternatives':self.alternative_stops(stop_id),
                 'timetableAvailable':self.timetable.error is None and self.timetable.calendar is not None}
 
-    def fleet(self,code):
-        self.refresh()
+    def eta_coverage_summary(self):
+        """Diagnostic counters only, not a measure of real-world ETA error."""
+        with self.lock:
+            counts=dict(self.eta_coverage)
+            lines=counts.get('linesChecked',0)
+            return {'periodStartedAt':iso(self.eta_coverage_started),
+                    'queries':counts.get('stopQueries',0),
+                    'linesChecked':lines,
+                    'gpsEstimates':counts.get('gpsEstimates',0),
+                    'timetableFallbacks':counts.get('timetableFallbacks',0),
+                    'unavailable':counts.get('unavailable',0),
+                    'gpsCoverage':round(counts.get('gpsEstimates',0)/lines,4) if lines else None,
+                    'accuracyVerified':False}
+
+    def fleet(self,code,poll=True):
+        if poll:self.refresh()
         with self.lock:
             route=self.route_by_code.get(str(code))
             if route is None:return None

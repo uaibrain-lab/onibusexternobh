@@ -33,6 +33,12 @@ def run(host='127.0.0.1',port=8765,open_browser=False):
                 u=urllib.parse.urlsplit(self.path)
                 qs=urllib.parse.parse_qs(u.query)
                 path=u.path
+                if path=='/externo':
+                    self.send_response(308)
+                    self.send_header('Location','/externo/')
+                    self.send_header('Content-Length','0')
+                    self.end_headers()
+                    return
                 if path.startswith('/externo/api/'):
                     path=path[len('/externo'):]
                 elif path.startswith('/externo/'):
@@ -66,11 +72,14 @@ def run(host='127.0.0.1',port=8765,open_browser=False):
                     except (ValueError,TypeError,OverflowError):
                         return self.payload(400,{'error':'Coordenadas inválidas'})
                     return self.payload(200,v)
-                if path=='/api/status': return self.payload(200,engine.status())
+                if path=='/api/status':
+                    engine.refresh_in_background()
+                    return self.payload(200,engine.status(poll=False))
                 if path=='/api/routes': return self.payload(200,engine.routes_listing())
                 if path=='/api/route':
                     code=qs.get('code',[''])[0];pattern=qs.get('pattern',[None])[0]
-                    v=engine.route_geometry(code,pattern)
+                    stop=qs.get('stop',[None])[0]
+                    v=engine.route_geometry(code,pattern,stop)
                     return self.payload(200,v) if v else self.payload(404,{'error':'Linha ou variante não localizada'})
                 if path=='/api/stops':
                     q=qs.get('q',[''])[0][:120]
@@ -86,11 +95,13 @@ def run(host='127.0.0.1',port=8765,open_browser=False):
                     except (ValueError, TypeError):return self.payload(400,{'error':'Limites invalidos'})
                     return self.payload(200,v)
                 if path=='/api/stop':
-                    v=engine.stop_detail(qs.get('id',[''])[0])
+                    engine.refresh_in_background()
+                    v=engine.stop_detail(qs.get('id',[''])[0],poll=False)
                     return self.payload(200,v) if v else self.payload(404,{'error':'Ponto nao encontrado'})
                 if path=='/api/fleet':
                     code=qs.get('route',[''])[0]
-                    v=engine.fleet(code)
+                    engine.refresh_in_background()
+                    v=engine.fleet(code,poll=False)
                     return self.payload(200,v) if v else self.payload(404,{'error':'Linha não localizada'})
                 # Apenas arquivos públicos de catálogo no servidor local.
                 # Não há acesso por path traversal, nem hospedagem dinâmica.
@@ -106,14 +117,23 @@ def run(host='127.0.0.1',port=8765,open_browser=False):
                     kind='application/json; charset=utf-8' if file.suffix=='.json' else 'application/octet-stream'
                     return self.respond(200,file.read_bytes(),kind)
                 if path=='/':path='/index.html'
-                if path not in ('/index.html','/app.js','/style.css','/route-worker.js'):
+                allowed={'index.html','app.js','style.css','hub-parity.css',
+                         'route-worker.js','service-worker.js','static-bus.js',
+                         'static-arrivals.js','walk-network.js','metro-timing.js',
+                         'icon-192.png','icon-512.png','manifest.webmanifest'}
+                resource=path.lstrip('/')
+                if resource not in allowed:
                     return self.payload(404,{'error':'Não encontrado'})
-                file=ROOT/'static'/path.lstrip('/')
+                file=ROOT/'static'/resource
+                if not file.is_file():
+                    return self.payload(404,{'error':'Arquivo não encontrado'})
                 raw=file.read_bytes()
-                mime={'/index.html':'text/html','/app.js':'application/javascript',
-                      '/route-worker.js':'application/javascript',
-                      '/style.css':'text/css'}[path]
-                return self.respond(200,raw,mime+'; charset=utf-8')
+                content_type=('text/html' if resource.endswith('.html')
+                              else 'application/javascript' if resource.endswith('.js')
+                              else 'text/css' if resource.endswith('.css')
+                              else 'image/png' if resource.endswith('.png')
+                              else 'application/manifest+json')
+                return self.respond(200,raw,content_type)
             except (BrokenPipeError,ConnectionResetError):pass
             except Exception as exc:
                 try:self.payload(500,{'error':'Erro interno','detail':type(exc).__name__})

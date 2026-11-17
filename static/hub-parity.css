@@ -1,0 +1,219 @@
+/* P14 — Paridade com a aba Interno do Hub UFMG.
+   Referencia READ-ONLY: ru-hoje/public/interno/index.html (main, 2026-11-17).
+   A identidade roxa pertence ao menu do Hub; o mapa interno usa superficies
+   neutras. CSS isolado, sem dependencias do stylesheet do site pai. */
+:root{
+  font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
+  font-synthesis:none;
+  -webkit-font-smoothing:antialiased;
+}
+body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif}
+#sheet{
+  background:var(--bg);
+  color:var(--ink);
+  border-color:var(--line);
+}
+.sheet-identity strong{letter-spacing:-.35px}
+.sheet-identity span{letter-spacing:.65px}
+#sheet .quick-tabs button{
+  border-color:var(--line);
+  border-radius:999px;
+  font-weight:700;
+  min-height:44px;
+}
+#sheet .sheet-head{min-height:54px}
+#sheet #grab{touch-action:none}
+#sheet #body{overscroll-behavior:contain;scrollbar-width:thin}
+#sheet .row-item{
+  border-left:4px solid var(--line);
+  border-radius:12px;
+  min-height:48px;
+  font-size:14px;
+}
+#sheet .row-item b{font-size:14px}
+#sheet .row-item.selected{border-left-color:#2e90fa}
+#sheet .srch{border-radius:12px}
+#sheet .srch input{min-height:44px;font-size:16px}
+#sheet #patternInput{font-size:16px;min-height:48px}
+#sheet .stop-head{
+  display:grid;
+  grid-template-columns:44px minmax(0,1fr) 44px 44px;
+  gap:5px;
+  align-items:center;
+}
+#sheet .stop-head>div{min-width:0;flex-basis:auto}
+#sheet .stop-head h2{
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  font-size:clamp(16px,4.7vw,19px)!important;
+  font-weight:750;
+  line-height:1.25;
+}
+#sheet .stop-head small{font-size:12px;margin-top:3px}
+#sheet .stop-back,#sheet .stop-head .stop-action,#sheet .stop-head .fav-btn{
+  width:44px;
+  height:44px;
+  min-width:44px;
+  min-height:44px;
+  border-radius:50%;
+  display:grid;
+  place-items:center;
+}
+#sheet .stop-detail{margin-bottom:4px}
+#sheet .route-arrival{
+  background:var(--bg2);
+  border:1px solid var(--line);
+  border-left:4px solid var(--line);
+  border-radius:12px;
+  min-height:72px;
+  padding:10px;
+  gap:10px;
+}
+#sheet .route-arrival:active{background:var(--line)}
+#sheet .route-arrival .num{
+  display:grid;
+  place-items:center;
+  min-width:50px;
+  max-width:70px;
+  min-height:42px;
+  padding:6px;
+  border-radius:11px;
+  background:var(--ink);
+  color:var(--bg);
+  font-weight:800;
+  font-size:15px;
+  font-variant-numeric:tabular-nums;
+}
+#sheet .route-arrival .arrival-info b{font-size:15px;line-height:1.3}
+#sheet .route-arrival .arrival-info small{font-size:12px;line-height:1.4}
+#sheet .route-arrival .eta{font-size:21px;font-weight:800;font-variant-numeric:tabular-nums}
+#sheet .route-arrival .eta small{font-size:12px;line-height:1.4}
+#sheet .stop-alternatives summary{min-height:48px;font-size:14px}
+#sheet .stop-forecast-note{font-size:12px;line-height:1.5}
+#sheet .fav-btn[aria-pressed="true"]{color:var(--warn)}
+.map-controls button{
+  min-width:44px;
+  min-height:44px;
+  background:var(--bg);
+  color:var(--ink);
+  border:1px solid var(--line);
+  border-radius:10px;
+}
+.source-pill{font-size:12px;line-height:1.35;gap:7px}
+.source-pill #sourceText{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.map-toast{font-size:12px;line-height:1.4}
+.attribution{font-size:10px;max-width:calc(100vw - 22px)}
+.location-prompt p{font-size:13px}
+.location-actions button{min-height:44px;font-size:13px}
+#mapCanvas:focus-visible{outline:3px solid #2e90fa;outline-offset:-3px}
+#sheet.detail:not(.peek) .sheet-head{
+  display:none;
+}
+/* Igual ao Interno: ao selecionar uma parada, prioridade para os detalhes
+   sem perder o mapa e sem ocupar toda a tela do passageiro. */
+@media(max-width:759px){
+  #sheet.peek{height:calc(82px + env(safe-area-inset-bottom,0px))}
+  #sheet.detail:not(.peek):not(.full){height:min(55dvh,480px)}
+  #sheet.detail.full{height:min(82dvh,calc(100dvh - 75px))}
+  #sheet.detail:not(.peek) #grab{height:32px}
+  #sheet.detail:not(.peek) #body{padding-top:4px}
+  #sheet .stop-detail{border:0;background:var(--bg);padding:3px 0}
+  #sheet .stop-head{gap:4px}
+  #sheet .route-arrival{min-height:76px}
+  #sheet .route-arrival .num{min-width:48px;font-size:14px}
+  #sheet .route-arrival .eta{font-size:20px}
+  .source-pill{max-width:calc(100% - 176px)}
+}
+@media(max-width:360px){
+  #sheet .stop-head{grid-template-columns:44px minmax(0,1fr) 44px 44px;gap:3px}
+  #sheet .stop-head>div{min-width:0;flex-basis:auto}
+  #sheet .stop-head h2{font-size:16px!important}
+  #sheet .route-arrival{gap:6px;padding:8px}
+  #sheet .route-arrival .arrival-info b{font-size:14px}
+  #sheet .route-arrival .eta{font-size:18px}
+  .source-pill{font-size:11px;max-width:calc(100% - 146px)}
+  .location-actions{flex-wrap:wrap}
+}
+@media(min-width:760px){
+  #sheet.detail:not(.peek),#sheet.detail.full{
+    height:auto;
+    max-height:none;
+  }
+  #sheet .stop-head h2{font-size:18px!important}
+}
+@media(prefers-reduced-motion:reduce){
+  #sheet,#sheet .sheet-toggle svg{transition:none!important}
+}
+@media(prefers-contrast:more){
+  #sheet .route-arrival,#sheet .row-item{border-color:var(--ink)}
+  #sheet .stop-forecast-note,#sheet .hint{color:var(--ink)}
+}
+
+/* Texto acessivel para leitores de tela, sem introduzir um segundo painel. */
+.sr-only{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
+
+/* Falha dos tiles: igual ao Interno, nunca esconder pontos e trajetos. */
+#map{background:#e6ecf2}
+html[data-theme="dark"] #map{background:#28323c}
+.map-basemap-notice{
+  position:fixed;
+  z-index:490;
+  top:calc(67px + env(safe-area-inset-top,0px));
+  left:50%;
+  transform:translateX(-50%);
+  max-width:min(380px,calc(100vw - 130px));
+  padding:8px 10px;
+  border-radius:10px;
+  background:var(--bg);
+  color:var(--ink);
+  border:1px solid var(--line);
+  font-size:12px;
+  text-align:center;
+  box-shadow:var(--sh);
+  pointer-events:none;
+}
+.map-basemap-notice[hidden]{display:none}
+
+/* Integração P9+P14 — quatro modos sem esmagar controles no celular. */
+@media(max-width:759px){
+  .sheet-head{
+    display:grid;
+    grid-template-columns:minmax(0,1fr) 44px;
+    gap:6px;
+    align-items:center;
+    min-height:64px;
+    padding:6px 9px 8px;
+  }
+  .sheet-head .sheet-identity{display:none}
+  .sheet-head .quick-tabs{
+    display:grid;
+    grid-template-columns:repeat(4,minmax(0,1fr));
+    width:100%;
+    min-width:0;
+    gap:4px;
+    align-items:stretch;
+  }
+  #sheet .quick-tabs button{
+    width:100%;
+    min-height:44px;
+    padding:6px 1px;
+    font-size:clamp(11px,3.4vw,13px);
+    white-space:nowrap;
+    text-overflow:ellipsis;
+    overflow:hidden;
+  }
+  .sheet-toggle{min-width:44px;min-height:44px}
+  #sheet:not(.detail) #body{padding-bottom:env(safe-area-inset-bottom,0px)}
+  #sheet .route-place-actions button,
+  #sheet .route-options select,
+  #sheet .route-plan-button{min-height:44px}
+  #sheet .route-place input{font-size:16px;min-height:44px}
+  #sheet .route-options label{font-size:13px}
+}
+@media(max-width:360px){
+  .sheet-head{gap:3px;padding-inline:6px}
+  .sheet-head .quick-tabs{gap:2px}
+  #sheet .quick-tabs button{font-size:11px}
+}

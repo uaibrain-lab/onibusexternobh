@@ -1,0 +1,63 @@
+name: Integração independente — ônibus, metrô e rotas
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/integracao-unica-pontos-gps-metro-rotas-20261117
+  pull_request:
+    branches:
+      - feat/externo-p9-multimodal-gratuito-20261117
+permissions:
+  contents: read
+jobs:
+  unificado:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 22
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Testar rastreamento, ETA, metrô, planejamento e geração
+        run: python -m unittest discover -s tests -v
+      - name: Testar sintaxe JavaScript e motores em browser Worker
+        run: |
+          node --check static/app.js
+          node --check static/static-bus.js
+          node --check static/static-arrivals.js
+          node --check static/route-worker.js
+          node --check static/walk-network.js
+          node --check static/metro-timing.js
+          node --check static/service-worker.js
+          node --test tests/test_*.cjs
+      - name: Construir preview estático com as quatro abas e horários por ponto
+        run: |
+          python scripts/build_static_site.py
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('dist/externo')
+          for name in ['index.html','app.js','static-bus.js','static-arrivals.js',
+                       'route-worker.js','hub-parity.css','service-worker.js',
+                       'catalog/scan/index.json','catalog/metro.json',
+                       'catalog/arrivals/index.json','catalog/arrivals/calendar.json']:
+              assert (p/name).is_file(), name
+          data=json.loads((p/'catalog/arrivals/index.json').read_text())
+          assert data['schema']==1 and data['stopCount']>9000
+          assert len(list((p/'catalog/arrivals').glob('*.json.gz')))==256
+          assert 'data-app-mode="free-static"' in (p/'index.html').read_text()
+          print('PREVIEW_INTEGRADO_OK',data['stopCount'], 'pontos')
+          PY
+      - name: Smoke HTTP em /externo/ sem backend de hospedagem
+        run: |
+          python -m http.server 8765 --directory dist >/tmp/http.log 2>&1 &
+          PID=$!
+          trap 'kill "$PID" || true' EXIT
+          sleep 2
+          curl -fsS http://127.0.0.1:8765/externo/ | grep -q 'quick-rotas'
+          curl -fsS http://127.0.0.1:8765/externo/catalog/arrivals/index.json >/dev/null
+          curl -fsS http://127.0.0.1:8765/externo/catalog/scan/index.json >/dev/null
+          echo HTTP_INTEGRADO_OK
