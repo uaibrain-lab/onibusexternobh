@@ -82,7 +82,8 @@ export function parseVehiclePositions(buffer,requestedRoutes,now=Date.now()){
   if(bytes.byteLength<5)invalid();
   const routes=new Set(requestedRoutes.map(String));
   const found=new Map();
-  let entities=0,headerPresent=false;
+  let entities=0,headerPresent=false,vehicleEntities=0,missingRouteIds=0;
+  const sampleRouteIds=new Set();
   fields(bytes,0,bytes.length,(f,w,a,b)=>{
     if(f===1&&w===2){
       let version='';
@@ -97,6 +98,9 @@ export function parseVehiclePositions(buffer,requestedRoutes,now=Date.now()){
     fields(bytes,a,b,(num,wire,start,end)=>{
       if(num!==4||wire!==2)return;
       const v=vehiclePosition(bytes,start,end);
+      vehicleEntities++;
+      if(!v.routeId)missingRouteIds++;
+      else if(sampleRouteIds.size<12)sampleRouteIds.add(String(v.routeId));
       if(!routes.has(String(v.routeId||'')))return;
       const when=Number(v.timestamp)*1000;
       if(!Number.isSafeInteger(when)||when>now+60000||when<now-10*60000)return;
@@ -120,5 +124,6 @@ export function parseVehiclePositions(buffer,requestedRoutes,now=Date.now()){
     });
   });
   if(!headerPresent)invalid();
-  return {records:[...found.values()],sourceEntities:entities};
+  return {records:[...found.values()],sourceEntities:entities,
+    vehicleEntities,missingRouteIds,sampleRouteIds:[...sampleRouteIds]};
 }
