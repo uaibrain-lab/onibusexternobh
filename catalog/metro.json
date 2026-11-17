@@ -8,7 +8,8 @@
     "construction": "https://www.metrobh.com.br/obras/",
     "serviceNotice": "https://www.metrobh.com.br/metro-bh-tera-operacao-especial-para-show-da-xuxa-e-aplicacao-do-enem-neste-fim-de-semana/",
     "railCoordinates": "https://repositorio.ufmg.br/server/api/core/bitstreams/fdbd8771-500f-4b4b-a375-c942f72e472c/content",
-    "newCoordinates": "© OpenStreetMap contributors via mapcarta.com"
+    "newCoordinates": "© OpenStreetMap contributors via mapcarta.com",
+    "officialForecasts": "https://www.metrobh.com.br/va-de-metro/"
   },
   "lines": [
     {
@@ -78,7 +79,8 @@
         "1"
       ],
       "interchange": false,
-      "active": true
+      "active": true,
+      "officialForecastUrl": "https://da.gd/y1VTR"
     },
     {
       "id": "floramar",
@@ -90,7 +92,8 @@
         "1"
       ],
       "interchange": false,
-      "active": true
+      "active": true,
+      "officialForecastUrl": "https://da.gd/Rp17o"
     },
     {
       "id": "waldomiro-lobo",
@@ -102,7 +105,8 @@
         "1"
       ],
       "interchange": false,
-      "active": true
+      "active": true,
+      "officialForecastUrl": "https://da.gd/tY5Jo"
     },
     {
       "id": "primeiro-de-maio",
@@ -114,7 +118,8 @@
         "1"
       ],
       "interchange": false,
-      "active": true
+      "active": true,
+      "officialForecastUrl": "https://da.gd/xKIDxZ"
     },
     {
       "id": "sao-gabriel",
@@ -126,7 +131,8 @@
         "1"
       ],
       "interchange": false,
-      "active": true
+      "active": true,
+      "officialForecastUrl": "https://da.gd/9BBHj"
     },
     {
       "id": "minas-shopping",
@@ -138,7 +144,8 @@
         "1"
       ],
       "interchange": false,
-      "active": true
+      "active": true,
+      "officialForecastUrl": "https://da.gd/NAKic8"
     },
     {
       "id": "jose-candido",
@@ -150,7 +157,8 @@
         "1"
       ],
       "interchange": false,
-      "active": true
+      "active": true,
+      "officialForecastUrl": "https://da.gd/Y1EoZr"
     },
     {
       "id": "santa-ines",
@@ -162,7 +170,8 @@
         "1"
       ],
       "interchange": false,
-      "active": true
+      "active": true,
+      "officialForecastUrl": "https://da.gd/Dmijb"
     },
     {
       "id": "horto",
@@ -174,7 +183,8 @@
         "1"
       ],
       "interchange": false,
-      "active": true
+      "active": true,
+      "officialForecastUrl": "https://da.gd/qILtZo"
     },
     {
       "id": "santa-tereza",
@@ -186,7 +196,8 @@
         "1"
       ],
       "interchange": false,
-      "active": true
+      "active": true,
+      "officialForecastUrl": "https://da.gd/BCrMAt"
     },
     {
       "id": "santa-efigenia",
@@ -198,7 +209,8 @@
         "1"
       ],
       "interchange": false,
-      "active": true
+      "active": true,
+      "officialForecastUrl": "https://da.gd/pXeTs"
     },
     {
       "id": "central",
@@ -210,7 +222,8 @@
         "1"
       ],
       "interchange": false,
-      "active": true
+      "active": true,
+      "officialForecastUrl": "https://da.gd/unyOU"
     },
     {
       "id": "lagoinha",
@@ -222,7 +235,8 @@
         "1"
       ],
       "interchange": false,
-      "active": true
+      "active": true,
+      "officialForecastUrl": "https://da.gd/kyJRj"
     },
     {
       "id": "carlos-prates",
@@ -234,7 +248,8 @@
         "1"
       ],
       "interchange": false,
-      "active": true
+      "active": true,
+      "officialForecastUrl": "https://da.gd/b96t5"
     },
     {
       "id": "calafate",
@@ -246,7 +261,8 @@
         "1"
       ],
       "interchange": false,
-      "active": true
+      "active": true,
+      "officialForecastUrl": "https://da.gd/EiFyZ3"
     },
     {
       "id": "gameleira",
@@ -258,7 +274,8 @@
         "1"
       ],
       "interchange": false,
-      "active": true
+      "active": true,
+      "officialForecastUrl": "https://da.gd/L9LrjZ"
     },
     {
       "id": "vila-oeste",
@@ -270,7 +287,8 @@
         "1"
       ],
       "interchange": false,
-      "active": true
+      "active": true,
+      "officialForecastUrl": "https://da.gd/2XEdL"
     },
     {
       "id": "cidade-industrial",
@@ -282,7 +300,8 @@
         "1"
       ],
       "interchange": false,
-      "active": true
+      "active": true,
+      "officialForecastUrl": "https://da.gd/Kb9oAA"
     },
     {
       "id": "eldorado",
@@ -294,7 +313,8 @@
         "1"
       ],
       "interchange": false,
-      "active": true
+      "active": true,
+      "officialForecastUrl": "https://da.gd/7aWw00"
     },
     {
       "id": "nova-suica",
@@ -307,7 +327,8 @@
         "2"
       ],
       "interchange": true,
-      "active": true
+      "active": true,
+      "officialForecastUrl": "https://da.gd/ljXYU"
     },
     {
       "id": "amazonas",
@@ -331,7 +352,8 @@
         "1"
       ],
       "interchange": false,
-      "active": true
+      "active": true,
+      "officialForecastUrl": "https://da.gd/daUDH"
     }
   ],
   "operations": {
@@ -381,6 +403,7 @@
     "fareBRL": 6,
     "fareSource": "https://www.metrobh.com.br/va-de-metro/",
     "lastVerified": "2026-11-17",
-    "notice": "Intervalos são frequências, NÃO horários exatos ou ETA GPS. Revalidar alterações junto à operadora."
+    "notice": "Intervalos são frequências, NÃO horários exatos ou ETA GPS. Revalidar alterações junto à operadora.",
+    "forecastLinkNote": "Links oficiais de previsão abrem página externa; não são dados ingeridos no site. Amazonas ainda não possui link listado nessa página."
   }
 }
