@@ -1,0 +1,60 @@
+name: P9 - Navegadores mobile/desktop sem servicos pagos
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/externo-p9-multimodal-gratuito-20261117
+    paths:
+      - static/app.js
+      - static/static-bus.js
+      - static/route-worker.js
+      - static/walk-network.js
+      - static/metro-timing.js
+      - tests/browser-p9.spec.cjs
+      - tests/playwright.config.cjs
+      - .github/workflows/p9-browser.yml
+
+permissions:
+  contents: read
+
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 22
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Instalar browser de teste sem dependencia em runtime
+        run: |
+          npm install --no-save --no-audit --no-fund @playwright/test@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Preparar preview estatico sem deploy
+        run: |
+          python scripts/build_static_site.py
+          test -s dist/externo/static-bus.js
+          test -s dist/externo/route-worker.js
+          test -s dist/externo/catalog/scan/index.json
+      - name: Executar app em servidor estatico local
+        run: |
+          python -m http.server 8765 --bind 127.0.0.1 --directory dist >/tmp/p9-browser.log 2>&1 &
+          echo $! > /tmp/p9-http.pid
+          sleep 2
+          curl -fsS http://127.0.0.1:8765/externo/ >/dev/null
+      - name: E2E desktop e dois tamanhos Android emulados
+        run: npx playwright test --config=tests/playwright.config.cjs
+      - name: Guardar screenshots e relatorio sem publicar o site
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: p9-playwright-mobile-desktop
+          path: |
+            tests/test-results/
+            tests/playwright-report/
+          if-no-files-found: ignore
+          retention-days: 5
