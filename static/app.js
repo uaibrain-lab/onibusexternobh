@@ -114,7 +114,41 @@ $('allLineSearch').addEventListener('input',e=>renderAllLines(e.target.value));
 $('quick-pontos').onclick=()=>switchTab('pontos',true);
 $('quick-linhas').onclick=()=>switchTab('linhas',true);
 $('sheet-toggle').onclick=()=>{$('sheet').classList.contains('peek')?openSheet():closeSheet()};
-$('grab').onclick=()=>{$('sheet').classList.contains('peek')?openSheet():closeSheet()};
+// Swipe only on the handle: do not interfere with scrolling the list or map.
+let sheetDrag=null,skipSheetClick=false;
+const grab=$('grab');
+grab.addEventListener('pointerdown',e=>{
+  if(innerWidth>=760||!e.isPrimary)return;
+  const sheet=$('sheet');
+  sheetDrag={pointerId:e.pointerId,startY:e.clientY,startHeight:sheet.getBoundingClientRect().height,moved:false};
+  grab.setPointerCapture(e.pointerId);
+});
+grab.addEventListener('pointermove',e=>{
+  if(!sheetDrag||sheetDrag.pointerId!==e.pointerId)return;
+  const dy=sheetDrag.startY-e.clientY;
+  if(Math.abs(dy)<8&&!sheetDrag.moved)return;
+  sheetDrag.moved=true;
+  const sheet=$('sheet');
+  sheet.classList.remove('peek');
+  sheet.style.transition='none';
+  sheet.style.height=Math.max(82,Math.min(innerHeight*.82,sheetDrag.startHeight+dy))+'px';
+  $('body').setAttribute('aria-hidden','false');
+});
+function finishSheetSwipe(e){
+  if(!sheetDrag||sheetDrag.pointerId!==e.pointerId)return;
+  const moved=sheetDrag.moved, h=$('sheet').getBoundingClientRect().height;
+  sheetDrag=null;
+  const sheet=$('sheet');sheet.style.height='';sheet.style.transition='';
+  if(!moved)return;
+  skipSheetClick=true;
+  // Suppress the synthetic click fired after a touch drag.
+  if(h<(82+Math.min(innerHeight*.42,360))/2)closeSheet();
+  else if(h>(Math.min(innerHeight*.42,360)+innerHeight*.82)/2)openSheet(true);
+  else openSheet(false);
+}
+grab.addEventListener('pointerup',finishSheetSwipe);
+grab.addEventListener('pointercancel',finishSheetSwipe);
+grab.onclick=()=>{if(skipSheetClick){skipSheetClick=false;return}sheetDrag=null;$('sheet').classList.contains('peek')?openSheet():closeSheet()};
 function askLocation(){hideLocationPrompt();if(!window.isSecureContext||!navigator.geolocation){$('nearbyHint').textContent='Localização requer HTTPS ou localhost. Mostrando pontos próximos à UFMG.';openSheet();return}navigator.geolocation.getCurrentPosition(async p=>{const lat=p.coords.latitude,lng=p.coords.longitude;state.userPosition=[lat,lng];$('recenter').title='Minha localização';$('recenter').setAttribute('aria-label','Centralizar na minha localização');state.center=[lat,lng];state.zoom=15.5;drawSoon();scheduleMapStops();try{await loadNearbyStops(lat,lng,true);switchTab('pontos',true)}catch(e){reportError(e)}},()=>{$('nearbyHint').textContent='Localização não autorizada. Você ainda pode buscar pontos no mapa da UFMG.';openSheet()},{enableHighAccuracy:false,timeout:12000,maximumAge:60000})}
 $('loc').onclick=askLocation;$('allowLocation').onclick=askLocation;$('skipLocation').onclick=hideLocationPrompt;
 function hideLocationPrompt(){$('locationPrompt').hidden=true;try{sessionStorage.setItem('bh-externo-location-intro-seen','yes')}catch(e){}}

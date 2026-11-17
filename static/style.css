@@ -101,3 +101,10 @@ html[data-theme="dark"]{color-scheme:dark;--bg:#14181f;--bg2:#1e242d;--ink:#f5f7
 .stop-alternatives{margin-top:12px;border-top:1px solid var(--line);padding-top:9px}
 .stop-alternatives summary{cursor:pointer;min-height:44px;display:flex;align-items:center;font-weight:700;font-size:13px}
 .stop-alternatives .row-item{margin:4px 0 8px;font-size:13px;min-height:48px}
+
+/* Mobile sheet can be grabbed with the thumb; the content keeps native scroll. */
+@media(max-width:759px){
+  #grab{height:32px;touch-action:none;user-select:none}
+  #grab::after{margin-top:12px}
+  .stop-back,.stop-head .fav-btn,.stop-head .share-btn{min-width:44px;width:44px;min-height:44px;height:44px}
+}
