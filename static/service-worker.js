@@ -3,13 +3,13 @@
  * No predownload of 100+ MB: store at most 16 used hourly GTFS shards.
  */
 'use strict';
-const SHELL='externo-unificado-shell-v2',SHARDS='externo-unificado-hours-v2',ARRIVALS='externo-unificado-arrivals-v2';
+const SHELL='externo-unificado-shell-v3',SHARDS='externo-unificado-hours-v2',ARRIVALS='externo-unificado-arrivals-v2';
 const MAX_SHARDS=16;
 const scope=new URL(self.registration.scope);
 const base=scope.pathname.endsWith('/')?scope.pathname:scope.pathname+'/';
 const shellPaths=[
   base,base+'index.html',base+'app.js',base+'style.css',base+'hub-parity.css',
-  base+'route-worker.js',base+'static-bus.js',base+'static-arrivals.js',base+'live-gps.js',base+'gps-config.json',base+'walk-network.js',base+'metro-timing.js',
+  base+'route-worker.js',base+'static-bus.js',base+'static-arrivals.js',base+'live-gps.js',base+'gps-config.json',base+'place-geocoding.js',base+'walk-network.js',base+'metro-timing.js',
   base+'manifest.webmanifest',base+'icon-192.png',base+'icon-512.png',
   base+'catalog/metro.json',base+'catalog/scan/index.json',
   base+'catalog/arrivals/index.json',base+'catalog/arrivals/calendar.json'
@@ -40,7 +40,7 @@ async function networkFirst(request,cacheName) {
     }
     return response;
   }catch(error){
-    const hit=await cache.match(request,{ignoreSearch:request.url?.includes('/index.json')});
+    const hit=await cache.match(request,{ignoreSearch:true}); // shell is versioned; offline fallback may use ?v= release
     if(hit)return hit;
     throw error;
   }
