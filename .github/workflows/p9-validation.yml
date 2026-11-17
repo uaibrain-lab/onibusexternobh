@@ -1,0 +1,54 @@
+name: P9 - Regressao e benchmark GTFS completo
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/externo-p9-multimodal-gratuito-20261117
+    paths:
+      - static/route-worker.js
+      - static/metro-timing.js
+      - static/walk-network.js
+      - static/static-bus.js
+      - tests/test_metro_timing.cjs
+      - tests/test_walk_network.cjs
+      - tests/test_static_bus.cjs
+      - tests/test_walking_graph.py
+      - .github/workflows/p9-validation.yml
+
+permissions:
+  contents: read
+
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Testar backend legado e builder OSM
+        run: python -m unittest discover -s tests -v
+      - name: Testar worker, metrô e abas estáticas
+        run: |
+          node --check static/app.js
+          node --check static/route-worker.js
+          node --check static/static-bus.js
+          node --check static/walk-network.js
+          node --check static/metro-timing.js
+          node --test tests/test_static_worker.cjs tests/test_static_bus.cjs \
+            tests/test_walk_network.cjs tests/test_metro_timing.cjs
+      - name: Medir tempo e dados GTFS para busca ida/volta
+        run: timeout 180 node tests/benchmark_static_worker.cjs
+      - name: Gerar pacote estático sem publicar
+        run: |
+          python scripts/build_static_site.py
+          test -s dist/externo/catalog/scan/index.json
+          test -s dist/externo/static-bus.js
+          test -s dist/externo/metro-timing.js
+          test -s dist/externo/walk-network.js
+          test -s dist/externo/catalog/routes.json
