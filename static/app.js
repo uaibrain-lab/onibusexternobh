@@ -612,15 +612,43 @@ function renderRouteResults(data){
     area.append(container);
   }
   if(data.metroHints?.length){
-    const h=document.createElement('h3');h.textContent='Possibilidades com metrô (sem horário calculado)';
+    const h=document.createElement('h3');
+    h.textContent='Alternativas de metrô — estimativas, não horários de trens';
     rail.append(h);
     for(const hint of data.metroHints){
       const card=document.createElement('div');card.className='metro-hint';
       const strong=document.createElement('strong');strong.textContent='Linha '+hint.line+
         ': '+hint.fromStation+' → '+hint.toStation;
-      const p=document.createElement('p');p.textContent='Passa por '+hint.stationCount+
-        ' trecho(s) entre estações. Frequência e horários de partida ainda não validados para esta viagem; não comparável às opções de ônibus.';
-      card.append(strong,p);rail.append(card);
+      const p=document.createElement('p');
+      if(hint.status==='estimated_range_not_timetable'){
+        const window=hint.timeWindow||{};
+        const estimate=hint.rideRangeMinutes?.join('–')||'?';
+        let timing='';
+        if(window.earliestArrival){
+          timing='Chegada provável dentro da faixa '+routeClock(window.earliestArrival)+
+            (window.latestArrival?'–'+routeClock(window.latestArrival):
+             ' em diante (espera pelo trem não confirmada)');
+        }else if(window.conservativeDeparture){
+          timing='Saída orientativa entre '+routeClock(window.conservativeDeparture)+
+            ' e '+routeClock(window.latestDeparture);
+        }else if(window.latestDeparture){
+          timing='Última saída aproximada '+routeClock(window.latestDeparture)+
+            ', sem espera máxima confirmada.';
+        }
+        p.textContent='Percurso ferroviário estimado: '+estimate+' min. '+timing+
+          '. Não há grade de partidas individualizada; os intervalos podem mudar em obras ou atrasos.';
+      }else{
+        p.textContent='Possibilidade de viagem por '+hint.stationCount+
+          ' trecho(s) entre estações. Horários e duração ainda não confirmados.';
+      }
+      card.append(strong,p);
+      if(typeof hint.source==='string'&&hint.source.startsWith('https://')){
+        const source=document.createElement('a');
+        source.href=hint.source;source.target='_blank';source.rel='noopener noreferrer';
+        source.textContent='Fonte da referência de duração';
+        card.append(source);
+      }
+      rail.append(card);
     }
   }
   if(data.itineraries?.length)focusSelectedRoute(data.itineraries[0]);
