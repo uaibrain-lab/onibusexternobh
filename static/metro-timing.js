@@ -59,17 +59,14 @@ const RailWindows=(()=>{
       if(!total)return null;
       return benchmark/total;
     };
-    const rates=[
-      {a:central,b:eldorado,rate:section(central,eldorado,18.9)},
-      {a:eldorado,b:central,rate:section(central,eldorado,18.9)},
-      {a:central,b:ids.length-1,rate:section(central,ids.length-1,25.5)},
-    ];
-    if(rates.some(x=>!Number.isFinite(x.rate)))return null;
+    const southRate=eldorado<central?section(eldorado,central,18.9):null;
+    const northRate=central<ids.length-1?section(central,ids.length-1,25.5):null;
+    if(!Number.isFinite(southRate)||!Number.isFinite(northRate))return null;
     let total=0;
     for(let i=Math.min(ia,ib);i<Math.max(ia,ib);i++){
       const meters=length(i,i+1);
-      const rate=i<central?null:i<eldorado?rates[0].rate:rates[2].rate;
-      // The extra Novo Eldorado segment has no verified time benchmark.
+      const rate=i<eldorado?null:i<central?southRate:northRate;
+      // Novo Eldorado and additional segments have no validated benchmark.
       if(!meters||rate===null)return null;
       total+=meters*rate;
     }
