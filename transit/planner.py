@@ -60,7 +60,7 @@ class JourneyPlanner:
             return
         try:
             self.index = json.loads(index_path.read_text('utf-8'))
-            if self.index['schema'] != 2:
+            if self.index['schema'] != 3:
                 raise ValueError('Versão de índice não suportada')
             self.stops = json.loads((self.catalog/'routing-stops.json').read_text('utf-8'))
             self.stop_routes = json.loads((self.catalog/'routing-stop-routes.json').read_text('utf-8'))
@@ -143,7 +143,7 @@ class JourneyPlanner:
             return ()
         try:
             with gzip.open(self.catalog/name,'rt',encoding='utf-8') as file:
-                return tuple(json.loads(line) for line in file)
+                return tuple(json.load(file))
         except (OSError,ValueError):
             return ()
 
