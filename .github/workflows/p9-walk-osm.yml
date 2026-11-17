@@ -43,7 +43,7 @@ jobs:
       - name: Extrair apenas entorno de BH com todas as referências
         run: |
           osmium extract --strategy=complete_ways \
-            -b=-44.19,-20.17,-43.72,-19.71 \
+            -b '-44.19,-20.17,-43.72,-19.71' \
             -o /tmp/bh-walk.osm.pbf /tmp/sudeste-latest.osm.pbf
           test -s /tmp/bh-walk.osm.pbf
       - name: Compilar grafo pedestre e verificar cobertura
