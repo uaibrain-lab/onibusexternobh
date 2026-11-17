@@ -556,8 +556,8 @@ function renderRouteResults(data){
     routeStatus('Nenhum trajeto de ônibus encontrado nesta janela. Experimente outro horário, origem ou destino.','warn');
   }else{
     routeStatus((data.status==='partial'?'Busca limitada por desempenho; ':'')+
-      data.itineraries.length+' itinerário(s) programado(s). '+(data.pedestrianRouting==='local_osm'
-       ?'Caminhadas conferidas no grafo de pedestres OSM local.'
+      data.itineraries.length+' itinerário(s) programado(s). '+(['local_osm','osm_walk_graph_with_unverified_access_snap'].includes(data.pedestrianRouting)
+       ?'Caminhadas pelo grafo viário OSM; o acesso às ruas e às entradas ainda não foi verificado em campo.'
        :'Caminhadas aproximadas; os percursos pelas ruas ainda não foram verificados.'),
       data.status==='partial'?'warn':'info');
   }
@@ -569,7 +569,7 @@ function renderRouteResults(data){
     clock.textContent=routeClock(trip.departure)+' → '+routeClock(trip.arrival)+' · '+trip.durationMinutes+' min';
     const detail=document.createElement('small');
     const buses=trip.legs.filter(x=>x.mode==='bus');
-    const verified=trip.confidence==='scheduled_gtfs_with_osm_pedestrian_paths';
+    const verified=Boolean(trip.confidence?.includes('OSM_walk_graph'))||trip.confidence==='scheduled_gtfs_with_osm_pedestrian_paths';
     detail.textContent=buses.map(x=>x.line).join(' + ')+' · '+trip.walkMetersApprox+
       (verified?' m a pé (vias OSM)':' m a pé (aprox.)')+' · '+trip.transfers+' baldeação(ões)';
     select.append(clock,detail);
@@ -633,14 +633,18 @@ function drawRouteLayer(){
   const trip=state.routeResults[state.routeSelected];
   if(trip){
     for(const leg of trip.legs){
-      if(!leg.fromCoords||!leg.toCoords)continue;
-      const [x1,y1]=screen(...leg.fromCoords),[x2,y2]=screen(...leg.toCoords);
-      ctx.save();ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);
-      ctx.strokeStyle='#1265a8';ctx.lineWidth=4;ctx.setLineDash([8,5]);ctx.globalAlpha=.7;ctx.stroke();ctx.setLineDash([]);
-      for(const [x,y] of [[x1,y1],[x2,y2]]){
-        ctx.beginPath();ctx.arc(x,y,5,0,2*Math.PI);ctx.fillStyle='#fff';ctx.fill();
-        ctx.strokeStyle='#1265a8';ctx.lineWidth=2;ctx.stroke();
-      }
+      const coords=leg.mode==='walk'&&leg.geometry?.length>1?leg.geometry:
+        leg.fromCoords&&leg.toCoords?[leg.fromCoords,leg.toCoords]:[];
+      if(coords.length<2)continue;
+      ctx.save();ctx.beginPath();
+      coords.forEach(([lat,lng],i)=>{
+        const [x,y]=screen(lat,lng);
+        if(!i)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+      });
+      ctx.strokeStyle=leg.mode==='walk'?'#138a6a':'#1265a8';
+      ctx.lineWidth=leg.mode==='walk'?4:3;
+      ctx.setLineDash(leg.mode==='walk'&&leg.pathVerified?[]:[8,5]);
+      ctx.globalAlpha=.8;ctx.stroke();ctx.setLineDash([]);
       ctx.restore();
     }
   }
