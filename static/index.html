@@ -44,7 +44,7 @@
   <div id="body" aria-hidden="true">
     
     <section id="pontosPane" aria-label="Pontos de ônibus">
-      <section id="stopDetail" class="stop-detail" hidden aria-live="polite"></section>
+      <section id="stopDetail" class="stop-detail" hidden aria-live="off" aria-label="Chegadas do ponto selecionado"></section>
       <div class="flexhead"><h3>Meus pontos favoritos</h3></div><div id="favoriteStops" class="list-rows"></div>
       <h3 id="nearbyHeading">Pontos próximos</h3><p class="hint" id="nearbyHint">Mostrando a região da UFMG. Permita a localização para encontrar pontos perto de você.</p><div id="nearbyStops" class="list-rows"></div>
       <h2>Pontos de ônibus</h2>
@@ -61,7 +61,7 @@
       <button id="goLine" type="button" class="btn primary">Consultar linha</button>
       <div class="line-heading"><div class="line-title" id="lineTitle">Selecione uma linha</div><button type="button" id="lineFavorite" class="fav-btn" aria-label="Favoritar linha" hidden>☆</button></div>
       
-      <div class="block"><label for="patternInput"><strong>Trajeto</strong></label><select id="patternInput"><option value="">Sem traçado</option></select><p class="hint">Selecione o trajeto para visualizar o percurso.</p></div>
+      <div class="block"><label for="patternInput"><strong>Sentido e percurso</strong></label><select id="patternInput" aria-describedby="patternHint"><option value="">Escolha um sentido</option></select><p class="hint" id="patternHint">O percurso com mais viagens aparece primeiro. Você pode mudar o sentido ou selecionar uma rota alternativa.</p></div>
       <div class="block vehicles-block"><div class="flexhead"><b>Ônibus da linha</b><button id="refresh" type="button" class="subtle">Atualizar</button></div><div id="vehicleList" class="vehicle-list"><p class="muted">Selecione uma linha.</p></div></div>
       <div class="block"><h3>Linhas disponíveis</h3><label class="srch" for="allLineSearch"><span aria-hidden="true">⌕</span><input id="allLineSearch" placeholder="Filtrar todas as linhas" aria-label="Filtrar todas as linhas" type="search"></label><div id="allLineList" class="list-rows"></div></div>
     </section>
