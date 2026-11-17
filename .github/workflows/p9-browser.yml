@@ -13,7 +13,14 @@ on:
       - scripts/build_static_site.py
       - scripts/Publicar-GPS-Homologacao.ps1
       - tests/browser-p20-map-ui.spec.cjs
+      - tests/browser-p21-line-routing.spec.cjs
       - tests/test_p20_map_layout.cjs
+      - tests/test_p21_geocoder.cjs
+      - tests/test_p21_route_ranking.cjs
+      - tests/test_p21_line_map.cjs
+      - static/place-geocoding.js
+      - static/index.html
+      - static/service-worker.js
       - static/static-bus.js
       - static/route-worker.js
       - static/walk-network.js
