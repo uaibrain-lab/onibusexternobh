@@ -75,8 +75,12 @@ if ($LASTEXITCODE -ne 0) { throw "ADAPTADOR_SINTAXE_FALHOU" }
 if ($LASTEXITCODE -ne 0) { throw "APP_SINTAXE_FALHOU" }
 # Regression: P17 published successfully but canvas failed on first tile
 # because TILE_CACHE_LIMIT was undefined. Gate every future stage deploy.
-& node --test "tests/test_p20_map_layout.cjs"
-if ($LASTEXITCODE -ne 0) { throw "MAPA_LAYOUT_P20_TESTES_FALHARAM" }
+& node --test "tests/test_p20_map_layout.cjs" "tests/test_p21_geocoder.cjs" "tests/test_p21_route_ranking.cjs" "tests/test_p21_line_map.cjs"
+if ($LASTEXITCODE -ne 0) { throw "MAPA_ROTAS_BUSCA_P21_TESTES_FALHARAM" }
+& node --check "static/place-geocoding.js"
+if ($LASTEXITCODE -ne 0) { throw "GEOCODIFICADOR_P21_SINTAXE_FALHOU" }
+& node --check "static/route-worker.js"
+if ($LASTEXITCODE -ne 0) { throw "MOTOR_P21_SINTAXE_FALHOU" }
 if ($ReutilizarBuild) {
     Write-Host "P17_REUTILIZANDO_BUILD_EXISTENTE: conferindo integridade do pacote"
 } else {
