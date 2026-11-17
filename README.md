@@ -12,6 +12,34 @@ Esta versão reúne a experiência de quatro abas: **Pontos, Linhas, Metrô e Ro
 
 Detalhes, cronograma e riscos: [docs/INTEGRACAO-UNICA-20261117.md](docs/INTEGRACAO-UNICA-20261117.md).
 
+## P17 — Site de homologação GPS oficial SUMOB, sem custos obrigatórios
+
+O GPS GTFS Realtime SUMOB foi validado no Worker gratuito com HTTP 200,
+1.779 veículos no feed e 7 posições da linha 5102. A amostra Cloudflare
+de 23 invocações (múltiplas versões) registrou CPU P99 de 7,15 ms, sem
+excessos, mas ainda não comprova capacidade em escala.
+
+- **Build normal permanece sem GPS:** `python scripts/build_static_site.py`.
+- **Build exclusivo de homologação com GPS:** 
+  `python scripts/build_static_site.py --gps-staging`.
+  A configuração `static/gps-config.json` permanece `enabled:false`
+  no GitHub e no build normal. Só o pacote de homologação liga o GPS.
+- **Primeira publicação isolada opcional:** script
+  `scripts/Publicar-GPS-Homologacao.ps1` (PowerShell 5.1) com flags
+  explícitas de criação de projeto Pages e atualização do Worker CORS.
+  **Não cria nem modifica Firebase ou ru-hoje.**
+- **Destino planejado, ainda não publicado:**
+  `https://externo-bh-hml-uaibrain.pages.dev/externo/`.
+- **Teste de build e segurança:** 
+  `python -m unittest discover -s tests -p test_gps_staging_build.py -v`.
+- **Teste de GPS isolado:** 
+  `node --test tests/test_gtfs_realtime_worker.cjs tests/test_gtfs_realtime_adapter.cjs tests/test_live_gps_adapter.cjs`.
+
+Leia [docs/P17-HOMOLOGACAO-PAGES-GPS.md](docs/P17-HOMOLOGACAO-PAGES-GPS.md)
+antes de publicar. Nenhuma previsão GPS (ETA) é alegada como confiável,
+nem há banco ou backend pago. Homologação Android e uso contínuo
+ainda pendentes.
+
 ---
 
 # P9 — Quatro abas em hospedagem estática, ruas OSM e metrô com incerteza
