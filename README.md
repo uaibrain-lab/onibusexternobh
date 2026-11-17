@@ -1,83 +1,75 @@
-# Externo — Hub UFMG | Ônibus de Belo Horizonte (P2 local)
+# Externo — Hub UFMG · P3 (protótipo de homologação)
 
-**Implementado:** 17/11/2026. **Base GTFS:** `202611161919`. Nenhuma alteração foi feita em sites ou servidores de produção. Este pacote é independente do UaiBrain e de outros projetos. Não contém dados GPS históricos fixos apresentados como atuais.
+Versão: **P3 RC1**, 17/11/2026. **Sem deploy de produção.** Aplicação independente, preparada para ser incorporada futuramente como `/externo/` no Hub UFMG. Visual inspirado diretamente no `public/interno/index.html` do repositório `uaibrain-lab/ru-hoje`.
 
-## Conteúdo funcional
+## Funcionalidades
 
-- Catálogo estático real da PBH/SUMOB: **326 linhas, 9.925 paradas, 1.144 traçados e 1.144 padrões** de sequências de paradas (versão GTFS acima).
-- Consulta direta dos arquivos GPS públicos em `https://temporeal.pbh.gov.br/?param=D` (convencional/MOVE) e `?param=SD` (suplementar) por um único serviço local; **cache mínimo de 35 segundos** compartilhado entre abas/usuários do mesmo servidor.
-- Seleção da posição com maior timestamp `HR` **por `(sistema, NV)`**, mantendo a linha via `NL -> mapa de conversão -> route_id GTFS`.
-- Estado de posição persistido em `state/vehicles.json`: o horário `positionUnchangedSinceAt` **NÃO muda** quando a coordenada reaparece em uma resposta mais recente, nem quando o processo reinicia. Oscilações GNSS até 15 m em relação à coordenada âncora não reiniciam esse horário.
-- Separação entre `lastGpsFixAt` (HR do GPS), `positionUnchangedSinceAt` (primeira fixação da posição atual) e `lastFetchedAt` (consulta bem-sucedida). Fonte HTTP atualizada **não** implica posição GPS atualizada.
-- Identificação de GPS recente (até 2 min), atrasado (2–5 min) e antigo (5–10 min). Veículos de fixação mais antiga que 10 min não são desenhados; registros de estado com mais de 30 min são descartados.
-- Associação **conservadora** de posição + histórico com geometrias `shape_id` do GTFS, usando distância à via, orientação, avanço aproximado e diferença de pontuação entre alternativas. Requer três fixações independentes, deslocamento acumulado maior ou igual a 50 m e margem significativa. Quando há ambiguidade, `shapeId=null`.
-- Mapa local sem bibliotecas JavaScript externas. Mapas-base carregam blocos de OpenStreetMap **somente se houver internet**; sem eles, posições e rotas continuam desenhadas sobre uma grade simples (não offline cartográfico completo).
-- **Interface no padrão da aba Interno do Hub UFMG**: mapa em tela cheia, painel flutuante (desktop), painel inferior expansível (mobile), navegação Pontos/Linhas, temas claro e escuro, pesquisa de todas as paradas, pesquisa de linhas e lista de ônibus. A variante GTFS exibida é referência, não confirmação do itinerário dos veículos.
+- Abertura no **campus UFMG** (`-19.8695, -43.9675`, zoom 15), sem selecionar linha padrão; pontos do GTFS aparecem no mapa como marcadores clicáveis.
+- Autorização opcional para localização por ação do usuário, com alternativa sem permissão e listagem dos pontos próximos ordenados por distância.
+- Busca dos **9.925 pontos** e consulta das **326 linhas** na versão do GTFS `202611161919`.
+- Painel de ponto com todas as linhas que passam nele, destino e **próximo horário programado** de passagem (até cinco horas) com minuto e horário. **Não é ETA ajustado por GPS**: não promete que o veículo esteja a caminho. Se não há horários válidos, mostra `Sem previsão`.
+- Favoritos de pontos e linhas salvos em `localStorage` (deste navegador). O sistema não exige login.
+- Interface responsiva no padrão Interno: mapa de tela inteira; painel inferior expansível no celular, lateral no desktop; temas claro e escuro; navegação Pontos/Linhas.
+- Quando o usuário seleciona uma linha, o P2 continua exibindo frota GPS e trajetos do GTFS. A regra de `positionUnchangedSinceAt`, `lastGpsFixAt`, `lastFetchedAt` **permanece vigente**, inclusive após reiniciar o servidor.
 
-## Executar no Windows / PowerShell 5.1
+## Importante sobre privacidade e precisão
 
-1. Extraia `BH-Rastreador-P2.zip` em uma pasta, por exemplo `D:\Downloads\BH-Rastreador-P2`.
-2. Instale ou verifique **Python 3.9 ou superior** (não requer pip, npm, Firebase ou API paga).
-3. Execute:
+- A permissão de localização não é obrigatória nem solicitada automaticamente em segundo plano: a tela explica a finalidade e o navegador pede consentimento ao clicar em **Usar minha localização**.
+- Para calcular distâncias, o navegador envia lat/lng ao **servidor do próprio rastreador**, que não salva esses valores. O logger foi modificado para não registrar parâmetros de URL. A localização de cada pessoa não é enviada à PBH.
+- No site publicado, geolocalização exige HTTPS (ou `localhost`) e, se inserida por iframe, `allow="geolocation"`.
+- Os horários GTFS são horários **de tabela**, não uma confirmação de que o ônibus está circulando. Para ETA real, ainda será necessário validar uma fonte de previsão dinâmica (GTFS-RT Trip Updates ou estimativa GPS com sentido confirmado).
+- O timetable é válido somente para as datas documentadas pela versão do GTFS. As previsões não são extrapoladas para além da validade da base (31/12/2026 nesta versão).
+
+## Executar no Windows (PowerShell 5.1)
+
+Após extrair o ZIP em `D:\Downloads\BH-Rastreador-P3`, rode:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File "D:\Downloads\BH-Rastreador-P2\INICIAR-WINDOWS.ps1"
+powershell -NoProfile -ExecutionPolicy Bypass -File "D:\Downloads\BH-Rastreador-P3\INICIAR-WINDOWS.ps1"
 ```
 
-4. Abra **http://127.0.0.1:8765** caso o navegador não abra automaticamente; `http://127.0.0.1:8765/externo/` simula o caminho da futura aba do Hub.
-5. Pesquise a linha 9202, por exemplo, ou uma linha com veículos ativos naquele horário.
+Abra `http://127.0.0.1:8765/externo/`. Requer **Python 3.9+**, sem `pip`, npm ou serviços pagos. O servidor atende apenas `127.0.0.1`; não publica nada na internet. O mapa-base usa tiles de OpenStreetMap e pode não renderizar quando não há acesso à internet; os pontos e traçados continuam disponíveis no canvas.
 
-Para encerrar: `Ctrl+C` na janela do PowerShell. **O servidor só consulta os arquivos quando recebe uma requisição; não funciona em segundo plano depois de encerrado.** Se o feed oficial cair, o mapa não vai fingir que o sinal continua atual.
+### Rotas de API locais
 
-## Rotas locais de teste
+- `/externo/api/map-stops?minlat=-19.88&minlng=-43.98&maxlat=-19.86&maxlng=-43.95` — paradas visíveis no mapa (limite de 550 por quadro).
+- `/externo/api/nearby-stops?lat=-19.8695&lng=-43.9675` — paradas próximas, ordenadas por distância.
+- `/externo/api/stop?id=14791407` — todas as linhas e próximo horário GTFS programado da parada.
+- `/externo/api/routes`, `/externo/api/route?code=9202`, `/externo/api/fleet?route=9202` e `/externo/api/status` — funções anteriores P2.
 
-- `http://127.0.0.1:8765/api/status`: horário e saúde das fontes e contagem de GPS recente.
-- `http://127.0.0.1:8765/api/routes`: 326 linhas GTFS.
-- `http://127.0.0.1:8765/api/stops?q=ufmg`: pesquisa estática por nome de parada, com limite de 50 resultados.
-- `http://127.0.0.1:8765/api/fleet?route=9202`: veículos com GPS de até 10 minutos para a linha 9202; `shapeMatch` é provável ou ambíguo.
-- `http://127.0.0.1:8765/api/route?code=9202`: variantes GTFS sem geometria pesada.
-- `http://127.0.0.1:8765/api/route?code=9202&pattern=<ID>`: geometria e paradas da variante escolhida.
+### Regerar o calendário de horários
 
-O arquivo `state/vehicles.json` é criado após a primeira coleta bem-sucedida. Se você **excluir esse arquivo**, perde o histórico anterior ao reinício, mas o sistema tenta reconstruir parte dele com os registros históricos ainda presentes no arquivo da PBH.
+Com um novo arquivo GTFS da PBH:
 
-## Testes locais
+```powershell
+py -3 scripts\build_timetable.py "D:\Downloads\GTFSBHTRANS.zip"
+```
 
-Na pasta extraída:
+O comando recria `catalog/timetable.json.gz` e `catalog/timetable-calendar.json`. **Não altera a produção**. O índice compactado da versão atual tem cerca de 17 MiB (6.691.004 registros de stop_times). É carregado sob demanda na primeira consulta de horários, e não no primeiro desenho do mapa.
+
+### Testes
 
 ```powershell
 py -3 -m unittest discover -s tests -v
 ```
 
-Os testes não consultam a internet. Incluem verificação da persistência dos horários, jitter de GPS, duplicações da API, isolamento de fonte, falhas de rede, associação geométrica e recusa em inventar rotas ambíguas.
+**16 testes automatizados** passaram neste pacote, cobrindo P2 GPS e P3 catálogo, localização, ETA programado e expirado. A UI desktop/mobile também foi exercitada com mocks; falta homologação visual e GPS real no Windows.
 
-## Limites / pendências reais
+### Enviar P3 para GitHub sem modificar a main
 
-1. **Não foi testado com as respostas ao vivo da PBH neste ambiente.** As fontes foram validadas no PowerShell do usuário na conversa; os testes do pacote utilizam dados simulados e a interface deve ser verificada no Windows.
-2. A API da PBH pode ter limites ou alterar campos/formatos. O retorno usa `Content-Type: text/html` embora seu conteúdo seja JSON; o coletor valida o conteúdo, e não confia no cabeçalho.
-3. `SV`, `VL`, `DG` e `DT` requerem validação operacional adicional. A direção `DG` é apenas uma pista fraca no classificador; **não** se assume que `SV` equivale a `direction_id` GTFS.
-4. Um traçado classificado `probable` é somente **aproximação geométrica**, não confirmação do serviço/viagem exato. Trechos sobrepostos, desvios, GPS com ruído e linhas circulares podem continuar indeterminados. Para previsão de chegada confiável, será necessário integrar GTFS Realtime/TripUpdates e validar com observações.
-5. O protótipo usa um servidor Python ligado em **127.0.0.1**. **Firebase Hosting Spark não executa esse backend**; publicar o front-end estático sozinho não ativa o GPS. Será necessária arquitetura de coleta e cache de produção, compatível com as políticas da fonte, limites do plano gratuito e monitoramento.
-6. O uso de tiles públicos do OpenStreetMap neste pacote é apenas para testes locais. **Não publique um site de tráfego elevado consumindo diretamente `tile.openstreetmap.org`** sem revisar a política de uso, atribuição e opções de cache/provedor.
-7. Sem infraestrutura, persistência externa ou processo em execução, não se garante rastreamento contínuo. Esta P2 não é uma implantação pública nem executa coleta autônoma 24 horas por dia.
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File "D:\Downloads\BH-Rastreador-P3\PUBLICAR-P3-GITHUB-WINDOWS.ps1"
+```
 
-## Estrutura
+O script usa a branch P2 já publicada como base, cria/atualiza `feat/externo-hub-p3-pontos-eta`, executa os testes e publica as alterações. A `main` e o site do Hub não são alterados.
 
-- `server.py`: API HTTP local e recursos estáticos, acessível somente na própria máquina.
-- `transit/engine.py`: cache, ingestão, horários e persistência atômica.
-- `transit/matcher.py`: escolha conservadora de `shape_id` com histórico GPS.
-- `static/`: interface e mapa canvas (sem dependências JS), reproduzindo o padrão da aba Interno.
-- `docs/INTEGRACAO-HUB-UFMG.md`: contrato de design e integração futura por iframe na mesma origem.
-- `PUBLICAR-GITHUB-WINDOWS.ps1`: envia a P2 para uma branch de desenvolvimento no novo repositório sem alterar `main`.
-- `catalog/`: JSONs GTFS estáticos da etapa P1 (sem snapshot GPS antigo).
-- `state/`: persistência criada durante execução.
-- `tests/`: testes automatizados offline.
+## Limitações antes de integrar ao Hub
 
-Dados de transporte: Prefeitura de Belo Horizonte/SUMOB, com base GTFS publicada via Mobilibus. Mapa-base: © OpenStreetMap contributors (attribution mantida na interface). Antes de redistribuir ou operar em produção, verificar as licenças e condições vigentes das fontes.
+1. A versão corrente é um **servidor Python local**, não executável pelo Firebase Hosting Spark estático sem backend.
+2. Favoritos são locais por navegador e não sincronizam entre dispositivos.
+3. Não há ETA ajustado por GPS nem confirmação automática de qual variante o ônibus seguirá; isso deve ser acrescentado somente quando houver evidência confiável.
+4. A base de horários precisa de rotina automática de renovação, verificação de integridade e rollback antes de produção.
+5. Antes de colocar em produção, rever limites/licenças dos feeds PBH e a política de uso de tiles do OSM.
+6. Geolocalização foi testada com navegador simulado; homologar o fluxo real de permissão no Windows e no Android.
 
-## Publicar em branch de homologação no GitHub (sem deploy)
-
-Na pasta extraída execute `powershell -NoProfile -ExecutionPolicy Bypass -File .\PUBLICAR-GITHUB-WINDOWS.ps1`. Isso cria uma branch `feat/externo-hub-p2-20261117` em `uaibrain-lab/onibusexternobh`, **sem alterar `main` nem o Hub UFMG em produção**. Requer Git for Windows com autorização para acessar o repositório privado.
-
-Referência visual canônica: [`ru-hoje/public/interno/index.html`](https://github.com/uaibrain-lab/ru-hoje/blob/main/public/interno/index.html).
-
-Avisos e licença de terceiros: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Dados: Prefeitura de Belo Horizonte / SUMOB / Mobilibus, conforme catálogos oficiais. Mapa: © OpenStreetMap contributors.
