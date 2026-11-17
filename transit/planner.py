@@ -190,13 +190,17 @@ class JourneyPlanner:
                 'departure':self._iso(depart),'arrival':self._iso(arrive),
                 'prediction':'GTFS scheduled'}
 
-    def _transfer(self,labels,backward):
-        # Transfer only between very nearby stop coordinates; not a street route.
+    def _transfer(self,labels,backward,stats=None):
+        # Transfers are still geometric approximations, not validated walking paths.
         seed=[x for values in labels.values() for x in values]
-        # Mark any bounded expansion as incomplete; never silently claim
-        # to have found the optimal journey after pruning transfers.
-        if len(seed) > MAX_TRANSFER_LABELS:
-            raise PlannerError('Expansão de transferências excedeu o limite de segurança')
+        if len(seed)>MAX_TRANSFER_LABELS:
+            if stats is not None:
+                stats['limited']=True
+                stats['transferLabelsPruned']=len(seed)-MAX_TRANSFER_LABELS
+            # Retain earliest arrival/latest departure and low-walking labels.
+            best=lambda l: (-l.time if backward else l.time)+l.walked*0.25
+            seed.sort(key=best)
+            seed=seed[:MAX_TRANSFER_LABELS]
         for old in seed:
             stop=self.stops.get(old.stop)
             if not stop:
@@ -409,7 +413,7 @@ class JourneyPlanner:
                 candidates.extend(self._collect(gained,origin,destination,search_ts,backward))
             if stats['limited']:
                 break
-            self._transfer(gained,backward)
+            self._transfer(gained,backward,stats)
             prior=gained
         if preference=='leastWalking':
             key=lambda x:(x['walkMetersApprox'],x['durationMinutes'],x['transfers'])
