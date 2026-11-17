@@ -1,0 +1,27 @@
+name: Perfil de desempenho do roteador (P6)
+
+on:
+  push:
+    branches:
+      - feat/externo-p6-precisao-roteador-20261117
+    paths:
+      - scripts/profile_routing.py
+      - .github/workflows/profile-routing.yml
+
+permissions:
+  contents: read
+
+jobs:
+  profile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Instalar aceleração JSON opcional
+        run: |
+          python -m pip install --only-binary=:all: "orjson==3.13.0"
+      - name: Perfil CPU (dois cenários reais)
+        run: timeout 340 python -u scripts/profile_routing.py

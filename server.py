@@ -40,8 +40,22 @@ def run(host='127.0.0.1',port=8765,open_browser=False):
                 elif path=='/externo':
                     path='/'
                 if path=='/api/plan/status':
-                    return self.payload(200,{'ready':planner.ready,'reason':planner.failure,
-                                             'source':'GTFS trips / scheduled'})
+                    index=planner.index if planner.ready else {}
+                    return self.payload(200,{
+                        'ready':planner.ready,'reason':planner.failure,
+                        'source':'GTFS trips / scheduled',
+                        'indexSchema':index.get('schema'),
+                        'indexedTrips':index.get('tripCount',0),
+                        'gtfsBuiltUTC':index.get('builtUTC'),
+                        'validFrom':index.get('validFrom'),
+                        'validThrough':index.get('validThrough'),
+                        'walkingNetworkReady':planner.walking.ready,
+                        'walkingNetworkReason':planner.walking.reason,
+                        'walkingDataSource':'© OpenStreetMap contributors (ODbL)' if planner.walking.ready else None,
+                        'walkingAccessVerified':False,
+                        'trainTimetablesAvailable':False,
+                        'liveTripUpdatesMatched':False,
+                    })
                 if path=='/api/places':
                     try:
                         v=places.search(qs.get('q',[''])[0])

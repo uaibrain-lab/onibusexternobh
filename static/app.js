@@ -385,7 +385,9 @@ function renderRouteResults(data){
     routeStatus('Nenhum trajeto de ônibus encontrado nesta janela. Experimente outro horário, origem ou destino.','warn');
   }else{
     routeStatus((data.status==='partial'?'Busca limitada por desempenho; ':'')+
-      data.itineraries.length+' itinerário(s) programado(s). Caminhadas são estimativas, não percursos por rua.',
+      data.itineraries.length+' itinerário(s) programado(s). '+(data.walkingNetworkReady
+        ?'Caminhadas usam vias OSM conectadas, mas acessos aos pontos ainda precisam ser validados.'
+        :'Caminhadas são aproximações geométricas, NÃO trajetos verificados pelas ruas.'),
       data.status==='partial'?'warn':'info');
   }
   for(const [index,trip] of (data.itineraries||[]).entries()){
@@ -420,7 +422,8 @@ function renderRouteResults(data){
           desc.textContent=(leg.from==='origin'?'Origem':leg.from==='destination'?'Destino':
                             'Ponto '+leg.from)+' → '+
                            (leg.to==='destination'?'Destino':leg.to==='origin'?'Origem':'Ponto '+leg.to)+
-                           ' · percurso pelas ruas ainda não verificado';
+                           (leg.connectedGraph?' · vias OSM conectadas, acesso ao ponto aproximado':
+                           ' · percurso pelas ruas ainda não verificado');
           txt.append(title,desc);
         }
         item.append(icon,txt);legs.append(item);
@@ -458,10 +461,17 @@ function drawRouteLayer(){
   const trip=state.routeResults[state.routeSelected];
   if(trip){
     for(const leg of trip.legs){
+      if(leg.mode==='walk'&&Array.isArray(leg.geometry)&&leg.geometry.length>1){
+        ctx.save();
+        ctx.strokeStyle='#116b49';ctx.lineWidth=4;ctx.setLineDash([5,4]);
+        ctx.beginPath();leg.geometry.forEach(([lat,lng],i)=>{
+          const [x,y]=screen(lat,lng);if(!i)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+        });ctx.stroke();ctx.restore();continue;
+      }
       if(!leg.fromCoords||!leg.toCoords)continue;
       const [x1,y1]=screen(...leg.fromCoords),[x2,y2]=screen(...leg.toCoords);
       ctx.save();ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);
-      ctx.strokeStyle='#1265a8';ctx.lineWidth=5;ctx.globalAlpha=.6;ctx.stroke();
+      ctx.strokeStyle='#1265a8';ctx.lineWidth=3;ctx.globalAlpha=.6;ctx.setLineDash([7,5]);ctx.stroke();ctx.setLineDash([]);
       for(const [x,y] of [[x1,y1],[x2,y2]]){
         ctx.beginPath();ctx.arc(x,y,5,0,2*Math.PI);ctx.fillStyle='#fff';ctx.fill();
         ctx.strokeStyle='#1265a8';ctx.lineWidth=2;ctx.stroke();

@@ -14,21 +14,32 @@ import collections
 import datetime as dt
 import functools
 import gzip
+import hashlib
 import json
 import math
 import pathlib
+from array import array
 from dataclasses import dataclass
 from typing import Optional
 
 from .matcher import distance_m
 from .metro import BRT
+from .walking import WalkingGraph
+from .binary_trips import BinaryTripTable
+
+try:
+    import orjson as _fast_json
+except ImportError:  # Keep offline/std-lib operation possible.
+    _fast_json = None
+
+_JSON_LOADS = _fast_json.loads if _fast_json is not None else json.loads
 
 WEEKDAYS = ('monday','tuesday','wednesday','thursday','friday','saturday','sunday')
 WALK_SPEED_M_S = 1.15
 WALK_FACTOR = 1.35
 MAX_RIDES = 3
-MAX_ROUTE_SCANS = 135
-MAX_STOP_SCANS = 1900000
+MAX_STOP_SCANS = 4000000
+MAX_TRANSFER_LABELS = 22000
 HORIZON_SECONDS = 5 * 3600
 TRANSFER_BUFFER_SECONDS = 45
 
@@ -51,6 +62,7 @@ class JourneyPlanner:
     def __init__(self, catalog_dir, metro=None):
         self.catalog = pathlib.Path(catalog_dir)
         self.metro = metro
+        self.walking = WalkingGraph(catalog_dir)
         self.ready = False
         self.failure = 'Índice de viagens não encontrado'
         index_path = self.catalog / 'routing-index.json'
@@ -58,11 +70,17 @@ class JourneyPlanner:
             return
         try:
             self.index = json.loads(index_path.read_text('utf-8'))
-            if self.index['schema'] != 1:
+            if self.index['schema'] not in (1, 2, 3):
                 raise ValueError('Versão de índice não suportada')
             self.stops = json.loads((self.catalog/'routing-stops.json').read_text('utf-8'))
             self.stop_routes = json.loads((self.catalog/'routing-stop-routes.json').read_text('utf-8'))
             self.files = self.index['files']
+            self.binary_files=self.index.get('binaryFiles',{})
+            self.stop_ids=tuple(sorted(self.stops))
+            expected=self.index.get('stopIdsHash')
+            if expected and expected!=hashlib.sha256(
+                '\n'.join(self.stop_ids).encode('utf-8')).hexdigest():
+                raise ValueError('Índice GTFS incompatível com o mapa de paradas')
             self.routes = {r['code']:r['name'] for r in json.loads(
                 (self.catalog/'routes.json').read_text('utf-8'))}
             self.cells = collections.defaultdict(list)
@@ -108,6 +126,17 @@ class JourneyPlanner:
     def _walk_time(self,dist):
         return max(20.,dist * WALK_FACTOR / WALK_SPEED_M_S + 25.)
 
+    def _access_points(self, point, radius=1050, limit=22, reverse=False):
+        candidates=self.nearby(*point,radius=radius,limit=90)
+        if not self.walking.ready:
+            return [(meters,sid,None) for meters,sid in candidates[:limit]]
+        # An OSM network exists: only present stops connected by actual
+        # pedestrian ways. Straight line is used solely for snapping to a
+        # graph node at the origin and the stop (explicitly disclosed).
+        available=[(sid,self.stops[sid]) for _,sid in candidates]
+        routed=self.walking.reachable_stops(point,available,radius=radius*1.4,limit=limit,reverse=reverse)
+        return [(meters/WALK_FACTOR,sid,path) for meters,sid,path in routed]
+
     @staticmethod
     def _iso(stamp):
         return dt.datetime.fromtimestamp(stamp,BRT).isoformat(timespec='seconds')
@@ -133,16 +162,43 @@ class JourneyPlanner:
         return bool(entry and entry['start_date']<=d<=entry['end_date']
                     and entry[WEEKDAYS[date.weekday()]]=='1')
 
-    @functools.lru_cache(maxsize=32)
+    @functools.lru_cache(maxsize=128)
+    def _binary_trips(self,code,binary_path):
+        # Packed route tables are small enough to retain without expanding
+        # millions of nested stop list objects.
+        return BinaryTripTable.read(self.catalog/binary_path,self.stop_ids)
+
+    @functools.lru_cache(maxsize=24)
     def _trips(self,code):
         name=self.files.get(code)
         if not name:
             return ()
         try:
-            with gzip.open(self.catalog/name,'rt',encoding='utf-8') as file:
-                return tuple(json.loads(line) for line in file)
-        except (OSError,ValueError):
-            return ()
+            binary_path=self.binary_files.get(code)
+            if binary_path:
+                # Compact UBR3 keeps 11 bytes per stop without expanding
+                # millions of nested Python lists into resident memory.
+                return self._binary_trips(code,binary_path)
+            # Offline-compatible legacy GTFS shards remain a fallback.
+            with gzip.open(self.catalog/name,'rb') as file:
+                return tuple(_JSON_LOADS(line) for line in file)
+        except (OSError,ValueError,IndexError) as exc:
+            raise PlannerError('Falha ao ler o índice da linha '+str(code)) from exc
+
+    @functools.lru_cache(maxsize=128)
+    def _trip_stop_index(self, code):
+        """Inverted stop->trip offsets for this route.
+
+        Prevents scanning the full city's stop_times in each search round.
+        The immutable route shard stays the source of truth for trips,
+        service dates, and the exact stop sequence.
+        """
+        by_stop = collections.defaultdict(lambda: array('I'))
+        for i, (_, _, _, stops) in enumerate(self._trips(code)):
+            # Preserve each trip only once per stop, even on loop services.
+            for sid in {row[0] for row in stops}:
+                by_stop[sid].append(i)
+        return dict(by_stop)
 
     def _insert(self,labels,label,backward=False):
         current=labels.setdefault(label.stop,[])
@@ -159,11 +215,20 @@ class JourneyPlanner:
             del current[5:]
         return any(x is label for x in current)
 
-    def _edge_walk(self,source,dest,meters,depart,arrive):
-        return {'mode':'walk','from':source,'to':dest,
-                'metersApprox':round(meters * WALK_FACTOR),
-                'departure':self._iso(depart),'arrival':self._iso(arrive),
-                'pathVerified':False}
+    def _edge_walk(self,source,dest,meters,depart,arrive,route=None):
+        edge={'mode':'walk','from':source,'to':dest,
+              'metersApprox':round(meters * WALK_FACTOR),
+              'durationSeconds':round(arrive-depart),
+              'departure':self._iso(depart),'arrival':self._iso(arrive),
+              'pathVerified':False}
+        if route is not None:
+            edge['walkingNetwork']='OpenStreetMap'
+            edge['connectedGraph']=True
+            edge['routeType']='connected_osm_graph'
+            edge['unverifiedAccessMeters']=route['unverifiedAccessMeters']
+        else:
+            edge['walkingNetwork']='geometric_estimate'
+        return edge
 
     def _edge_bus(self,code,trip,headsign,a,b,depart,arrive):
         return {'mode':'bus','line':code,'lineName':self.routes.get(code,code),
@@ -175,43 +240,77 @@ class JourneyPlanner:
                 'departure':self._iso(depart),'arrival':self._iso(arrive),
                 'prediction':'GTFS scheduled'}
 
-    def _transfer(self,labels,backward):
-        # Transfer only between very nearby stop coordinates; not a street route.
-        seed=[x for values in labels.values() for x in values]
-        # Avoid explosive footpath expansion in busy terminals.
-        for old in seed[:18000]:
-            stop=self.stops.get(old.stop)
-            if not stop:
+    @functools.lru_cache(maxsize=25000)
+    def _neighbor_transfers(self, sid, backward):
+        """Compute geographic and OSM footpath adjacency only once per stop.
+
+        Multiple labels reaching the same GTFS stop share the same physical
+        pedestrian transfers; caching prevents repeated graph A* queries.
+        """
+        stop=self.stops.get(sid)
+        if not stop:
+            return ()
+        start=(float(stop[1]),float(stop[2]))
+        result=[]
+        for meters,other_sid in self.nearby(*start,radius=165,limit=40):
+            if other_sid==sid or meters<2:
                 continue
-            for meters,sid in self.nearby(float(stop[1]),float(stop[2]),radius=165,limit=9):
-                if sid==old.stop or meters<2:
+            route=None
+            if self.walking.ready:
+                target=self.stops[other_sid]
+                end=(float(target[1]),float(target[2]))
+                route=self.walking.route(end if backward else start,
+                                        start if backward else end,max_meters=410)
+                if route is None:
                     continue
+                meters=route['meters']/WALK_FACTOR
+            result.append((meters,other_sid,route))
+        return tuple(result)
+
+    def _transfer(self,labels,backward,stats=None,bound=None):
+        # Transfers are still geometric approximations, not validated walking paths.
+        seed=[x for values in labels.values() for x in values
+              if bound is None or (x.time>bound if backward else x.time<bound)]
+        if len(seed)>MAX_TRANSFER_LABELS:
+            if stats is not None:
+                stats['limited']=True
+                stats['transferLabelsPruned']=len(seed)-MAX_TRANSFER_LABELS
+            # Retain earliest arrival/latest departure and low-walking labels.
+            best=lambda l: (-l.time if backward else l.time)+l.walked*0.25
+            seed.sort(key=best)
+            seed=seed[:MAX_TRANSFER_LABELS]
+        for old in seed:
+            for meters,sid,foot in self._neighbor_transfers(old.stop,backward):
                 seconds=self._walk_time(meters)+TRANSFER_BUFFER_SECONDS
                 t=old.time-seconds if backward else old.time+seconds
-                edge=(self._edge_walk(sid,old.stop,meters,t,old.time) if backward
-                      else self._edge_walk(old.stop,sid,meters,old.time,t))
+                if bound is not None and (t<=bound if backward else t>=bound):
+                    continue
+                edge=(self._edge_walk(sid,old.stop,meters,t,old.time,foot) if backward
+                      else self._edge_walk(old.stop,sid,meters,old.time,t,foot))
                 self._insert(labels,Label(sid,t,old.walked+meters*WALK_FACTOR,
                                           old.rides,old,edge),backward)
 
-    def _scan_round(self,prior,search_ts,backward,stats):
+    def _scan_round(self,prior,search_ts,backward,stats,bound=None):
         next_labels={}
         counts=collections.Counter(code for sid in prior for code in self.stop_routes.get(sid,())
                                     if code in self.files)
-        routes=[code for code,count in counts.most_common(MAX_ROUTE_SCANS)]
-        if len(counts)>len(routes):
-            stats['limited']=True
+        # Explore EVERY candidate line. No arbitrary top-135 truncation.
+        # The inverted stop->trip index makes this tractable.
+        routes=sorted(counts,key=lambda code:(-counts[code],code))
+        stats['candidateRoutes']=len(routes)
         q_day=dt.datetime.fromtimestamp(search_ts,BRT).date()
         days=[q_day-dt.timedelta(days=1),q_day,q_day+dt.timedelta(days=1)]
         for code in routes:
             rows=self._trips(code)
-            for trip_id,service,headsign,stops in rows:
+            by_stop=self._trip_stop_index(code)
+            indices=set()
+            for sid in prior:
+                indices.update(by_stop.get(sid,()))
+            stats['candidateTrips']=stats.get('candidateTrips',0)+len(indices)
+            for idx in sorted(indices):
+                trip_id,service,headsign,stops=rows[idx]
                 eligible_days=[day for day in days if self._valid(service,day)]
                 if not eligible_days:
-                    continue
-                # Fast rejection: the trip must overlap the requested time
-                # window and contain a stop already reachable in this round.
-                # Otherwise scanning every stop of the city's timetable is wasteful.
-                if not any(stop[0] in prior for stop in stops):
                     continue
                 for day in eligible_days:
                     midnight=dt.datetime.combine(day,dt.time.min,BRT).timestamp()
@@ -220,34 +319,51 @@ class JourneyPlanner:
                     if backward:
                         if earliest>search_ts or latest<search_ts-HORIZON_SECONDS:
                             continue
+                        if bound is not None and latest<=bound:
+                            stats['timePrunedTrips']=stats.get('timePrunedTrips',0)+1
+                            continue
                     else:
                         if latest<search_ts or earliest>search_ts+HORIZON_SECONDS:
                             continue
-                    candidates=[]
+                        if bound is not None and earliest>=bound:
+                            stats['timePrunedTrips']=stats.get('timePrunedTrips',0)+1
+                            continue
+                    # Every downstream time is fixed for this trip. Preserve
+                    # the lowest-walking boarding and, for arriveBy, the
+                    # latest-time boarding to avoid losing departures that
+                    # allow the user to leave home later.
+                    best_walk = None
+                    best_late = None
                     entries=reversed(stops) if backward else iter(stops)
-                    for sid,arr,dep in entries:
+                    for row in entries:
+                        sid,arr,dep=row[:3]
+                        pickup = int(row[3]) if len(row)>3 else 0
+                        dropoff = int(row[4]) if len(row)>4 else 0
                         stats['stopScans']+=1
                         if stats['stopScans']>MAX_STOP_SCANS:
                             stats['limited']=True
                             return next_labels
                         epoch=midnight+(dep if backward else arr)
-                        for earlier,board_sid,board_epoch in candidates:
-                            if sid==board_sid:
-                                continue
-                            if backward and epoch<search_ts-HORIZON_SECONDS:
-                                continue
-                            if not backward and epoch>search_ts+HORIZON_SECONDS:
-                                continue
-                            if backward:
-                                edge=self._edge_bus(code,trip_id,headsign,sid,board_sid,
-                                                    midnight+dep,board_epoch)
-                            else:
-                                edge=self._edge_bus(code,trip_id,headsign,board_sid,sid,
-                                                    board_epoch,midnight+arr)
-                            node=Label(sid,epoch,earlier.walked,earlier.rides+1,earlier,edge)
-                            self._insert(next_labels,node,backward)
-                        # Add board possibilities after dropping at this stop.
-                        if sid in prior:
+                        if bound is not None and (epoch<=bound if backward else epoch>=bound):
+                            break  # stop times monotonic in scan direction
+                        if (pickup if backward else dropoff)==0:
+                            choices=(best_walk,best_late) if backward else (best_walk,)
+                            for ordinal,selected in enumerate(choices):
+                                if selected is None or (ordinal==1 and selected is best_walk):
+                                    continue
+                                earlier,board_sid,board_epoch=selected
+                                if sid==board_sid:
+                                    continue
+                                if backward:
+                                    edge=self._edge_bus(code,trip_id,headsign,sid,board_sid,
+                                                        midnight+dep,board_epoch)
+                                else:
+                                    edge=self._edge_bus(code,trip_id,headsign,board_sid,sid,
+                                                        board_epoch,midnight+arr)
+                                self._insert(next_labels,
+                                             Label(sid,epoch,earlier.walked,earlier.rides+1,earlier,edge),
+                                             backward)
+                        if sid in prior and (dropoff if backward else pickup)==0:
                             for label in prior[sid]:
                                 departure=midnight+dep
                                 arrival=midnight+arr
@@ -256,12 +372,14 @@ class JourneyPlanner:
                                 valid_horizon=(departure>=search_ts-HORIZON_SECONDS if backward
                                                else departure<=search_ts+HORIZON_SECONDS)
                                 if feasible and valid_horizon:
-                                    # keep a few labels to retain walking/time tradeoffs
-                                    candidates.append((label,sid,arrival if backward else departure))
-                                    candidates.sort(key=lambda e:(e[0].walked,
-                                                   -e[0].time if backward else e[0].time))
-                                    if len(candidates)>4:
-                                        candidates=candidates[:4]
+                                    candidate=(label,sid,arrival if backward else departure)
+                                    if best_walk is None or label.walked<best_walk[0].walked:
+                                        best_walk=candidate
+                                    if backward and (best_late is None or
+                                        label.time>best_late[0].time or
+                                        (label.time==best_late[0].time and
+                                         label.walked<best_late[0].walked)):
+                                        best_late=candidate
         return next_labels
 
     def _path(self,label,backward):
@@ -275,16 +393,16 @@ class JourneyPlanner:
         return legs
 
     def _collect(self,labels,origin,dest,search_ts,backward):
-        endings=self.nearby(*(origin if backward else dest),radius=1050,limit=22)
+        endings=self._access_points(origin if backward else dest,radius=1050,limit=22,reverse=not backward)
         results=[]
-        for meters,sid in endings:
+        for meters,sid,foot in endings:
             for label in labels.get(sid,()):
                 delay=self._walk_time(meters)
                 if backward:
                     # Reserve a boarding buffer at the initial stop too.
                     walk_arrival=label.time-TRANSFER_BUFFER_SECONDS
                     departure=walk_arrival-delay
-                    legs=[self._edge_walk('origin',sid,meters,departure,walk_arrival)]+self._path(label,True)
+                    legs=[self._edge_walk('origin',sid,meters,departure,walk_arrival,foot)]+self._path(label,True)
                     # Actual arrival is usually earlier than the requested deadline.
                     # Never inflate the itinerary duration with artificial idle time.
                     finish=search_ts
@@ -293,8 +411,7 @@ class JourneyPlanner:
                         if last_bus:
                             last_arrival=dt.datetime.fromisoformat(last_bus['arrival']).timestamp()
                             trailing=legs[-1]
-                            extra_walk=trailing['metersApprox']/WALK_FACTOR
-                            finish=min(search_ts,last_arrival+self._walk_time(extra_walk))
+                            finish=min(search_ts,last_arrival+trailing['durationSeconds'])
                             trailing['departure']=self._iso(last_arrival)
                             trailing['arrival']=self._iso(finish)
                     if departure>search_ts or search_ts-departure>HORIZON_SECONDS:
@@ -302,10 +419,10 @@ class JourneyPlanner:
                 else:
                     departure=search_ts
                     finish=label.time+delay
-                    legs=self._path(label,False)+[self._edge_walk(sid,'destination',meters,label.time,finish)]
+                    legs=self._path(label,False)+[self._edge_walk(sid,'destination',meters,label.time,finish,foot)]
                     if finish<search_ts or finish-search_ts>HORIZON_SECONDS:
                         continue
-                if not any(leg['mode']=='bus' for leg in legs):
+                if not self._validate_legs(legs):
                     continue
                 results.append({'departure':self._iso(departure),
                                 'arrival':self._iso(finish),
@@ -348,6 +465,53 @@ class JourneyPlanner:
         except (KeyError,ValueError,TypeError):
             return []
 
+    @staticmethod
+    def _validate_legs(legs):
+        """Never display a physically/time-inconsistent chain as a trip."""
+        if not legs or legs[0].get('from')!='origin' or legs[-1].get('to')!='destination':
+            return False
+        last=None
+        for leg in legs:
+            try:
+                departure=dt.datetime.fromisoformat(leg['departure']).timestamp()
+                arrival=dt.datetime.fromisoformat(leg['arrival']).timestamp()
+            except (KeyError,ValueError,TypeError):
+                return False
+            if arrival<departure:
+                return False
+            if last is not None:
+                if departure+0.001<last['arrival']:
+                    return False
+                if last['to']!=leg.get('from'):
+                    return False
+            last={'arrival':arrival,'to':leg.get('to')}
+        return any(x.get('mode')=='bus' for x in legs)
+
+    def _finish_walk_geometry(self, options, origin, destination):
+        if not self.walking.ready:
+            return options
+        def point(which):
+            if which=='origin':
+                return origin
+            if which=='destination':
+                return destination
+            entry=self.stops.get(which)
+            if not entry:
+                return None
+            return (float(entry[1]),float(entry[2]))
+        for option in options:
+            for leg in option['legs']:
+                if leg.get('mode')!='walk' or not leg.get('connectedGraph'):
+                    continue
+                a,b=point(leg['from']),point(leg['to'])
+                if a is None or b is None:
+                    continue
+                path=self.walking.route(a,b,max_meters=max(250,leg['metersApprox']+65),
+                                        geometry=True)
+                if path:
+                    leg['geometry']=path['geometry']
+        return options
+
     def plan(self,origin,destination,at=None,mode='departAt',preference='fastest'):
         origin=self._geo(origin)
         destination=self._geo(destination)
@@ -361,34 +525,59 @@ class JourneyPlanner:
                     'message':'Índice GTFS de viagens ainda não gerado.',
                     'itineraries':[],'metroHints':self._metro_hints(origin,destination,at_dt)}
         day=at_dt.strftime('%Y%m%d')
+        # GTFS trip times like 25:10:00 belong to the PREVIOUS calendar
+        # service day. A request just after midnight may therefore remain
+        # valid even when the date is one day past calendar.end_date.
+        through=self.index.get('validThrough')
+        overflow_days=int(self.index.get('maxServiceSeconds',0))//86400
+        if through and overflow_days:
+            effective_through=(dt.datetime.strptime(through,'%Y%m%d').date()+
+                               dt.timedelta(days=overflow_days)).strftime('%Y%m%d')
+        else:
+            effective_through=through
         if (self.index['validFrom'] and day<self.index['validFrom'] or
-            self.index['validThrough'] and day>self.index['validThrough']):
+            effective_through and day>effective_through):
             return {'status':'out_of_calendar',
                     'message':'Data fora da validade do GTFS de viagens. Não extrapolamos horários.',
                     'validFrom':self.index['validFrom'],'validThrough':self.index['validThrough'],
                     'itineraries':[],'metroHints':[]}
         backward=(mode=='arriveBy')
         search_ts=at_dt.timestamp()
-        starts=self.nearby(*(destination if backward else origin),radius=1050,limit=22)
+        starts=self._access_points(destination if backward else origin,radius=1050,limit=22,reverse=backward)
         prior={}
-        for meters,sid in starts:
+        for meters,sid,foot in starts:
             delay=self._walk_time(meters)
             t=search_ts-delay if backward else search_ts+delay
-            edge=(self._edge_walk(sid,'destination',meters,t,search_ts) if backward
-                  else self._edge_walk('origin',sid,meters,search_ts,t))
+            edge=(self._edge_walk(sid,'destination',meters,t,search_ts,foot) if backward
+                  else self._edge_walk('origin',sid,meters,search_ts,t,foot))
             self._insert(prior,Label(sid,t,meters*WALK_FACTOR,0,None,edge),backward)
         candidates=[]
-        stats={'stopScans':0,'limited':False,'rounds':0}
+        stats={'stopScans':0,'limited':False,'rounds':0,'candidateRoutes':0,'candidateTrips':0}
         for rides in range(MAX_RIDES):
             if not prior:
                 break
-            gained=self._scan_round(prior,search_ts,backward,stats)
+            # A destination time bound is mathematically safe for "fastest":
+            # a later intermediate arrival cannot produce an earlier final
+            # arrival, and an earlier intermediate departure cannot improve
+            # the latest feasible start in arriveBy mode.
+            bound=None
+            if preference=='fastest' and candidates:
+                bound=(max if backward else min)(
+                    dt.datetime.fromisoformat(x['departure' if backward else 'arrival']).timestamp()
+                    for x in candidates)
+            gained=self._scan_round(prior,search_ts,backward,stats,bound)
             stats['rounds']=rides+1
             if gained:
                 candidates.extend(self._collect(gained,origin,destination,search_ts,backward))
             if stats['limited']:
                 break
-            self._transfer(gained,backward)
+            # Once zero transfers exists, further rides cannot improve
+            # the requested minimum-transfer criterion.
+            if preference=='leastTransfers' and candidates:
+                break
+            if preference=='leastWalking' and any(x['walkMetersApprox']==0 for x in candidates):
+                break
+            self._transfer(gained,backward,stats,bound)
             prior=gained
         if preference=='leastWalking':
             key=lambda x:(x['walkMetersApprox'],x['durationMinutes'],x['transfers'])
@@ -408,7 +597,8 @@ class JourneyPlanner:
                 break
         return {'status':'partial' if stats['limited'] else 'ok',
                 'mode':mode,'preference':preference,'requestedAt':at_dt.isoformat(),
-                'itineraries':list(unique.values())[:6],
+                'itineraries':self._finish_walk_geometry(list(unique.values())[:6],origin,destination),
+                'walkingNetworkReady':self.walking.ready,
                 'metroHints':self._metro_hints(origin,destination,at_dt),
                 'stats':stats,
                 'notes':[

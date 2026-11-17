@@ -4,9 +4,14 @@ on:
   push:
     branches:
       - feat/externo-p5-planejador-20261117
+      - feat/externo-p6-precisao-roteador-20261117
     paths:
       - transit/planner.py
       - tests/test_planner.py
+      - tests/test_walking.py
+      - transit/walking.py
+      - catalog/walk-network.json.gz
+      - scripts/build_routing.py
       - .github/workflows/test-routing-real.yml
   workflow_dispatch:
 
@@ -22,6 +27,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      - name: Instalar aceleração JSON opcional
+        run: |
+          python -m pip install --only-binary=:all: "orjson==3.13.0"
       - name: Testes de unidade e interface
         run: |
           python -m unittest discover -s tests -v
@@ -30,10 +38,41 @@ jobs:
         run: |
           timeout 150 python - <<'PY'
           import time
+          import resource
           from pathlib import Path
           from transit.planner import JourneyPlanner
           p=JourneyPlanner(Path('catalog'))
           assert p.ready, p.failure
+          from transit.binary_trips import BinaryTripTable
+          from transit.planner import _JSON_LOADS
+          import gzip
+          assert p.index['schema']==3
+          assert len(p.index['binaryFiles'])==len(p.index['files'])
+          codes=sorted(p.files)
+          for code in [codes[0],codes[len(codes)//4],codes[len(codes)//2],codes[-1]]:
+            packed=p._trips(code)
+            assert isinstance(packed,BinaryTripTable),code
+            with gzip.open(Path('catalog')/p.files[code],'rb') as legacy:
+              unpacked=[_JSON_LOADS(line) for line in legacy]
+            assert len(packed)==len(unpacked),(code,len(packed),len(unpacked))
+            for idx in set([0,len(unpacked)//2,len(unpacked)-1]):
+              trip_id,service,headsign,stops=packed[idx]
+              ref=unpacked[idx]
+              assert (trip_id,service,headsign)==tuple(ref[:3]),(code,idx)
+              assert [list(row) for row in stops]==ref[3],(code,idx)
+          print('UBR3_REAL_EQUIVALENCE_OK',4,'routes',flush=True)
+          if p.walking.ready:
+            print('WALK_NETWORK_REAL',len(p.walking.points),'nodes')
+            nearest=p.nearby(-19.8695,-43.9675,radius=550,limit=25)
+            reachable=[
+              p.walking.route((-19.8695,-43.9675),
+                              tuple(float(x) for x in p.stops[sid][1:3]),
+                              max_meters=950)
+              for _,sid in nearest
+            ]
+            count=sum(x is not None for x in reachable)
+            print('WALK_REACHABLE_UFMG',count,'of',len(nearest))
+            assert count>=1, 'Nenhum ponto acessível pela rede OSM próximo à UFMG'
           pairs=[
             ({'lat':-19.8695,'lng':-43.9675},{'lat':-19.918,'lng':-43.938},
              'departAt','fastest'),
@@ -47,8 +86,13 @@ jobs:
             print('ROUTING_BENCH',mode,preference,round(elapsed,2),'sec',
                   r['status'],len(r['itineraries']),'routes',r.get('stats'),flush=True)
             assert r['status'] in ('ok','partial')
+            assert r['stats']['candidateRoutes'] > 0
+            assert r['stats']['candidateTrips'] > 0
             for trip in r['itineraries']:
               assert 0<=trip['transfers']<=2
               assert trip['departure']<=trip['arrival']
               assert any(leg['mode']=='bus' for leg in trip['legs'])
+          rss_mib=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1024
+          print('ROUTING_PEAK_RSS_MIB',round(rss_mib,1),flush=True)
+          assert rss_mib<1800,'Consumo de memória excessivo para o protótipo'
           PY
