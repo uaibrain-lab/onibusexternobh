@@ -284,3 +284,18 @@ test('GTFS 24:50 departure works after midnight using the previous service date'
   assert.ok(backwards.itineraries.some(it=>it.legs.some(l=>l.line==='N')),
     'Reverse search must consider the previous GTFS service date');
 });
+
+test('expanded Pareto search keeps larger label budget without claiming false optimality',async()=>{
+  const t=setup(true);await t.run('init',1);
+  const out=await t.run('plan',2,{params:{
+    origin:{lat:t.origin[0],lng:t.origin[1]},
+    destination:{lat:t.destination[0],lng:t.destination[1]},
+    at:'2026-11-17T07:50:00-03:00',mode:'departAt',
+    preference:'fastest',searchDepth:'expanded'
+  }});
+  const data=out.find(x=>x.kind==='result').data;
+  assert.ok(data.itineraries.length>0);
+  assert.equal(data.stats.searchDepth,'expanded');
+  assert.equal(data.stats.labelsPerStopLimit,24);
+  assert.equal(data.stats.onboardLimit,24);
+});
