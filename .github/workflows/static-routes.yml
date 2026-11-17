@@ -1,0 +1,81 @@
+name: P7 - Gerar rotas estáticas gratuitas
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/externo-p7-rotas-estaticas-gratuitas-20261117
+    paths:
+      - scripts/build_static_scan.py
+      - .github/workflows/static-routes.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: static-gtfs-p7
+  cancel-in-progress: false
+
+jobs:
+  build-static:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Gerar índices por hora a partir do GTFS oficial já preservado
+        run: |
+          python scripts/build_static_scan.py catalog
+          python - <<'PY'
+          import gzip,json,struct
+          from pathlib import Path
+          p=Path('catalog/scan')
+          m=json.loads((p/'index.json').read_text(encoding='utf-8'))
+          assert m['schema']==1
+          assert m['tripCount']>=100000, m
+          assert m['stopCount']>=9000, m
+          assert m['connectionCount']>=6000000, m
+          for side in ('out','in'):
+            count=0
+            for hour,detail in m['hours'][side].items():
+              file=p/side/(hour+'.bin.gz')
+              assert file.is_file(),file
+              assert file.stat().st_size==detail['bytes']
+              raw=gzip.decompress(file.read_bytes())
+              assert len(raw)==20*detail['connections'],(file,len(raw))
+              count+=detail['connections']
+            assert count==m['connectionCount'],(side,count)
+          print('STATIC_SCAN_VALIDATED',m['connectionCount'],'connections',
+                sum(x['bytes'] for v in m['hours'].values() for x in v.values()),
+                'compressed bytes')
+          PY
+      - name: Testar integração local e sintaxe JS
+        run: |
+          python -m unittest discover -s tests -v
+          node --check static/app.js
+          node --check static/route-worker.js
+      - name: Publicar arquivos estáticos apenas na branch P7
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A catalog/scan
+          if git diff --cached --quiet; then
+            echo "Índice estático sem mudanças"
+            exit 0
+          fi
+          git commit -m "data(free-routing): índice de conexões horárias GTFS"
+          for attempt in $(seq 1 12); do
+            git fetch origin feat/externo-p7-rotas-estaticas-gratuitas-20261117
+            git rebase origin/feat/externo-p7-rotas-estaticas-gratuitas-20261117
+            if git push origin HEAD:feat/externo-p7-rotas-estaticas-gratuitas-20261117; then
+              echo "STATIC_SCAN_PUSH_OK"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "PUBLICACAO_FALHOU_SEM_FORCE_PUSH"
+          exit 1
