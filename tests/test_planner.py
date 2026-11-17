@@ -32,11 +32,13 @@ class RoutePlannerTests(unittest.TestCase):
             {'code':'X','name':'Origem / Integração'},
             {'code':'Y','name':'Integração / Destino'},
             {'code':'R','name':'Sentido contrário'},
+            {'code':'P','name':'Embarque proibido'},
+            {'code':'Q','name':'Desembarque proibido'},
         ]), encoding='utf-8')
         gtfs=p/'fixture.zip'
         with zipfile.ZipFile(gtfs,'w',zipfile.ZIP_DEFLATED) as z:
             z.writestr('routes.txt',table(
-                ['route_id','route_short_name'],[['d','D'],['x','X'],['y','Y'],['r','R']]))
+                ['route_id','route_short_name'],[['d','D'],['x','X'],['y','Y'],['r','R'],['p','P'],['q','Q']]))
             z.writestr('stops.txt',table(
                 ['stop_id','stop_name','stop_lat','stop_lon'],
                 [['a','Início',-19.900,-43.900],
@@ -47,7 +49,9 @@ class RoutePlannerTests(unittest.TestCase):
                 [['direto','d','daily','Destino'],
                  ['conexao-a','x','daily','Integração'],
                  ['conexao-b','y','daily','Destino'],
-                 ['reverso','r','daily','Início']]))
+                 ['reverso','r','daily','Início'],
+                 ['sem-embarque','p','daily','Destino'],
+                 ['sem-desembarque','q','daily','Destino']]))
             z.writestr('calendar.txt',table(
                 ['service_id','monday','tuesday','wednesday','thursday','friday',
                  'saturday','sunday','start_date','end_date'],
@@ -64,9 +68,18 @@ class RoutePlannerTests(unittest.TestCase):
                 ['conexao-b','08:30:00','08:30:00','c',2],
                 ['reverso','08:08:00','08:08:00','c',1],
                 ['reverso','08:20:00','08:20:00','a',2],
+                ['sem-embarque','07:57:00','07:57:00','a',1],
+                ['sem-embarque','08:10:00','08:10:00','c',2],
+                ['sem-desembarque','07:58:00','07:58:00','a',1],
+                ['sem-desembarque','08:12:00','08:12:00','c',2],
             ]
+            rows=[row+(
+                 [1,0] if row[0]=='sem-embarque' and row[3]=='a'
+                 else [0,1] if row[0]=='sem-desembarque' and row[3]=='c'
+                 else [0,0]) for row in rows]
             z.writestr('stop_times.txt',table(
-                ['trip_id','arrival_time','departure_time','stop_id','stop_sequence'],rows))
+                ['trip_id','arrival_time','departure_time','stop_id',
+                 'stop_sequence','pickup_type','drop_off_type'],rows))
         cls.index=build(gtfs,cls.cat)
         cls.planner=JourneyPlanner(cls.cat)
         cls.a={'lat':-19.900,'lng':-43.900}
@@ -78,8 +91,9 @@ class RoutePlannerTests(unittest.TestCase):
         cls.temp.cleanup()
 
     def test_build_trip_sequences(self):
-        self.assertEqual(self.index['tripCount'],4)
-        self.assertEqual(self.index['stopTimeRows'],8)
+        self.assertEqual(self.index['schema'],2)
+        self.assertEqual(self.index['tripCount'],6)
+        self.assertEqual(self.index['stopTimeRows'],12)
         direct=self.planner._trips('D')
         self.assertEqual(direct[0][0],'direto')
         self.assertEqual([row[0] for row in direct[0][3]],['a','c'])
@@ -122,6 +136,17 @@ class RoutePlannerTests(unittest.TestCase):
         lines=[leg['line'] for option in r['itineraries'] for leg in option['legs']
                if leg['mode']=='bus']
         self.assertNotIn('R',lines)
+
+    def test_non_boardable_and_non_alightable_trips_excluded(self):
+        result=self.planner.plan(self.a,self.c,self.at)
+        for itinerary in result['itineraries']:
+            self.assertFalse(any(leg.get('line') in ('P','Q')
+                                 for leg in itinerary['legs']),itinerary)
+        reverse=self.planner.plan(self.a,self.c,
+            '2026-11-17T08:45:00-03:00',mode='arriveBy')
+        for itinerary in reverse['itineraries']:
+            self.assertFalse(any(leg.get('line') in ('P','Q')
+                                 for leg in itinerary['legs']),itinerary)
 
     def test_bad_coords_rejected(self):
         with self.assertRaises(PlannerError):
