@@ -407,7 +407,24 @@ function ranked(ctx,preference,limit=6) {
       return a.walkMetersApprox-b.walkMetersApprox||fastest(a,b)||a.transfers-b.transfers;
     return fastest(a,b)||a.walkMetersApprox-b.walkMetersApprox||a.transfers-b.transfers;
   });
-  return options.slice(0,limit);
+  // Reserve room for different combinations of bus lines, rather than
+  // spending all 32/56 slots on departures of the same combination.
+  // The chronological best candidates remain represented.
+  if(limit<=6)return options.slice(0,limit);
+  const selected=options.slice(0,Math.ceil(limit*.55));
+  const selectedKeys=new Set(selected.map(t=>t.legs.filter(l=>l.mode==='bus')
+    .map(l=>l.line).join('>')));
+  for(const trip of options){
+    if(selected.length>=limit)break;
+    const key=trip.legs.filter(l=>l.mode==='bus').map(l=>l.line).join('>');
+    if(selectedKeys.has(key))continue;
+    selectedKeys.add(key);selected.push(trip);
+  }
+  for(const trip of options){
+    if(selected.length>=limit)break;
+    if(!selected.includes(trip))selected.push(trip);
+  }
+  return selected;
 }
 async function metroHints(origin,destination,at,railHintMode='departAt'){
   try{
@@ -448,7 +465,9 @@ async function metroHints(origin,destination,at,railHintMode='departAt'){
 function seedStops(ctx,which) {
   const place=which==='start'?(ctx.backward?ctx.destination:ctx.origin)
                              :(ctx.backward?ctx.origin:ctx.destination);
-  const found=nearby(...place);
+  // Do not silently discard viable boarding stops in dense neighborhoods:
+  // the old fixed 22-candidate cap could omit the best 2-bus route.
+  const found=nearby(...place,ctx.accessRadius,ctx.accessLimit);
   if(which==='end'){
     for(const [metres,id] of found)ctx.ends.set(id,metres);
     return;
@@ -532,6 +551,7 @@ async function plan(params,seq) {
     onboard:new Map(),ends:new Map(),finals:[],pending:new Set(),
     scanned:0,partial:false,exceeded:false,
     maxLabels:expanded?24:MAX_LABELS,maxOnboard:expanded?24:MAX_ONBOARD,
+    accessRadius:expanded?1450:1100,accessLimit:expanded?80:48,
     partialReasons:{labels:0,onboard:0,finals:0,scanLimit:0},
     lo:backward?requested-MAX_HOURS*HOUR:requested,
     hi:backward?requested:requested+MAX_HOURS*HOUR};
@@ -548,9 +568,18 @@ async function plan(params,seq) {
       found:ctx.finals.length,scanned:ctx.scanned});
   }
   const graph=await ensureWalkingGraph();
-  let itineraries=ranked(ctx,preference,graph?32:6);
+  // P21: verify more than the first 32 timetable candidates on the OSM
+  // streets graph. Faster trips can be ranked after a crowd of unwalkable
+  // alternatives; pre-cutting them produced false "best route" claims.
+  const candidates=ranked(ctx,preference,graph?(expanded?96:56):6);
+  let itineraries=candidates;
+  let rejectedWalkCandidates=0;
   if(graph){
-    itineraries=itineraries.filter(t=>verifyWalking(t,ctx,graph));
+    itineraries=candidates.filter(t=>{
+      const valid=verifyWalking(t,ctx,graph);
+      if(!valid)rejectedWalkCandidates++;
+      return valid;
+    });
     const score=t=>preference==='leastWalking'?t.walkMetersApprox:
       preference==='leastTransfers'?t.transfers:
       backward?-Date.parse(t.departure):Date.parse(t.arrival);
@@ -565,6 +594,10 @@ async function plan(params,seq) {
     requestedAt:stamp(requested),itineraries,metroHints:hints,
     stats:{connectionsScanned:ctx.scanned,hoursScanned:hours.length,
       searchDepth:expanded?'expanded':'standard',
+      boardingStopRadiusMeters:ctx.accessRadius,
+      accessStopLimit:ctx.accessLimit,
+      walkCandidatesEvaluated:graph?candidates.length:0,
+      walkCandidatesRejected:rejectedWalkCandidates,
       labelsPerStopLimit:ctx.maxLabels,onboardLimit:ctx.maxOnboard,
       truncatedLabels:ctx.partial,partialReasons:ctx.partialReasons},
     pedestrianRouting:graph?'osm_walk_graph_with_unverified_access_snap':'approximate',
