@@ -80,6 +80,7 @@ function setup(grouped=false){
     fileMap['in/31/08.bin.gz']=backward;
     fileMap['out/64/07.bin.gz']=splitForward[7];
     fileMap['in/64/08.bin.gz']=backward;
+    fileMap['index.json']=JSON.stringify(manifest);
   }
   const fetched=[];
   const output=[];
@@ -207,9 +208,10 @@ test('reverse planning includes boarding margin before first bus',async()=>{
 
 test('shard inconsistency returns error rather than an invented route',async()=>{
   const t=setup(true);
-  await t.run('init',1);
-  // Manifest declares 2 connections in 07; now corrupt the length contract.
+  // Publish a mismatched manifest before the client reads its metadata.
   t.manifest.hours.out['31']['07'].connections=300;
+  t.fileMap['index.json']=JSON.stringify(t.manifest);
+  await t.run('init',1);
   await assert.rejects(async()=>t.run('plan',2,{params:{
     origin:{lat:t.origin[0],lng:t.origin[1]},
     destination:{lat:t.destination[0],lng:t.destination[1]},
