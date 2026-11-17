@@ -1,0 +1,9 @@
+# Independent, opt-in Workers Free candidate for PBH GPS.
+# No account secret, KV, D1, cron, paid service, or changes to Hub Worker.
+name = "externo-bh-gps-free"
+main = "src/index.mjs"
+compatibility_date = "2026-11-17"
+workers_dev = true
+
+# GPS is disabled by default in static/gps-config.json.
+# Deploy/enable only after confirming origin access and free usage.
