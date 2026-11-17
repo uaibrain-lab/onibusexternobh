@@ -22,6 +22,7 @@ from typing import Optional
 
 from .matcher import distance_m
 from .metro import BRT
+from .walking import PedestrianRouter
 
 WEEKDAYS = ('monday','tuesday','wednesday','thursday','friday','saturday','sunday')
 WALK_SPEED_M_S = 1.15
@@ -48,7 +49,8 @@ class PlannerError(ValueError):
 
 
 class JourneyPlanner:
-    def __init__(self, catalog_dir, metro=None):
+    def __init__(self, catalog_dir, metro=None, pedestrian=None):
+        self.pedestrian=pedestrian if pedestrian is not None else PedestrianRouter()
         self.catalog = pathlib.Path(catalog_dir)
         self.metro = metro
         self.ready = False
@@ -324,6 +326,69 @@ class JourneyPlanner:
                                 'confidence':'scheduled_gtfs_with_unverified_walks'})
         return results
 
+    def _stop_coordinates(self,key,origin,dest):
+        if key=='origin':
+            return origin
+        if key=='destination':
+            return dest
+        stop=self.stops.get(key)
+        return (float(stop[1]),float(stop[2])) if stop else None
+
+    def _verify_walks(self,itinerary,origin,dest,backward,deadline):
+        """Validate pedestrian connectivity and *actual* boarding feasibility.
+
+        Without a configured local OSM router this method is not called, and
+        output remains explicitly approximate. When configured, inaccessible
+        connections or missed buses are excluded, never guessed.
+        """
+        legs=itinerary['legs']
+        walked=0
+        for idx,leg in enumerate(legs):
+            if leg['mode']!='walk':
+                continue
+            a=self._stop_coordinates(leg['from'],origin,dest)
+            b=self._stop_coordinates(leg['to'],origin,dest)
+            if a is None or b is None:
+                return False
+            route=self.pedestrian.route(a,b)
+            if not route:
+                return False
+            leg['metersApprox']=route['distanceM']
+            leg['durationSeconds']=route['durationSeconds']
+            leg['pathVerified']=True
+            leg['walkSource']=route['source']
+            walked+=route['distanceM']
+            prev=legs[idx-1] if idx else None
+            next_leg=legs[idx+1] if idx+1<len(legs) else None
+            if prev:
+                when=dt.datetime.fromisoformat(prev['arrival']).timestamp()
+            elif backward and next_leg and next_leg['mode']=='bus':
+                when=(dt.datetime.fromisoformat(next_leg['departure']).timestamp()
+                      -TRANSFER_BUFFER_SECONDS-route['durationSeconds'])
+            else:
+                when=dt.datetime.fromisoformat(itinerary['departure']).timestamp()
+            finish=when+route['durationSeconds']
+            if next_leg and next_leg['mode']=='bus':
+                boarding=dt.datetime.fromisoformat(next_leg['departure']).timestamp()
+                if finish+TRANSFER_BUFFER_SECONDS>boarding:
+                    return False
+            leg['departure']=self._iso(when)
+            leg['arrival']=self._iso(finish)
+        if not legs:
+            return False
+        itinerary['walkMetersApprox']=walked
+        itinerary['departure']=legs[0]['departure']
+        itinerary['arrival']=legs[-1]['arrival']
+        first=dt.datetime.fromisoformat(itinerary['departure']).timestamp()
+        last=dt.datetime.fromisoformat(itinerary['arrival']).timestamp()
+        if first>=last or last-first>HORIZON_SECONDS:
+            return False
+        if backward and last>deadline:
+            return False
+        itinerary['durationMinutes']=round((last-first)/60)
+        itinerary['confidence']='scheduled_gtfs_with_osm_pedestrian_paths'
+        return True
+
     def _metro_hints(self,origin,dest,at):
         if not self.metro:
             return []
@@ -406,6 +471,18 @@ class JourneyPlanner:
             key=lambda x:(x['arrival'] if not backward else
                           -dt.datetime.fromisoformat(x['departure']).timestamp(),
                           x['walkMetersApprox'],x['transfers'])
+        # Validate walks against the actual pedestrian OSM network if a
+        # locally configured Valhalla router exists. Re-rank afterwards
+        # because real distances can change fastest/least-walking choices.
+        if self.pedestrian.enabled:
+            verified=[]
+            for option in candidates:
+                if self._verify_walks(option,origin,destination,backward,search_ts):
+                    verified.append(option)
+            walk_unavailable=bool(candidates) and not verified
+            candidates=verified
+        else:
+            walk_unavailable=False
         unique={}
         for option in sorted(candidates,key=key):
             sig=tuple((leg.get('tripId'),leg.get('from'),leg.get('to'))
@@ -414,11 +491,13 @@ class JourneyPlanner:
                 unique[sig]=option
             if len(unique)>=12:
                 break
-        return {'status':'partial' if stats['limited'] else 'ok',
+        return {'status': 'walking_unavailable' if walk_unavailable else
+                          'partial' if stats['limited'] else 'ok',
                 'mode':mode,'preference':preference,'requestedAt':at_dt.isoformat(),
                 'itineraries':list(unique.values())[:6],
                 'metroHints':self._metro_hints(origin,destination,at_dt),
                 'stats':stats,
+                'pedestrianRouting': 'local_osm' if self.pedestrian.enabled else 'approximate',
                 'notes':[
                     'Horários de ônibus são da tabela GTFS, NÃO ETA ajustado ao GPS.',
                     'Caminhadas e transferências usam distância geográfica estimada; ainda não há roteamento de pedestres pelas ruas.',
