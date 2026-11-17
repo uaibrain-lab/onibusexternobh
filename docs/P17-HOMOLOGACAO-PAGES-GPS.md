@@ -95,6 +95,40 @@ sem representar homologação de posições reais. Ele requer Playwright instala
 e navegador Chromium disponível. O comando é só para ambientes preparados para
 Playwright; se faltar, instale os requisitos de teste seguindo o workflow P9.
 
+## 17/11 — Recuperação após falha PowerShell/CORS
+
+Primeira execução de `Publicar-GPS-Homologacao.ps1 -AtualizarWorker
+-CriarProjeto -Publicar`: **18 testes Node, 4 testes Python,
+build de 141,13 MiB / 496 arquivos, config pública desativada OK**.
+Worker atualizado para `889bc033-d877-4069-954b-ea18a790f171`.
+O teste CORS de `Invoke-WebRequest` pelo PowerShell 5.1 lançou exceção,
+que a versão anterior ocultava. **Não foi criado nem implantado Pages.**
+Sem a exceção original não é possível atribuir a falha conclusivamente
+a TLS, propagação pós-deploy, resposta HTTP ou configuração de Origin.
+
+A correção substitui `Invoke-WebRequest` por uma checagem read-only com
+`node scripts/check_staging_cors.mjs`. Ela mostra `httpStatus`,
+`originReceived`, `workerApiVersion`, e falha sem deploy se a origem
+não estiver autorizada. Inclui `-ReutilizarBuild`, que verifica o
+pacote existente e os hashes SHA-256 dos arquivos estáticos espelhados,
+sem repetir testes e reconstruir 141 MiB.
+
+Para retomar a **primeira** publicação sem repetir Worker e build:
+
+```powershell
+cd D:\Downloads\Externo-GPS-Teste
+git pull --ff-only origin feat/gps-worker-free-homologacao-p15-20261117
+node scripts/check_staging_cors.mjs
+
+# Execute SOMENTE se o comando anterior mostrar P17_CORS_PROBE_OK:
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\scripts\Publicar-GPS-Homologacao.ps1" -CriarProjeto -Publicar -ReutilizarBuild
+```
+
+Caso o verificador mostre `P17_CORS_PROBE_NETWORK_FAILED`, `403` ou
+`originReceived:null`, não republique cegamente. Encaminhe a saída,
+pois indicará a causa ou etapa para investigar. Se o projeto já tiver
+sido criado em tentativa posterior, retire `-CriarProjeto`.
+
 ## Critérios de homologação após publicar
 
 1. GET em `/externo/gps-config.json` mostra `enabled:true`,
