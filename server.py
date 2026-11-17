@@ -37,6 +37,8 @@ def run(host='127.0.0.1',port=8765,open_browser=False):
                     path='/'
                 if path=='/api/metro':
                     return self.payload(200,metro.listing())
+                if path=='/api/metro/news':
+                    return self.payload(200,metro.news())
                 if path=='/api/metro/line':
                     v=metro.line(qs.get('id',[''])[0])
                     return self.payload(200,v) if v else self.payload(404,{'error':'Linha de metrô não encontrada'})
