@@ -78,13 +78,22 @@ function suggest(metro,origin,destination,epoch,mode='departAt'){
  for(const a of from)for(const b of to)for(const line of metro.lines){
   const ix=line.stations.indexOf(a.id),iy=line.stations.indexOf(b.id);
   if(!line.operational||ix<0||iy<0||ix===iy)continue;
-  const state=lineState(metro,line,epoch);
-  if(!state.open)continue;
   const ride=routeMinutes(metro,line,a.id,b.id);
   if(!ride)continue;
   const access=walkMs(dist(origin,[a.lat,a.lng])),
         egress=walkMs(dist(destination,[b.lat,b.lng]));
+  // Validate metro operating hours at estimated *boarding time*,
+  // rather than when the passenger leaves home (possibly before a long walk).
+  const checkAt=mode==='departAt'
+    ?epoch+access
+    :epoch-egress-Math.ceil(ride.max*MIN);
+  const state=lineState(metro,line,checkAt);
+  if(!state.open)continue;
   const wait=state.headway==null?null:Math.ceil(state.headway*MIN);
+  if(wait!=null&&mode==='departAt'){
+    const latestBoard=local(checkAt+wait);
+    if(latestBoard.date!==state.date||latestBoard.time>=state.hours.end)continue;
+  }
   const effectiveLow=access+Math.ceil(ride.min*MIN)+egress;
   const effectiveHigh=wait==null?null:access+wait+Math.ceil(ride.max*MIN)+egress;
   let timeWindow=null;
