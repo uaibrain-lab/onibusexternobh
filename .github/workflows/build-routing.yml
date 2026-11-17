@@ -43,6 +43,10 @@ jobs:
           assert x['tripCount']>10000, x
           assert x['stops']>1000, x
           assert len(x['files'])>100, x
+          assert x['schema']==3,x
+          assert len(x['binaryFiles'])==len(x['files']),x
+          assert len(x['stopIdsHash'])==64,x
+          print('UBR3_BINARY_INDEX_OK',len(x['binaryFiles']),'shards')
           print('Validado:', x['tripCount'],'viagens',x['stopTimeRows'],'registros',len(x['files']),'linhas')
           PY
       - name: Verificar busca real na base recém-gerada
