@@ -91,7 +91,7 @@ class RoutePlannerTests(unittest.TestCase):
         cls.temp.cleanup()
 
     def test_build_trip_sequences(self):
-        self.assertEqual(self.index['schema'],2)
+        self.assertEqual(self.index['schema'],3)
         self.assertEqual(self.index['tripCount'],6)
         self.assertEqual(self.index['stopTimeRows'],12)
         direct=self.planner._trips('D')
