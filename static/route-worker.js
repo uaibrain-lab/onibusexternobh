@@ -198,7 +198,9 @@ function emit(node,ctx) {
   const ending=ctx.ends.get(node.stop);
   if(ending!==undefined){
     const seconds=walkSeconds(ending),ms=seconds*1000;
-    const endTime=node.time+(ctx.backward?-ms:ms);
+    // Reverse planning reserves a minimum boarding buffer at the very first
+    // boarding point, just as forward planning does.
+    const endTime=node.time+(ctx.backward?-(ms+BUFFER):ms);
     if(endTime>=ctx.lo&&endTime<=ctx.hi){
       ctx.finals.push({node,time:endTime,meters:rounded(ending)});
       if(ctx.finals.length>1000){
@@ -258,7 +260,7 @@ function reconstruct(hit,ctx) {
   if(!ctx.backward)all.reverse();
   const endWalk=ctx.backward
     ?{mode:'walk',from:'origin',to:hit.node.stop,
-      departure:hit.time,arrival:hit.node.time,
+      departure:hit.time,arrival:hit.node.time-BUFFER,
       metersApprox:hit.meters,pathVerified:false}
     :{mode:'walk',from:hit.node.stop,to:'destination',
       departure:hit.node.time,arrival:hit.time,
@@ -501,6 +503,7 @@ self.onmessage=async event=>{
   const msg=event.data||{};
   const seq=Number(msg.seq)||++currentSeq;
   currentSeq=seq;
+  if(msg.kind==='cancel')return;
   try{
     if(msg.kind==='init'){
       await bootstrap(msg.baseUrl);
