@@ -12,9 +12,9 @@ test('UI integrada, GPS opcional desligado e métricas reais de navegador',async
   page.on('pageerror',error=>failures.push(error.message));
   await page.goto('/externo/',{waitUntil:'domcontentloaded'});
   await expect(page.locator('#quick-pontos')).toBeVisible();
-  await expect(page.locator('#nearbyStops .row-item').first()).toBeVisible({timeout:25000});
   const toggle=page.locator('#sheet-toggle');
   if(await toggle.isVisible())await toggle.click();
+  await expect(page.locator('#nearbyStops .row-item').first()).toBeVisible({timeout:25000});
   for(const pane of ['pontos','linhas','metro','rotas']){
     await page.locator('#quick-'+pane).click();
     await expect(page.locator('#'+pane+'Pane')).toBeVisible();
