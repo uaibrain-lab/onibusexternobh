@@ -172,6 +172,7 @@ async function loadMetro(){
   let metro=await api('/api/metro');
   state.metro=metro;
   renderMetroStations();renderMetroService();drawSoon();
+  const fare=document.createElement('p');fare.className='hint';fare.textContent='Tarifa divulgada: R$ '+Number(metro.fareBRL).toFixed(2).replace('.',',')+' · confirme condições e integrações na operadora.';$('metroService').append(fare);
   $('metroPlanned').textContent='Estações futuras, ainda sem operação: '+
     (metro.lines.find(l=>l.id==='2')?.plannedStations||[]).join(', ')+'.';
 }
@@ -198,6 +199,12 @@ async function focusMetroStation(id){
   const label=document.createElement('p');label.className='info-small';
   label.textContent='Em operação · '+detail.lines.map(n=>'Linha '+n).join(' / ')+(detail.interchange?' · Integração entre linhas':'');
   area.append(label);
+  const forecast=document.createElement('a');
+  forecast.className='metro-forecast-link';
+  forecast.href=detail.officialForecastUrl||'https://www.metrobh.com.br/va-de-metro/';
+  forecast.target='_blank';forecast.rel='noopener noreferrer';
+  forecast.textContent=detail.officialForecastUrl?'Consultar previsões oficiais desta estação ↗':'Consultar operação no site do Metrô BH ↗';
+  area.append(forecast);
   for(const service of detail.services){
     const p=document.createElement('p');p.className='info-small';
     p.textContent='Linha '+service.lineId+': funcionamento habitual '+service.stationHours.start+'–'+service.stationHours.end+
