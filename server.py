@@ -34,6 +34,10 @@ def run(host='127.0.0.1',port=8765,open_browser=False):
                 elif path=='/externo':
                     path='/'
                 if path=='/api/status': return self.payload(200,engine.status())
+                if path=='/api/eta-diagnostics':
+                    if self.client_address[0] not in ('127.0.0.1','::1'):
+                        return self.payload(403,{'error':'Acesso local apenas'})
+                    return self.payload(200,engine.eta_coverage_summary())
                 if path=='/api/routes': return self.payload(200,engine.routes_listing())
                 if path=='/api/route':
                     code=qs.get('code',[''])[0];pattern=qs.get('pattern',[None])[0]
