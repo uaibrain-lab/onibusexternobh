@@ -84,7 +84,14 @@ export function parseVehiclePositions(buffer,requestedRoutes,now=Date.now()){
   const found=new Map();
   let entities=0,headerPresent=false;
   fields(bytes,0,bytes.length,(f,w,a,b)=>{
-    if(f===1&&w===2){headerPresent=true;return}
+    if(f===1&&w===2){
+      let version='';
+      fields(bytes,a,b,(h,wire,start,end)=>{
+        if(h===1&&wire===2)version=string(bytes,start,end);
+      });
+      if(!/^[12]\\.\\d{1,3}$/.test(version))invalid();
+      headerPresent=true;return;
+    }
     if(f!==2||w!==2)return;
     if(++entities>MAX_ENTITIES)throw Error('GTFS_RT_TOO_MANY_ENTITIES');
     fields(bytes,a,b,(num,wire,start,end)=>{
