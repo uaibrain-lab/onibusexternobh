@@ -1,6 +1,6 @@
 # Ônibus Externo BH — futuro Externo do Hub UFMG
 
-**Estado:** P8 mobile-first em homologação; **sem deploy público**. O projeto continua independente enquanto o motor P7 é desenvolvido por outro agente. Não mesclar agora com a P7 ou com a branch paralela do metrô.
+**Estado:** P9 (continuidade mobile-first) em homologação; **sem deploy público**. O projeto continua independente enquanto o motor P7 é desenvolvido por outro agente. Não mesclar agora com a P7 ou com a branch paralela do metrô.
 
 ## Passageiro
 
@@ -12,6 +12,15 @@
 - Favoritos de linhas e pontos, com nomes personalizados locais por navegador e edição por diálogo. Os primeiros cinco pontos favoritos exibem prévia das próximas chegadas, sem precisar abrir cada ponto.
 - Botões e textos preparados prioritariamente para telas de celular; tema claro/escuro sincronizável com o Hub UFMG.
 - PWA instalável: cache restrito ao shell da interface (HTML, CSS, JS e ícones). **Nunca cacheia GPS, horários dinâmicos, localização nem tiles de mapa**; sem internet, favoritos locais são visíveis, mas chegadas não estão disponíveis.
+
+## Novidades P9 — consulta segura de sentidos e preparação do GTFS
+
+- A mesma linha pode ter **destinos distintos** no mesmo ponto: horários agora são apresentados por **linha + destino**, sem misturar os dois sentidos.
+- Se um único traçado GPS corresponder a múltiplos destinos, o ETA GPS não é atribuído a nenhum destino sem confirmação.
+- O painel oferece, quando houver, **outros pontos próximos com destinos diferentes**; a interface não supõe um lado específico da avenida.
+- Fonte de leitura e controles maiores nas chegadas para operar com uma mão no celular.
+- Ferramenta de renovação do GTFS com **validação antes da instalação local**: `python scripts/update_gtfs.py --archive ARQUIVO.zip`. Sem ativação automática, sem alterar produção.
+- Consulte [docs/P9-DIRECOES-ATUALIZACAO.md](docs/P9-DIRECOES-ATUALIZACAO.md) para limites e testes.
 
 ## Verdade e disponibilidade dos dados
 

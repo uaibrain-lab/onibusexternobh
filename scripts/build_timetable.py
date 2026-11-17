@@ -38,7 +38,7 @@ def build(archive, target=None):
             schedule[r['stop_id']][meta].append(sec)
             rows+=1
     path = target / 'timetable.json.gz'
-    with gzip.open(path, 'wt', encoding='utf-8', compresslevel=9) as out:
+    with gzip.open(path, 'wt', encoding='utf-8', compresslevel=5) as out:
         # one JSON per line, fast to load/validate while still compressing well
         for stop_id, groups in sorted(schedule.items()):
             encoded=[[route,service,dest,sorted(set(times))] for (route,service,dest),times in groups.items()]

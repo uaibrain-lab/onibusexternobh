@@ -114,7 +114,41 @@ $('allLineSearch').addEventListener('input',e=>renderAllLines(e.target.value));
 $('quick-pontos').onclick=()=>switchTab('pontos',true);
 $('quick-linhas').onclick=()=>switchTab('linhas',true);
 $('sheet-toggle').onclick=()=>{$('sheet').classList.contains('peek')?openSheet():closeSheet()};
-$('grab').onclick=()=>{$('sheet').classList.contains('peek')?openSheet():closeSheet()};
+// Swipe only on the handle: do not interfere with scrolling the list or map.
+let sheetDrag=null,skipSheetClick=false;
+const grab=$('grab');
+grab.addEventListener('pointerdown',e=>{
+  if(innerWidth>=760||!e.isPrimary)return;
+  const sheet=$('sheet');
+  sheetDrag={pointerId:e.pointerId,startY:e.clientY,startHeight:sheet.getBoundingClientRect().height,moved:false};
+  grab.setPointerCapture(e.pointerId);
+});
+grab.addEventListener('pointermove',e=>{
+  if(!sheetDrag||sheetDrag.pointerId!==e.pointerId)return;
+  const dy=sheetDrag.startY-e.clientY;
+  if(Math.abs(dy)<8&&!sheetDrag.moved)return;
+  sheetDrag.moved=true;
+  const sheet=$('sheet');
+  sheet.classList.remove('peek');
+  sheet.style.transition='none';
+  sheet.style.height=Math.max(82,Math.min(innerHeight*.82,sheetDrag.startHeight+dy))+'px';
+  $('body').setAttribute('aria-hidden','false');
+});
+function finishSheetSwipe(e){
+  if(!sheetDrag||sheetDrag.pointerId!==e.pointerId)return;
+  const moved=sheetDrag.moved, h=$('sheet').getBoundingClientRect().height;
+  sheetDrag=null;
+  const sheet=$('sheet');sheet.style.height='';sheet.style.transition='';
+  if(!moved)return;
+  skipSheetClick=true;
+  // Suppress the synthetic click fired after a touch drag.
+  if(h<(82+Math.min(innerHeight*.42,360))/2)closeSheet();
+  else if(h>(Math.min(innerHeight*.42,360)+innerHeight*.82)/2)openSheet(true);
+  else openSheet(false);
+}
+grab.addEventListener('pointerup',finishSheetSwipe);
+grab.addEventListener('pointercancel',finishSheetSwipe);
+grab.onclick=()=>{if(skipSheetClick){skipSheetClick=false;return}sheetDrag=null;$('sheet').classList.contains('peek')?openSheet():closeSheet()};
 function askLocation(){hideLocationPrompt();if(!window.isSecureContext||!navigator.geolocation){$('nearbyHint').textContent='Localização requer HTTPS ou localhost. Mostrando pontos próximos à UFMG.';openSheet();return}navigator.geolocation.getCurrentPosition(async p=>{const lat=p.coords.latitude,lng=p.coords.longitude;state.userPosition=[lat,lng];$('recenter').title='Minha localização';$('recenter').setAttribute('aria-label','Centralizar na minha localização');state.center=[lat,lng];state.zoom=15.5;drawSoon();scheduleMapStops();try{await loadNearbyStops(lat,lng,true);switchTab('pontos',true)}catch(e){reportError(e)}},()=>{$('nearbyHint').textContent='Localização não autorizada. Você ainda pode buscar pontos no mapa da UFMG.';openSheet()},{enableHighAccuracy:false,timeout:12000,maximumAge:60000})}
 $('loc').onclick=askLocation;$('allowLocation').onclick=askLocation;$('skipLocation').onclick=hideLocationPrompt;
 function hideLocationPrompt(){$('locationPrompt').hidden=true;try{sessionStorage.setItem('bh-externo-location-intro-seen','yes')}catch(e){}}
@@ -237,7 +271,7 @@ async function openStopDetail(id,silent=false){const seq=++stopDetailSeq;const a
 if(favorites.stops.includes(String(id))&&favorites.names[id]!==data.name){favorites.names[id]=data.name;saveFavorites()}
 area.replaceChildren();const head=document.createElement('div');head.className='stop-head';const text=document.createElement('div');let title=document.createElement('h2');title.textContent=data.name;const small=document.createElement('small');small.textContent='Próximas chegadas';text.append(title,small);const back=document.createElement('button');back.type='button';back.className='stop-back';back.textContent='‹';back.setAttribute('aria-label','Voltar para pontos');back.onclick=closeStopDetail;head.append(back,text,makeShareButton(data),starButton('stops',data.id));area.append(head);
 if(!data.routes.length){let p=document.createElement('p');p.className='muted-empty';p.textContent='Nenhuma linha vinculada a este ponto na versão atual do GTFS.';area.append(p)}
-for(const r of data.routes){const b=document.createElement('button');b.type='button';b.className='route-arrival';const n=document.createElement('span');n.className='num';n.textContent=r.code;const label=document.createElement('span');label.className='arrival-info';const name=document.createElement('b');name.textContent=r.name;const sub=document.createElement('small');sub.textContent=r.nextArrival?`${r.nextArrival.destination||''}${r.nextArrival.type==='gps_estimate'?' · ver no mapa':''}`.replace(/^ · /,''):'Sem horário disponível';label.append(name,sub);const eta=document.createElement('span');eta.className='eta';if(r.nextArrival){eta.textContent=r.nextArrival.type==='gps_estimate'?`≈ ${r.nextArrival.minutes} min`:(r.nextArrival.minutes<=0?'Agora':`${r.nextArrival.minutes} min`);const when=document.createElement('small');when.textContent=r.nextArrival.type==='gps_estimate'?'Estimativa GPS':'Tabela · '+fmtTime(r.nextArrival.at).slice(0,5);eta.append(when);
+for(const r of data.routes){const b=document.createElement('button');b.type='button';b.className='route-arrival';const n=document.createElement('span');n.className='num';n.textContent=r.code;const label=document.createElement('span');label.className='arrival-info';const name=document.createElement('b');name.textContent=r.destination||r.nextArrival?.destination||r.name;const sub=document.createElement('small');sub.textContent=(r.destination?'Sentido / destino · '+r.name:r.name)+(r.nextArrival?.type==='gps_estimate'?' · ver ônibus no mapa':'');label.append(name,sub);const eta=document.createElement('span');eta.className='eta';if(r.nextArrival){eta.textContent=r.nextArrival.type==='gps_estimate'?`≈ ${r.nextArrival.minutes} min`:(r.nextArrival.minutes<=0?'Agora':`${r.nextArrival.minutes} min`);const when=document.createElement('small');when.textContent=r.nextArrival.type==='gps_estimate'?'Estimativa GPS':'Tabela · '+fmtTime(r.nextArrival.at).slice(0,5);eta.append(when);
   if(r.nextArrival.type==='scheduled'&&r.nextArrival.following?.length){
     const extra=document.createElement('small');extra.className='arrival-following';
     extra.textContent='Depois: '+r.nextArrival.following.map(x=>fmtTime(x.at).slice(0,5)).join(' · ');
@@ -247,6 +281,17 @@ for(const r of data.routes){const b=document.createElement('button');b.type='but
     const last=document.createElement('small');last.className='arrival-last';last.textContent='Última de hoje';eta.append(last)
   }
 }else{eta.textContent='—';const status=document.createElement('small');status.textContent='Sem previsão';eta.append(status)}b.append(n,label,eta);b.onclick=async()=>{const gps=r.nextArrival?.type==='gps_estimate'&&r.nextArrival.vehicleId;const key=gps?r.nextArrival.vehicleSource+'|'+r.nextArrival.vehicleId:null;if(!gps)switchTab('linhas',true);try{await selectLine(r.code,{fromStop:true,vehicleKey:key});if(!gps)switchTab('linhas',true)}catch(e){reportError(e)}};area.append(b)}
+if(data.alternatives?.length){
+  const alt=document.createElement('details');alt.className='stop-alternatives';
+  const summary=document.createElement('summary');summary.textContent='Outros pontos próximos';alt.append(summary);
+  const explanation=document.createElement('p');explanation.className='stop-forecast-note';
+  explanation.textContent='Algumas linhas têm destinos diferentes em pontos próximos. Confira o sentido antes de embarcar.';alt.append(explanation);
+  for(const nearby of data.alternatives){
+    const button=document.createElement('button');button.type='button';button.className='row-item';
+    button.textContent=nearby.name+' · '+nearby.distanceM+' m';button.onclick=()=>focusStop(nearby);alt.append(button);
+  }
+  area.append(alt);
+}
 const note=document.createElement('p');note.className='stop-forecast-note';note.textContent=data.routes.some(r=>r.nextArrival?.type==='gps_estimate')?'≈ GPS estimado. Outros horários seguem a tabela.':(data.timetableAvailable?'Horários da tabela; podem variar.':'Sem horários disponíveis.');area.append(note);renderFavoriteStops();drawSoon()}
 
 switchTab('pontos');renderStops();
