@@ -130,7 +130,7 @@ async function selectLine(code,{fromStop=false,vehicleKey=null,destination=null}
      ||(r.code+' — '+r.name).toUpperCase()===String(code).trim().toUpperCase());
   if(!route){$('lineTitle').textContent='Linha não encontrada';return}
   const seq=++routeSelectionSeq;
-  if(!fromStop){state.selectedStop=null;state.stopCoordinates=null;}
+  if(!fromStop){if(state.selectedStop)closeStopDetail();else{state.selectedStop=null;state.stopCoordinates=null;}}
   const stop=fromStop&&state.selectedStop?String(state.selectedStop):null;
   state.route=route;state.geometry=null;state.fleet=null;state.pattern='';state.selectedVehicle='';
   $('lineInput').value=route.code;$('lineTitle').textContent=route.name;
@@ -544,6 +544,21 @@ async function openStopDetail(id,silent=false){
   drawSoon();
 }
 
+window.addEventListener('offline',()=>{
+  statusLed(false,'Sem conexão · dados podem estar desatualizados');
+  $('stopDetail').classList.add('stale-arrivals');
+  const note=$('stopDetail').querySelector('[data-note]');
+  if(note)note.textContent='Sem internet: horários e trajetos podem estar desatualizados.';
+});
+window.addEventListener('online',()=>{
+  if(state.selectedStop)openStopDetail(state.selectedStop,true).catch(reportError);
+  if(!isStaticOnly)refresh().catch(reportError);
+});
+document.addEventListener('keydown',event=>{
+  if(event.key!=='Escape'||document.querySelector('dialog[open]'))return;
+  if(state.selectedStop&&activeTab==='pontos')closeStopDetail();
+  else if(window.innerWidth<760)closeSheet();
+});
 if(isStaticOnly){
   $('sourceText').textContent='GTFS · horários programados, GPS indisponível';
   switchTab('pontos');renderStops();
@@ -556,8 +571,8 @@ loadRoutes().catch(reportError);
 if(isStaticOnly)loadMapStops().catch(reportError);
 if(!isStaticOnly){
   setInterval(()=>{if(document.hidden)return;tickVehicleAges();if(state.fleet?.vehicles?.length)drawSoon()},15000);
-  setInterval(()=>refresh().catch(reportError),35000);
-  setInterval(()=>{if(!document.hidden&&state.selectedStop)openStopDetail(state.selectedStop,true).catch(reportError)},60000);
+  setInterval(()=>{if(!document.hidden&&navigator.onLine)refresh().catch(reportError)},35000);
+  setInterval(()=>{if(!document.hidden&&navigator.onLine&&state.selectedStop)openStopDetail(state.selectedStop,true).catch(reportError)},60000);
 }
 
 
