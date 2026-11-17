@@ -1,3 +1,19 @@
+# Externo BH — Integração única de ônibus, metrô, GPS e rotas
+
+**Estado:** branch isolada de integração; **sem deploy e sem merge em `main` ou alteração no Hub UFMG**.
+
+Esta versão reúne a experiência de quatro abas: **Pontos, Linhas, Metrô e Rotas**. O motor de planejamento GTFS com caminhada por OSM real opera no navegador na versão estática gratuita. Os pontos agora têm horários de tabela por **sentido e destino**, calculados com 256 pequenos arquivos GTFS carregados por demanda. Favoritos, compartilhamento de ponto, agrupamento no mapa e painel mobile vêm da linha de desenvolvimento P14.
+
+- **Modo estático gratuito:** `py -3 scripts/build_static_site.py`; depois `py -3 -m http.server 8765 --directory dist` e abrir `http://127.0.0.1:8765/externo/`. **Sem GPS ao vivo**, identificado na interface.
+- **Modo local com GPS PBH:** `py -3 server.py --port 8765`, abrindo `http://127.0.0.1:8765/externo/`. GPS/ETA conservador disponível apenas quando a fonte responder; não é um serviço hospedado no Spark.
+- **Integração ao Hub:** ainda **não realizada**. Este projeto preserva o prefixo `/externo/` e seus recursos para integração posterior sem dependência de Blaze, VPS ou API paga.
+
+**Status de QA:** validação de sintaxe JS e testes isolados de estimativas/destinos feitos; o GitHub Actions ainda não iniciou os jobs completos nesta rodada e não há homologação Android física. Não classificar como versão de produção.
+
+Detalhes, cronograma e riscos: [docs/INTEGRACAO-UNICA-20261117.md](docs/INTEGRACAO-UNICA-20261117.md).
+
+---
+
 # P9 — Quatro abas em hospedagem estática, ruas OSM e metrô com incerteza
 
 **Entrega em desenvolvimento; nenhum deploy em produção.** As abas **Pontos, Linhas, Metrô e Rotas** foram conectadas a catálogos públicos GTFS para hospedagem grátis. Os veículos ao vivo ainda não estão disponíveis na versão estática, e a interface mostra essa limitação em vez de inventar posições GPS.
