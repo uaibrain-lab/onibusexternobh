@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - feat/externo-p5-planejador-20261117
+      - feat/externo-p6-precisao-20261117
     paths:
       - scripts/build_routing.py
       - .github/workflows/build-routing.yml
@@ -40,6 +40,7 @@ jobs:
           import json
           from pathlib import Path
           x=json.loads(Path('catalog/routing-index.json').read_text(encoding='utf-8'))
+          assert x['schema']==2, x
           assert x['tripCount']>10000, x
           assert x['stops']>1000, x
           assert len(x['files'])>100, x
@@ -76,9 +77,9 @@ jobs:
           # Novos commits de interface não devem fazer perder o índice já calculado.
           # Tentar sempre fast-forward, sem force push ou sobrescrita de histórico.
           for attempt in $(seq 1 12); do
-            git fetch origin feat/externo-p5-planejador-20261117
-            git rebase origin/feat/externo-p5-planejador-20261117
-            if git push origin HEAD:feat/externo-p5-planejador-20261117; then
+            git fetch origin feat/externo-p6-precisao-20261117
+            git rebase origin/feat/externo-p6-precisao-20261117
+            if git push origin HEAD:feat/externo-p6-precisao-20261117; then
               echo "ROUTING_DATA_PUSH_OK"
               exit 0
             fi
