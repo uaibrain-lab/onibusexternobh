@@ -4,9 +4,11 @@ on:
   push:
     branches:
       - feat/externo-p5-planejador-20261117
+      - feat/externo-p6-precisao-roteador-20261117
     paths:
       - transit/planner.py
       - tests/test_planner.py
+      - scripts/build_routing.py
       - .github/workflows/test-routing-real.yml
   workflow_dispatch:
 
@@ -47,6 +49,8 @@ jobs:
             print('ROUTING_BENCH',mode,preference,round(elapsed,2),'sec',
                   r['status'],len(r['itineraries']),'routes',r.get('stats'),flush=True)
             assert r['status'] in ('ok','partial')
+            assert r['stats']['candidateRoutes'] > 0
+            assert r['stats']['candidateTrips'] > 0
             for trip in r['itineraries']:
               assert 0<=trip['transfers']<=2
               assert trip['departure']<=trip['arrival']
