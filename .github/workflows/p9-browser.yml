@@ -8,6 +8,12 @@ on:
       - feat/gps-worker-free-homologacao-p15-20261117
     paths:
       - static/app.js
+      - static/style.css
+      - static/hub-parity.css
+      - scripts/build_static_site.py
+      - scripts/Publicar-GPS-Homologacao.ps1
+      - tests/browser-p20-map-ui.spec.cjs
+      - tests/test_p20_map_layout.cjs
       - static/static-bus.js
       - static/route-worker.js
       - static/walk-network.js
