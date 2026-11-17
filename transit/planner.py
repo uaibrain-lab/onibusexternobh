@@ -216,8 +216,10 @@ class JourneyPlanner:
                 edge=(self._edge_walk(sid,old.stop,meters,t,old.time) if backward
                       else self._edge_walk(old.stop,sid,meters,old.time,t))
                 node=Label(sid,t,old.walked+meters*WALK_FACTOR,old.rides,old,edge)
-                if self._insert_global(history,node,backward):
-                    self._insert(labels,node,backward)
+                if not any(self._dominates(other,node,backward)
+                           for other in history.get(sid,())):
+                    if self._insert(labels,node,backward):
+                        self._insert_global(history,node,backward)
 
     def _scan_round(self,prior,search_ts,backward,stats,history):
         next_labels={}
@@ -275,8 +277,10 @@ class JourneyPlanner:
                                 edge=self._edge_bus(code,trip_id,headsign,board_sid,sid,
                                                     board_epoch,midnight+arr)
                             node=Label(sid,epoch,earlier.walked,earlier.rides+1,earlier,edge)
-                            if self._insert_global(history,node,backward):
-                                self._insert(next_labels,node,backward)
+                            if not any(self._dominates(old,node,backward)
+                                       for old in history.get(sid,())):
+                                if self._insert(next_labels,node,backward):
+                                    self._insert_global(history,node,backward)
                         # Add board possibilities after dropping at this stop.
                         # A trip cannot be entered where boarding is forbidden.
                         # In backward search, the reachable stop is an ALIGHTING stop.
