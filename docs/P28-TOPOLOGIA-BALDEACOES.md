@@ -39,3 +39,28 @@ Saída: \`sharedStopIds\` e \`distinctStopPairsWithinRadius\`, **não** ETA. Se 
 5. QA mobile (360px e 390px), CPU/memória e equivalência gratuita de hospedagem antes de deploy.
 
 **Handoff obrigatório:** a próxima IA deve ler o estado de branch, commits mais recentes e workflows; anotar nesta seção os resultados reais da auditoria e do CI, atualizar pendências, e verificar arquivo SHA antes de qualquer edição. Não tocar em Hub/ru-hoje, não dar merge nem realizar deploy.
+
+
+## Homologação confirmada — GitHub Actions
+
+Commit de implementação e relatório: \`a4424f3885fd52de743f868db7acd61feaad3b7e\`.
+Execução de integração: https://github.com/uaibrain-lab/onibusexternobh/actions/runs/44225491488
+
+Resultado observado diretamente nos logs, em 18/11/2026:
+- **133 testes Python passaram** (unittest), incluindo a nova auditoria.
+- **130 testes JavaScript passaram**, zero falhas.
+- Build estático passou com 9.828 paradas.
+- Auditoria real \`TRANSFER_TOPOLOGY_AUDIT_OK\` com:
+  - 9106+5106: 22 \`sharedStopIds\`, 217 \`distinctStopPairsWithinRadius\`;
+  - 9209+51: 0 compartilhadas, 47 pares distintos até 450 m;
+  - 9209+67: 4 compartilhadas, 21 pares distintos até 450 m.
+- \`P27_OSM_GRAPH_COVERAGE_OK\` e \`HTTP_INTEGRADO_OK\` aprovados.
+- Os resultados acima coincidem com a análise independente da cópia
+  original GTFS do usuário, sem consulta a APIs de terceiros.
+- **Playwright/P9 é verificação separada; não presumir homologação da
+  revisão sem conferir o workflow específico.**
+- Não houve deploy em Pages/Firebase/Worker, nem integração ao Hub.
+
+Próxima IA: atualizar este bloco com o SHA do próximo commit de código,
+CI, Playwright e mudanças de dados quando existirem, sem apagar
+pendências anteriores e sem duplicar a automação existente.
