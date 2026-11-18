@@ -416,7 +416,18 @@ function verifyWalking(itinerary,ctx,graph,reasons=null){
     const from=locationOf(leg.from,ctx),to=locationOf(leg.to,ctx);
     if(!from||!to)return reject('missingWalkingCoordinates');
     const route=graph.route(from,to,i===0||i===legs.length-1?2500:800);
-    if(!route)return reject('streetPathUnavailable');
+    if(!route){
+      if(reasons&&typeof graph.explainFailure==='function'){
+        // Extra graph-component computation is diagnostic-only and local.
+        // Never include origin/destination coordinates in public output.
+        const details=graph.explainFailure(from,to,
+          i===0||i===legs.length-1?2500:800);
+        const name=details?.reason;
+        if(typeof name==='string'&&/^[A-Za-z]{3,55}$/.test(name))
+          reasons['street_'+name]=(reasons['street_'+name]||0)+1;
+      }
+      return reject('streetPathUnavailable');
+    }
     leg.pathVerified=true;
     leg.geometry=route.geometry;
     leg.snapMeters=route.snapMeters;
