@@ -62,6 +62,53 @@ const WalkGraph=(()=>{
         }
       return best;
     }
+    distancesToStops(origin,points,limitMeters=2500){
+      // Dijkstra ONCE for all candidate stops near the requested endpoint.
+      // Repeated A* per stop would scale poorly on Android. The result
+      // contains real street-network walk cost (not crow-flies distance).
+      if(!Array.isArray(points)||points.length>160||!Number.isFinite(limitMeters)||
+         limitMeters<=0||limitMeters>3500)return new Map();
+      const root=this.nearest(origin);
+      if(!root)return new Map();
+      const targets=new Map();
+      for(const item of points){
+        if(!Number.isInteger(item.index)||!Array.isArray(item.coords))continue;
+        const snap=this.nearest(item.coords);
+        if(!snap)continue; // no verified pedestrian access, never fabricate
+        if(!targets.has(snap[0]))targets.set(snap[0],[]);
+        targets.get(snap[0]).push([item.index,snap[1]]);
+      }
+      const results=new Map();
+      const travelTimes=new Map([[root[0],0]]);
+      const heap=new Heap();
+      heap.push([0,root[0]]);
+      let expanded=0,found=0;
+      while(heap.length&&expanded<30000){
+        const [meters,node]=heap.pop();
+        if(meters>limitMeters-root[1])break;
+        if(meters>travelTimes.get(node))continue;
+        expanded++;
+        for(const [index,stopSnap] of targets.get(node)||[]){
+          const distance=meters+root[1]+stopSnap;
+          if(distance>limitMeters)continue;
+          results.set(index,{
+            meters:Math.round(distance),
+            seconds:Math.ceil(distance/1.15)+35,
+            snapMeters:Math.round(root[1]+stopSnap)
+          });
+          found++;
+        }
+        if(found>=points.length)return results;
+        for(const [to,edgeMeters] of this.adj[node]){
+          const next=meters+edgeMeters;
+          if(next>limitMeters-root[1]||next>= (travelTimes.get(to)??Infinity))
+            continue;
+          travelTimes.set(to,next);
+          heap.push([next,to]);
+        }
+      }
+      return results;
+    }
     route(from,to,limitMeters=2500){
       const a=this.nearest(from),b=this.nearest(to);
       if(!a||!b)return null;
