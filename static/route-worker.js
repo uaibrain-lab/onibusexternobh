@@ -485,6 +485,29 @@ function summarizeTravelTimes(itinerary){
     basis:'GTFS scheduled, walking access approximate'
   };
 }
+function paretoJourneys(items,backward){
+  // Multi-criteria nondominance inspired by OTP Range RAPTOR, applied AFTER
+  // timetable scanning + OSM verification. Unlike a score alone, this
+  // preserves a route that trades slightly later arrival for fewer
+  // transfers, shorter walk, or shorter elapsed trip.
+  const data=items.map(t=>{
+    const first=Date.parse(t.departure),last=Date.parse(t.arrival);
+    return {time:backward?-first:last,elapsed:last-first,
+      walking:Math.max(0,Number(t.walkMetersApprox)||0),
+      transfers:Math.max(0,Number(t.transfers)||0),
+      risky:journeyQuality(t).tightTransfers};
+  });
+  return items.filter((_,i)=>{
+    const b=data[i];
+    if(!Number.isFinite(b.time)||!Number.isFinite(b.elapsed))return false;
+    return !data.some((a,j)=>i!==j&&
+      a.time<=b.time&&a.elapsed<=b.elapsed&&
+      a.walking<=b.walking&&a.transfers<=b.transfers&&
+      a.risky<=b.risky&&
+      (a.time<b.time||a.elapsed<b.elapsed||a.walking<b.walking||
+       a.transfers<b.transfers||a.risky<b.risky));
+  });
+}
 function chooseDiverseItineraries(sorted,limit=6){
   // Keep the earliest/shortest verified option first, but prevent five near-
   // duplicate departures from crowding out useful alternatives (e.g. 5106).
@@ -684,6 +707,8 @@ async function plan(params,seq) {
     itineraries.sort((a,b)=>score(a)-score(b)||
       a.walkMetersApprox-b.walkMetersApprox||a.transfers-b.transfers);
   }
+  const streetVerified=itineraries;
+  itineraries=paretoJourneys(streetVerified,backward);
   let diagnostics=null;
   if(params.diagnostics===true){
     // Opt-in offline diagnostics: expose WHY a requested combination is
@@ -696,7 +721,8 @@ async function plan(params,seq) {
     };
     const all=ranked(ctx,preference,1000);
     const allCounts=counts(all),shortCounts=counts(candidates);
-    const validCounts=counts(itineraries);
+    const validCounts=counts(streetVerified);
+    const paretoCounts=counts(itineraries);
     const requested=Array.isArray(params.focusCombinations)
       ?params.focusCombinations.filter(x=>typeof x==='string'&&
         /^[a-zA-Z0-9+ -]{2,80}$/.test(x)).slice(0,12)
@@ -705,11 +731,13 @@ async function plan(params,seq) {
       lines,
       generated:allCounts.get(lines)||0,
       shortlisted:shortCounts.get(lines)||0,
-      streetVerified:validCounts.get(lines)||0
+      streetVerified:validCounts.get(lines)||0,
+      paretoRetained:paretoCounts.get(lines)||0
     }));
     diagnostics={originalFinalLabels:ctx.finals.length,
       fullUniqueItineraries:all.length,shortlisted:candidates.length,
-      passedStreetVerification:itineraries.length,
+      passedStreetVerification:streetVerified.length,
+      paretoRetained:itineraries.length,
       combinationsGenerated:allCounts.size,
       combinationsShortlisted:shortCounts.size,
       combinationsStreetVerified:validCounts.size,
@@ -737,6 +765,7 @@ async function plan(params,seq) {
       inaccessibleStreetCandidates:ctx.accessStats.unreachableStops,
       walkCandidatesEvaluated:graph?candidates.length:0,
       walkCandidatesRejected:rejectedWalkCandidates,
+      paretoRetainedBeforeResultLimit:diagnostics?.paretoRetained??itineraries.length,
       labelsPerStopLimit:ctx.maxLabels,onboardLimit:ctx.maxOnboard,
       truncatedLabels:ctx.partial,partialReasons:ctx.partialReasons},
     pedestrianRouting:graph?'osm_walk_graph_with_unverified_access_snap':'approximate',
