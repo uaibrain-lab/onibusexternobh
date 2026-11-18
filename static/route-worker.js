@@ -429,6 +429,29 @@ function ranked(ctx,preference,limit=6) {
   }
   return selected;
 }
+function summarizeTravelTimes(itinerary){
+  // Separate scheduled waiting from riding and walking, so a 56 min route
+  // can be compared meaningfully to another planner. These are elapsed
+  // GTFS timetable times; they are NOT GPS predictions or traffic models.
+  const start=Date.parse(itinerary.departure),end=Date.parse(itinerary.arrival);
+  if(!Number.isFinite(start)||!Number.isFinite(end)||end<=start)return null;
+  const total=end-start;
+  let walk=0,ride=0;
+  for(const leg of itinerary.legs||[]){
+    const from=Date.parse(leg.departure),to=Date.parse(leg.arrival);
+    if(!Number.isFinite(from)||!Number.isFinite(to)||to<from)return null;
+    if(leg.mode==='walk')walk+=to-from;
+    else if(leg.mode==='bus')ride+=to-from;
+  }
+  if(walk+ride>total+60000)return null; // Discontinuous/overlapping GTFS.
+  return {
+    totalMinutes:Math.ceil(total/MIN),
+    walkingMinutes:Math.round(walk/MIN),
+    onboardMinutes:Math.round(ride/MIN),
+    waitingMinutes:Math.max(0,Math.round((total-walk-ride)/MIN)),
+    basis:'GTFS scheduled, walking access approximate'
+  };
+}
 function chooseDiverseItineraries(sorted,limit=6){
   // Keep the earliest/shortest verified option first, but prevent five near-
   // duplicate departures from crowding out useful alternatives (e.g. 5106).
@@ -607,6 +630,10 @@ async function plan(params,seq) {
       a.walkMetersApprox-b.walkMetersApprox||a.transfers-b.transfers);
   }
   itineraries=chooseDiverseItineraries(itineraries,6);
+  for(const trip of itineraries){
+    const summary=summarizeTravelTimes(trip);
+    if(summary)trip.timeBreakdown=summary;
+  }
   const hints=await metroHints(origin,destination,requested,mode);
   return {
     status:graph&&!itineraries.length&&ctx.finals.length?'walking_unavailable':
