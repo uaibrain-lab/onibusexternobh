@@ -7,7 +7,7 @@
 'use strict';
 const GeoPlaces=(()=>{
   const BASE='https://photon.komoot.io/api/';
-  const BBOX={south:-20.45,north:-19.45,west:-44.45,east:-43.45};
+  const BBOX={south:-20.45,north:-19.50,west:-44.40,east:-43.50};
   const cache=new Map();
   let lastRequest=0;
   const norm=q=>String(q||'').trim().replace(/\s+/g,' ');
@@ -51,7 +51,7 @@ const GeoPlaces=(()=>{
     url.searchParams.set('limit','12');
     url.searchParams.set('lat','-19.9208'); // fixed BH center, never user's GPS
     url.searchParams.set('lon','-43.9378');
-    url.searchParams.set('bbox','-44.45,-20.45,-43.45,-19.45');
+    url.searchParams.set('bbox',[BBOX.west,BBOX.south,BBOX.east,BBOX.north].join(','));
     const response=await fetchFn(url.href,{method:'GET',mode:'cors',
       headers:{Accept:'application/json'},cache:'no-store',
       signal:AbortSignal.timeout(10000)});
