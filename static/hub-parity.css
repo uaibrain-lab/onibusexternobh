@@ -340,3 +340,11 @@ html,body{max-width:100%;overflow-x:hidden}
   font-size:11px;line-height:1.5;overflow-wrap:anywhere;
   color:var(--mut);background:var(--bg2);border:1px solid var(--line)
 }
+
+/* P23: caution for GTFS transfers under 2 minutes with OSM walking. */
+.route-transfer-warning{
+  border:1px solid var(--line);border-left:3px solid #cf8b34;
+  background:var(--bg2);border-radius:8px;
+  padding:8px 10px;margin:0 0 8px;font-size:11px;line-height:1.5;
+  overflow-wrap:anywhere;color:var(--mut)
+}
