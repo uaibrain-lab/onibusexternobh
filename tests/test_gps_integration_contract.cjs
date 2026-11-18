@@ -44,7 +44,10 @@ function setup(enabled){
 }
 test('default static package remains GPS-free without paid dependencies',()=>{
   assert.equal(config.enabled,false);
-  assert.equal(config.endpoint,'');
+  assert.equal(config.provider,'gtfs_rt');
+  // The source has a fixed official GPS relay, but it is disabled by default;
+  // merely storing its URL must never trigger traffic or a paid service.
+  assert.equal(config.endpoint,'https://externo-bh-gps-free.hubufmg.workers.dev/api/gps');
   assert.ok(build.includes('gps-config.json'));
   assert.ok(build.includes('live-gps.js'));
   assert.ok(build.includes('gps-nl-map.json'));
