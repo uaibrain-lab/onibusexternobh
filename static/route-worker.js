@@ -709,6 +709,7 @@ async function plan(params,seq) {
   }
   const streetVerified=itineraries;
   itineraries=paretoJourneys(streetVerified,backward);
+  const paretoRetainedCount=itineraries.length;
   let diagnostics=null;
   if(params.diagnostics===true){
     // Opt-in offline diagnostics: expose WHY a requested combination is
@@ -765,7 +766,7 @@ async function plan(params,seq) {
       inaccessibleStreetCandidates:ctx.accessStats.unreachableStops,
       walkCandidatesEvaluated:graph?candidates.length:0,
       walkCandidatesRejected:rejectedWalkCandidates,
-      paretoRetainedBeforeResultLimit:diagnostics?.paretoRetained??itineraries.length,
+      paretoRetainedBeforeResultLimit:paretoRetainedCount,
       labelsPerStopLimit:ctx.maxLabels,onboardLimit:ctx.maxOnboard,
       truncatedLabels:ctx.partial,partialReasons:ctx.partialReasons},
     pedestrianRouting:graph?'osm_walk_graph_with_unverified_access_snap':'approximate',
