@@ -66,6 +66,15 @@ def feed(trip_id="trip-one",code="5102",date="20261117",
 
 
 class AppCatalogTests(unittest.TestCase):
+    def test_service_calendar_weekdays_and_exception_locale_independent(self):
+        with tempfile.TemporaryDirectory() as folder:
+            fixture(folder, True)
+            meta=json.loads((Path(folder)/"scan/index.json").read_text())
+            self.assertTrue(audit.service_active(meta, 0, "20261117"))
+            self.assertFalse(audit.service_active(meta, 0, "20261118"))
+            self.assertFalse(audit.service_active(meta, 0, "20261121"))
+            self.assertIsNone(audit.service_active(meta, 0, "20261399"))
+
     def test_exact_trip_service_start_stop_id_and_original_sequence(self):
         with tempfile.TemporaryDirectory() as folder:
             fixture(folder,True)
