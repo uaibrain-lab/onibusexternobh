@@ -213,7 +213,7 @@ function emit(node,ctx) {
     // boarding point, just as forward planning does.
     const endTime=node.time+(ctx.backward?-(ms+BUFFER):ms);
     if(endTime>=ctx.lo&&endTime<=ctx.hi){
-      ctx.finals.push({node,time:endTime,meters});
+      ctx.finals.push({node,time:endTime,meters,endingSeconds:seconds});
       if(ctx.finals.length>1000){
         ctx.partial=true;ctx.partialReasons.finals++;ctx.finals.splice(1000);
       }
@@ -284,7 +284,10 @@ function reconstruct(hit,ctx) {
   if(ctx.backward&&legs.at(-1)?.mode==='walk'){
     const lastBus=buses.at(-1);
     const walk=legs.at(-1);
-    const duration=walkSeconds(walk.metersApprox/WALK_FACTOR)*1000;
+    // Reuse the real street-network walk time, not a second Euclidean
+    // estimate. This matters for arriveBy routes near the deadline.
+    const duration=(hit.endingSeconds??walkSeconds(
+      walk.metersApprox/WALK_FACTOR))*1000;
     walk.departure=lastBus.arrival;walk.arrival=lastBus.arrival+duration;
     if(walk.arrival>ctx.requested)return null;
   }
