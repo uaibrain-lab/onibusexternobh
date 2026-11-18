@@ -1286,6 +1286,14 @@ function renderRouteResults(data){
        :'Caminhadas aproximadas; os percursos pelas ruas ainda não foram verificados.'),
       data.status==='partial'?'warn':'info');
   }
+  if(data.coverage?.metropolitanBh===false){
+    const warning=document.createElement('p');
+    warning.className='route-coverage-notice';
+    warning.textContent='Cobertura incompleta: ônibus metropolitanos de MG, como a linha 411C, '+
+      'ainda não fazem parte do GTFS municipal. Portanto, combinações com essas linhas não são avaliadas. '+
+      'Os resultados não representam necessariamente a opção mais rápida de toda a Grande BH.';
+    area.append(warning);
+  }
   if(data.itineraries?.length){
     // Diagnostics are opt-in, to keep the route result cards concise.
     // Expose why an answer can differ from an external timetable planner.
