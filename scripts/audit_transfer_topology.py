@@ -53,11 +53,14 @@ def audit(stops, routes, pairs, radius=450):
     if (not isinstance(radius, (int, float)) or not math.isfinite(radius)
             or not 1 <= radius <= 1000):
         raise ValueError("Raio fora do limite de 1 a 1000 m")
-    if len(pairs) > 20 or not pairs:
+    if (not isinstance(pairs, (list, tuple)) or not 1 <= len(pairs) <= 20):
         raise ValueError("Forneça entre 1 e 20 combinações")
-    targets = {code for pair in pairs for code in pair}
-    if any(not re.fullmatch(r"[A-Z0-9]{1,12}", code) for code in targets):
+    if any(not isinstance(pair, (list, tuple)) or len(pair) != 2 or
+           any(not isinstance(code, str) or
+               not re.fullmatch(r"[A-Z0-9]{1,12}", code) for code in pair)
+           for pair in pairs):
         raise ValueError("Códigos de linha inválidos")
+    targets = {code for pair in pairs for code in pair}
     if not isinstance(routes, dict) or not isinstance(stops, list):
         raise ValueError("Formato do catálogo inválido")
     by_code = defaultdict(dict)
