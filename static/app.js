@@ -1324,6 +1324,15 @@ function renderRouteResults(data){
       const legs=document.createElement('div');legs.className='route-legs';
       // Timetable decomposition is useful to explain why our GTFS journey
       // differs from a real-time provider. Never call this a GPS prediction.
+      const quality=trip.journeyQuality;
+      if(quality?.tightTransfers>0){
+        const warning=document.createElement('p');
+        warning.className='route-transfer-warning';
+        warning.textContent=quality.tightTransfers+
+          ' conexão(ões) com menos de 2 minutos de folga após caminhada/desembarque. '+
+          'Risco de perder a baldeação; a partida é programada, não confirmada por GPS.';
+        legs.append(warning);
+      }
       const times=trip.timeBreakdown;
       if(times){
         const timings=document.createElement('p');
