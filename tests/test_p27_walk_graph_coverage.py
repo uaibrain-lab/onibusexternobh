@@ -35,6 +35,19 @@ class WalkAuditTests(unittest.TestCase):
         self.assertEqual(actual["snapDistanceMedianMeters"], 0)
         self.assertEqual(actual["snapCoveragePercent"], 66.67)
 
+    def test_target_line_audit_is_aggregate_and_marks_absent_metropolitan(self):
+        routes = {"a": ["9106", "9209"], "b": ["5106", "51"]}
+        got = mod.audit(self.graph, self.stops,
+                        focus_routes=("9106", "5106", "9209", "411C"),
+                        stop_routes=routes)
+        line = got["focusedLines"]
+        self.assertEqual(line["9106"]["stops"], 1)
+        self.assertEqual(line["9106"]["largestComponent"], 1)
+        self.assertEqual(line["5106"]["otherComponents"], 1)
+        self.assertFalse(line["411C"]["inMunicipalCatalog"])
+        self.assertIsNone(line["411C"]["snapCoveragePercent"])
+        self.assertNotIn("-19.9", str(line))
+
     def test_rejects_invalid_graph_edge(self):
         self.graph["edges"][0][2] = 0
         with self.assertRaisesRegex(ValueError, "Aresta"):
