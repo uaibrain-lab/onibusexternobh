@@ -63,6 +63,14 @@ class TransferTopologyTests(unittest.TestCase):
         self.assertEqual(result["sharedStopIds"], 1)
         self.assertEqual(result["lineAStopIds"], 2)
 
+    def test_malformed_pair_structures_fail_closed(self):
+        malformed = [None, "9106+5106", [None], [("9106",)],
+                     [("9106", "5106", "51")], [(9106, "5106")],
+                     [("9106", None)], [("9106", "51/67")]]
+        for pairs in malformed:
+            with self.subTest(pairs=str(pairs)), self.assertRaises(ValueError):
+                audit.audit(self.stops, self.routes, pairs)
+
     def test_bounds_and_codes(self):
         for x in [-1,0,1001,float("nan")]:
             with self.assertRaises(ValueError):
