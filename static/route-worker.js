@@ -391,6 +391,34 @@ function verifyWalking(itinerary,ctx,graph){
   itinerary.confidence='GTFS_scheduled_with_OSM_walk_graph_and_snap_uncertainty';
   return true;
 }
+function journeyQuality(trip){
+  // Transparent, adjustable generalized cost, inspired by open source
+  // multicriteria planners (NOT Google's or Moovit's proprietary weights).
+  // The actual arrival/departure times remain unchanged.
+  const duration=Math.max(0,Number(trip.durationMinutes)||0);
+  const walking=Math.max(0,Number(trip.walkMetersApprox)||0)/(WALK_SPEED*60);
+  const transfers=Math.max(0,Number(trip.transfers)||0);
+  let tightTransfers=0,minimumTransferSeconds=null;
+  let seenBus=false;
+  for(let i=0;i<(trip.legs||[]).length;i++){
+    const leg=trip.legs[i];
+    if(leg.mode!=='bus')continue;
+    if(seenBus){
+      const previous=trip.legs[i-1];
+      const slack=(Date.parse(leg.departure)-Date.parse(previous.arrival))/1000;
+      if(Number.isFinite(slack)){
+        minimumTransferSeconds=minimumTransferSeconds===null
+          ?Math.round(slack):Math.min(minimumTransferSeconds,Math.round(slack));
+        if(slack<120)tightTransfers++;
+      }
+    }
+    seenBus=true;
+  }
+  const costMinutes=Math.round((duration+walking+
+    transfers*4+tightTransfers*3)*10)/10;
+  return {costMinutes,tightTransfers,minimumTransferSeconds,
+    costBasis:'heuristic_duration_plus_walking_transfers_and_short_connections'};
+}
 function ranked(ctx,preference,limit=6) {
   const options=[];
   const found=new Set();
@@ -410,6 +438,9 @@ function ranked(ctx,preference,limit=6) {
       return a.transfers-b.transfers||fastest(a,b)||a.walkMetersApprox-b.walkMetersApprox;
     if(preference==='leastWalking')
       return a.walkMetersApprox-b.walkMetersApprox||fastest(a,b)||a.transfers-b.transfers;
+    if(preference==='balanced')
+      return journeyQuality(a).costMinutes-journeyQuality(b).costMinutes||
+        fastest(a,b)||a.transfers-b.transfers;
     return fastest(a,b)||a.walkMetersApprox-b.walkMetersApprox||a.transfers-b.transfers;
   });
   // Reserve room for different combinations of bus lines, rather than
@@ -598,7 +629,7 @@ async function plan(params,seq) {
   const mode=params.mode||'departAt';
   if(mode!=='departAt'&&mode!=='arriveBy')throw Error('Modo de viagem inválido');
   const preference=params.preference||'fastest';
-  if(!['fastest','leastWalking','leastTransfers'].includes(preference))
+  if(!['fastest','leastWalking','leastTransfers','balanced'].includes(preference))
     throw Error('Critério de ordenação inválido');
   const requested=params.at?Date.parse(params.at):Date.now();
   if(!Number.isFinite(requested))throw Error('Data/hora inválida');
@@ -648,6 +679,7 @@ async function plan(params,seq) {
     });
     const score=t=>preference==='leastWalking'?t.walkMetersApprox:
       preference==='leastTransfers'?t.transfers:
+      preference==='balanced'?journeyQuality(t).costMinutes:
       backward?-Date.parse(t.departure):Date.parse(t.arrival);
     itineraries.sort((a,b)=>score(a)-score(b)||
       a.walkMetersApprox-b.walkMetersApprox||a.transfers-b.transfers);
@@ -656,6 +688,7 @@ async function plan(params,seq) {
   for(const trip of itineraries){
     const summary=summarizeTravelTimes(trip);
     if(summary)trip.timeBreakdown=summary;
+    trip.journeyQuality=journeyQuality(trip);
   }
   const hints=await metroHints(origin,destination,requested,mode);
   return {
