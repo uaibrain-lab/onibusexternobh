@@ -811,6 +811,8 @@ async function plan(params,seq) {
     walkingNetworkStatus:walkGraphStatus,
     walkingNetworkSource:graph?.meta?.source||null,
     dataSource:'static_gtfs_browser_worker',
+    coverage:{municipalBh:true,metropolitanBh:false,
+      excludedExample:'411C',source:'PBH_SUMOB_GTFS'},
     notes:[
       'Horários de ônibus programados no GTFS, não previsões GPS.',
       graph?
