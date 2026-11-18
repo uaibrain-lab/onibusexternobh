@@ -145,3 +145,70 @@ Próximos bloqueios: benchmark 9106+5106 com os mesmos locais/hora;
 reconstrução íntegra de scan + shards a partir de um ZIP validado;
 regras de atrasos e serviço; QA Android/Playwright; e DER/MG para
 411C e 511C. Não alegar paridade com Moovit/Google.
+
+
+## P27C - GTFS original e rotas compartilhadas (18/11)
+
+O arquivo do usuário BH-Transporte.zip contém, como arquivo interno,
+GTFSBHTRANS.zip. Seu SHA-256 completo é:
+
+ef448448ac0aa89877e33a34645acaac34a5bb45d9a849e2c5b92cdc238366b1
+
+Igual ao catalog/source-gtfs.sha256 da branch. Assim, a versão
+estática ORIGINAL do app pode ser examinada e regenerada de forma
+reprodutível sem depender de um novo ZIP oficial. Não substituímos o
+catálogo publicado nem subimos o ZIP ao GitHub.
+
+Auditoria offline dessa fonte GTFS, usando routes, trips, stop_times e
+stops:
+
+| Linha | Paradas GTFS distintas |
+|---|---:|
+| 9106 | 145 |
+| 5106 | 158 |
+| 9209 | 81 |
+| 51 | 72 |
+| 67 | 68 |
+
+A interseção é importante:
+- 9106+5106: 22 stop_id IDÊNTICOS compartilhados;
+  há 458 pares dentro de 450m (contagem de pares, não conexões válidas).
+- 9209+51: 0 stop_id idênticos, 47 pares de pontos dentro de 450m.
+- 9209+67: 4 stop_id idênticos, 56 pares dentro de 450m.
+
+São pares espaciais, SEM análise de sincronização horária, direção
+do ônibus, tempo de espera ou travessia real OSM. Não há garantia de
+baldeação viável: 9106+5106 pode usar parada comum, mas a consulta
+exata descartou sete candidatos no verificador viário.
+
+A ausência de 411C/511C nesse ZIP confirma que a cobertura
+metropolitana não vem da SUMOB municipal. Identificada uma fonte
+OFICIAL pública de quadros de horários e itinerários DER/MG em texto:
+https://www.consultas.der.mg.gov.br/grgx/sgtm/acesso_informacao.xhtml
+Ela documenta campos COD_LINHA, TIPO_DIA, HORA_PARTIDA,
+NUM_LINHA, DESC_PARADA e nomes de quadros/itinerários.
+Neste ambiente não foi possível baixar o texto (acesso HTTP 403).
+Sem a versão íntegra e dados geográficos por parada, NÃO fabricar
+GTFS sintético com horas de chegada presumidas para 411C/511C.
+
+## Gate CI após correção de compatibilidade do sexto campo
+
+O build_routing.py passou a adicionar stop_sequence no campo 6.
+Uma versão inicial quebrou os consumidores antigos Python, e a
+regressão foi detectada pelo GitHub Actions (7 testes afetados).
+Corrigido transit/planner.py para ler row[:5], preservando
+compatibilidade com os shards de cinco E seis colunas.
+tests/test_planner.py agora exige o novo stop_sequence no fixture.
+Novo auditor de catálogo compara serviço entre scan e routing
+e resolve o dia da semana de forma independente do idioma Windows.
+
+O workflow da integração para a revisão ec93a649 passou:
+https://github.com/uaibrain-lab/onibusexternobh/actions/runs/44223309587
+- Python: 123 testes aprovados.
+- Node: 130 testes aprovados.
+- Build estático, auditoria OSM, orçamento e HTTP smoke aprovados.
+- Playwright P9 e a matriz P2 são verificações separadas;
+  verificar seus resultados antes do deploy.
+
+**Sem deploy nesta rodada.** O Worker GPS não recebeu ETA e o
+site não foi atualizado. Não usar -ReutilizarBuild na P27.
