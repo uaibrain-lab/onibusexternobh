@@ -12,14 +12,21 @@ const helpers=new Function('WALK_SPEED','reconstruct',source.slice(a,b)+
 const time=(h,m)=>new Date(Date.UTC(2026,10,17,h,m)).toISOString();
 function itinerary({duration,walk,transfers,arrival,lines,short=false}){
  const legs=[];
+ let prevArrival=null;
  for(let i=0;i<lines.length;i++){
-   if(i>0&&short)legs.push({
-     mode:'walk',departure:time(20,19),arrival:time(20,20)
-   });
+   let depMinute=0;
+   if(i>0){
+     // A plausible real-life between-stop walk from the previous bus.
+     const nextArrival=prevArrival+3;
+     legs.push({mode:'walk',departure:time(20,prevArrival),
+       arrival:time(20,nextArrival)});
+     depMinute=prevArrival+(short?4:8);
+   }
+   const endMinute=depMinute+7;
    legs.push({mode:'bus',line:lines[i],tripId:'trip-'+lines[i],
      from:i,to:i+1,
-     departure:i?time(20,20+(short?1:4)):time(20,0),
-     arrival:time(20,19)});
+     departure:time(20,depMinute),arrival:time(20,endMinute)});
+   prevArrival=endMinute;
  }
  return {departure:time(19,58),arrival:time(20,arrival),
    durationMinutes:duration,walkMetersApprox:walk,transfers,legs};
