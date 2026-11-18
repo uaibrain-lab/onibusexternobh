@@ -73,8 +73,14 @@ def audit(stops, routes, pairs, radius=450):
             raise ValueError("Coordenadas de parada não finitas")
         if not (-21 <= lat <= -18 and -46 <= lon <= -42):
             continue
-        for code in routes.get(sid, []):
+        codes = routes.get(sid, [])
+        if not isinstance(codes, list) or any(not isinstance(code, str) for code in codes):
+            raise ValueError("Linhas associadas à parada inválidas")
+        for code in codes:
             if code in targets:
+                previous = by_code[code].get(sid)
+                if previous is not None and previous != (lat, lon):
+                    raise ValueError("Parada duplicada com coordenadas conflitantes")
                 by_code[code][sid] = (lat, lon)
     result = []
     for code_a, code_b in pairs:
