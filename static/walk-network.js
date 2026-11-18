@@ -71,12 +71,14 @@ const WalkGraph=(()=>{
       const root=this.nearest(origin);
       if(!root)return new Map();
       const targets=new Map();
+      let targetCount=0;
       for(const item of points){
         if(!Number.isInteger(item.index)||!Array.isArray(item.coords))continue;
         const snap=this.nearest(item.coords);
         if(!snap)continue; // no verified pedestrian access, never fabricate
         if(!targets.has(snap[0]))targets.set(snap[0],[]);
         targets.get(snap[0]).push([item.index,snap[1]]);
+        targetCount++;
       }
       const results=new Map();
       const travelTimes=new Map([[root[0],0]]);
@@ -98,7 +100,7 @@ const WalkGraph=(()=>{
           });
           found++;
         }
-        if(found>=points.length)return results;
+        if(found>=targetCount)return results;
         for(const [to,edgeMeters] of this.adj[node]){
           const next=meters+edgeMeters;
           if(next>limitMeters-root[1]||next>= (travelTimes.get(to)??Infinity))
