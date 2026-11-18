@@ -64,6 +64,8 @@ jobs:
           assert 'data-app-mode="free-static"' in (p/'index.html').read_text()
           print('PREVIEW_INTEGRADO_OK',data['stopCount'], 'pontos')
           PY
+      - name: Medir cobertura OSM por pontos GTFS sem acessar rede
+        run: python scripts/audit_walk_graph.py
       - name: Auditoria de franquia Spark e arquivos sob demanda
         run: python scripts/audit_static_budget.py --root dist/externo
       - name: Smoke HTTP em /externo/ sem backend de hospedagem
