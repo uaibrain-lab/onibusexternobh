@@ -27,5 +27,6 @@ test('expanded search checks 450m + 90 diversified stops without changing standa
 test('transfer walking radius is only expanded when user selects deeper search',()=>{
  assert.match(src,/neighbors\(node\.stop,ctx\.expanded\)/);
  assert.match(src,/transferWalkRadiusMeters:expanded\?450:300/);
- assert.match(src,/verifyWalking\(t,ctx,graph\)/);
+ assert.match(src,/verifyWalking\(t,ctx,graph,reasons\)/);
+ assert.match(src,/streetRejectionReasons/);
 });
