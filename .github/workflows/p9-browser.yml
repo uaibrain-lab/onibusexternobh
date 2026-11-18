@@ -24,6 +24,7 @@ on:
       - tests/test_p23_balanced.cjs
       - tests/test_p23_pareto.cjs
       - tests/test_p23_transfer_radius.cjs
+      - tests/test_p23_diagnostics.cjs
       - scripts/diagnose_route.cjs
       - static/place-geocoding.js
       - static/index.html
