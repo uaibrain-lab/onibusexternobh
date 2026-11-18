@@ -1289,6 +1289,17 @@ function renderRouteResults(data){
     container.append(select);
     if(index===state.routeSelected){
       const legs=document.createElement('div');legs.className='route-legs';
+      // Timetable decomposition is useful to explain why our GTFS journey
+      // differs from a real-time provider. Never call this a GPS prediction.
+      const times=trip.timeBreakdown;
+      if(times){
+        const timings=document.createElement('p');
+        timings.className='route-time-breakdown';
+        timings.textContent=times.walkingMinutes+' min caminhando · '+
+          times.onboardMinutes+' min nos ônibus · '+
+          times.waitingMinutes+' min de espera (horários GTFS)';
+        legs.append(timings);
+      }
       for(const leg of trip.legs){
         const item=document.createElement('div');item.className='route-leg';
         const icon=document.createElement('span');icon.className='route-leg-icon';icon.textContent=leg.mode==='bus'?'🚌':'🚶';
