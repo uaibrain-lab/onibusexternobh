@@ -80,3 +80,11 @@ pendências anteriores e sem duplicar a automação existente.
 - Motivação: dados inconsistentes poderiam produzir contagens topológicas enganadoras. A auditoria continua somente offline, sem ETA, caminhos artificiais ou mudança no planejador do usuário.
 - Acesso Git local segue indisponível (`Could not resolve host: github.com`); conector GitHub autenticado permitiu leitura e escrita com verificação de SHA. **Os testes dos novos commits ainda precisam ser confirmados no CI do novo HEAD**; não confundir sucesso do commit anterior com aprovação desta revisão.
 - Handoff: verificar CI de `9d31573` e do commit documental seguinte; executar auditoria real e Playwright no HEAD; investigar baldeações 9106+5106, 9209+51, 9209+67 com mesma data/hora e ruas OSM; conferir TripUpdates por instância exata, calendário, stop_sequence e freshness; não inferir horários DER/MG. Não fazer merge/deploy nem tocar outros repositórios.
+
+## P28F — Validação estrutural de pares (18/11/2026)
+
+- CI anterior: workflow P2 #44324759619 `completed/success` para `c69a916e55c4ae5dc06d4bb7c7b8f740dc321bf4`; nenhuma alteração concorrente detectada no início.
+- Commits: `9f0999607db9eef506da64c3599325af7d41a0f2` (`scripts/audit_transfer_topology.py`) valida que pares são lista/tupla com 1–20 pares de exatamente dois códigos de linha textuais e seguros; `af452ae836568427b7b6dfb0ec6e4717efbbda6b` (`tests/test_audit_transfer_topology.py`) cobre entradas malformadas.
+- Motivação: anteriormente entradas não textuais ou pares de comprimento incorreto podiam lançar TypeError/produzir desempacotamento inesperado em vez de falha controlada. A auditoria permanece offline, somente topológica, sem mudar o roteador ou prometer ETA.
+- CI dos novos commits: consultar após o HEAD documental; não presumir sucesso do CI anterior. Testes locais de catálogo real/Playwright não executados nesta rodada, pois o checkout local permanece indisponível.
+- Handoff: validar novo CI P2 e integração; executar diagnóstico de horários e caminhadas OSM para 9106+5106, 9209+51, 9209+67 com dados de referência. Verificar GTFS-RT por trip_id/route_id/data/start_time/stop_sequence/freshness. DER/MG só com fonte oficial íntegra; sem merge/deploy.
