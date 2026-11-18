@@ -1246,9 +1246,10 @@ function renderRouteResults(data){
     routeStatus('Nenhum trajeto de ônibus encontrado nesta janela. Experimente outro horário, origem ou destino.','warn');
   }else{
     routeStatus((data.status==='partial'?
-         (data.stats?.searchDepth==='expanded'?'Mesmo a busca ampliada tem limites; ':
-          'Busca parcial; selecione Ampliada para comparar mais alternativas. '):'')+
-      data.itineraries.length+' itinerário(s) programado(s). '+(['local_osm','osm_walk_graph_with_unverified_access_snap'].includes(data.pedestrianRouting)
+         (data.stats?.searchDepth==='expanded'
+          ?'Busca ampliada com algumas alternativas descartadas por limite de processamento. '
+          :'Busca com limites para manter o celular responsivo; o modo Ampliada pode encontrar outras opções. '):'')+
+      data.itineraries.length+' itinerário(s) programado(s), não tempo real. '+(['local_osm','osm_walk_graph_with_unverified_access_snap'].includes(data.pedestrianRouting)
        ?'Caminhadas pelo grafo viário OSM; o acesso às ruas e às entradas ainda não foi verificado em campo.'
        :'Caminhadas aproximadas; os percursos pelas ruas ainda não foram verificados.'),
       data.status==='partial'?'warn':'info');
