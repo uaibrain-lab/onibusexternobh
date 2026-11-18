@@ -751,9 +751,13 @@ async function plan(params,seq) {
     trip.journeyQuality=journeyQuality(trip);
   }
   const hints=await metroHints(origin,destination,requested,mode);
+  const noPedestrianAccess=Boolean(graph&&
+    (ctx.accessStats.streetOriginStops===0||
+     ctx.accessStats.streetDestinationStops===0));
   return {
-    status:graph&&!itineraries.length&&ctx.finals.length?'walking_unavailable':
-      ctx.partial?'partial':'ok',mode,preference,
+    status:noPedestrianAccess||
+      (graph&&!itineraries.length&&ctx.finals.length)
+      ?'walking_unavailable':ctx.partial?'partial':'ok',mode,preference,
     requestedAt:stamp(requested),itineraries,metroHints:hints,
     ...(diagnostics?{diagnostics}:{}),
     stats:{connectionsScanned:ctx.scanned,hoursScanned:hours.length,
