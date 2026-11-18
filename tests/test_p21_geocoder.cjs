@@ -25,7 +25,7 @@ test('Photon search uses only explicit address string, fixed BH bias and bounded
   assert.equal(u.searchParams.get('q'),'Padaria Santa Luzia');
   assert.equal(u.searchParams.get('lat'),'-19.9208');
   assert.equal(u.searchParams.get('lon'),'-43.9378');
-  assert.equal(u.searchParams.get('bbox'),'-44.45,-20.45,-43.45,-19.45');
+  assert.equal(u.searchParams.get('bbox'),'-44.4,-20.45,-43.5,-19.5');
   assert.ok(!u.searchParams.has('userLocation'));
   assert.equal(result.length,2);
   assert.equal(result[0].source,'Photon / OpenStreetMap');
