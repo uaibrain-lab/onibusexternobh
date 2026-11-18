@@ -518,21 +518,21 @@ function seedStops(ctx,which) {
         index,coords:[stops[index][2],stops[index][3]]
       })),2500)
     :null;
-  const candidates=road instanceof Map
-    ?found.filter(([,id])=>road.has(id))
-    :found;
-  if(road instanceof Map){
+  const hasRoadCosts=Boolean(road&&typeof road.has==='function'&&
+    typeof road.get==='function');
+  const candidates=hasRoadCosts?found.filter(([,id])=>road.has(id)):found;
+  if(hasRoadCosts){
     const field=which==='start'?'streetOriginStops':'streetDestinationStops';
     ctx.accessStats[field]=candidates.length;
     ctx.accessStats.unreachableStops+=found.length-candidates.length;
   }
   if(which==='end'){
     for(const [metres,id] of candidates)
-      ctx.ends.set(id,road?road.get(id):metres);
+      ctx.ends.set(id,hasRoadCosts?road.get(id):metres);
     return;
   }
   for(const [metres,id] of candidates){
-    const access=road?.get(id);
+    const access=hasRoadCosts?road.get(id):null;
     const meters=access?access.meters:rounded(metres);
     const ms=(access?access.seconds:walkSeconds(metres))*1000;
     const t=ctx.requested+(ctx.backward?-ms:ms);
