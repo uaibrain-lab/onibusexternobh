@@ -66,11 +66,14 @@ Novo script: scripts/probe_sumob_trip_updates.py
   cancelamentos, timestamps e quantas paradas por viagem.
 - Pode ler arquivo .pb local quando a origem for inacessível.
 
+Novo teste offline `tests/test_probe_sumob_trip_updates.py` verifica contagens, atrasos, segurança da URL e ausência de falsa conclusão de "sem ônibus". Ele usa respostas sintéticas e não requer rede. **Ainda precisa ser executado no Windows do usuário.**
+
 No PowerShell Windows, executar:
 
 ~~~powershell
 cd D:\Downloads\Externo-GPS-Teste
 git pull --ff-only origin feat/gps-worker-free-homologacao-p15-20261117
+py -m unittest discover -s tests -p "test_probe_sumob_trip_updates.py" -v
 py -m pip install gtfs-realtime-bindings
 # Cole no comando a URL oficial COMPLETA publicada no catálogo GTFS RT
 $env:SUMOB_TRIP_UPDATES_URL = 'COLE_A_URL_PUBLICA_COMPLETA_AQUI'
