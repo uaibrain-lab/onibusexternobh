@@ -101,15 +101,18 @@ function nearby(lat,lng,radius=1050,limit=22) {
   result.sort((a,b)=>a[0]-b[0]);
   return result.slice(0,limit);
 }
-function neighbors(idx) {
-  if(nearCache.has(idx))return nearCache.get(idx);
+function neighbors(idx,expanded=false) {
+  // Extended-mode inter-stop walks can recover alternatives that change
+  // lines around a large avenue/interchange. Every pedestrian segment is
+  // subsequently checked against actual OSM streets before being returned.
+  const radius=expanded?450:300,limit=expanded?28:18;
+  const key=idx+':'+radius;
+  if(nearCache.has(key))return nearCache.get(key);
   const s=stops[idx];
-  // Allow real-world between-stop transfers across adjacent streets (up
-  // to 300m straight line). The OSM walk graph later verifies viable paths.
-  // The old 165m/10 stop cap could exclude a faster 2-line journey.
-  const list=nearby(s[2],s[3],300,18).filter(([m,id])=>id!==idx&&m>=2);
+  const list=nearby(s[2],s[3],radius,limit)
+    .filter(([m,id])=>id!==idx&&m>=2);
   if(nearCache.size>20000)nearCache.clear();
-  nearCache.set(idx,list);
+  nearCache.set(key,list);
   return list;
 }
 function serviceActive(serviceIdx,day){
@@ -164,7 +167,7 @@ function insert(labels,node,ctx) {
 }
 function addTransfers(node,ctx){
   if(!ctx.pending.has(node.stop))ctx.pending.add(node.stop);
-  for(const [m,next] of neighbors(node.stop)){
+  for(const [m,next] of neighbors(node.stop,ctx.expanded)){
     const duration=walkSeconds(m)*1000;
     const newTime=node.time+(ctx.backward?-duration:duration);
     if(newTime<ctx.lo||newTime>ctx.hi)continue;
@@ -662,7 +665,7 @@ async function plan(params,seq) {
       validFrom:meta.validFrom,validThrough:meta.validThrough,itineraries:[],metroHints:[]};
   const backward=mode==='arriveBy';
   const expanded=params.searchDepth==='expanded';
-  const ctx={origin,destination,mode,backward,requested,preference,labels:new Map(),
+  const ctx={origin,destination,mode,backward,requested,preference,expanded,labels:new Map(),
     onboard:new Map(),ends:new Map(),finals:[],pending:new Set(),
     scanned:0,partial:false,exceeded:false,
     maxLabels:expanded?24:MAX_LABELS,maxOnboard:expanded?24:MAX_ONBOARD,
@@ -764,6 +767,7 @@ async function plan(params,seq) {
       searchDepth:expanded?'expanded':'standard',
       boardingStopRadiusMeters:ctx.accessRadius,
       accessStopLimit:ctx.accessLimit,
+      transferWalkRadiusMeters:expanded?450:300,
       pedestrianAccess:graph?'OSM street shortest paths':'estimated distance',
       verifiedStreetOriginStops:ctx.accessStats.streetOriginStops,
       verifiedStreetDestinationStops:ctx.accessStats.streetDestinationStops,
