@@ -223,3 +223,35 @@ UnmatchedTripId alto requer investigação do feed/versões do GTFS.
 Próxima IA: registrar valores reais do segundo diagnóstico,
 verificar datas e serviços, e apenas depois desenvolver um leitor
 experimental GTFS-RT com filtros e sem custos obrigatórios.
+
+
+## P25C — Resultado do auditor realtime × GTFS estático (usuário)
+
+Uma segunda leitura oficial do feed, comparada ao arquivo
+GTFSBHTRANS.zip recém-baixado, retornou:
+- rtTripUpdates=638; matchedTripId=638; unmatchedTripId=0.
+- staticTripsMatching=594: são 594 IDs GTFS DISTINTOS, portanto
+  vários dos 638 TripUpdates referem um mesmo trip_id. As mensagens
+  incluem startDate e startTime, que deverão desambiguar instâncias.
+- routeMatchesPublicCode=638; routeMatchesStaticId=0;
+  routeMismatch=0; missingRouteId=0.
+- directionMatches=638; directionMismatch=0.
+- matchedStopKey=637; unmatchedStopKey=1;
+  withStopSequence=638; withStopId=638.
+- withStartDate=638; withStartTime=638.
+- delayMedianSeconds=+139; min=-2355; max=+1798.
+- feedHeaderAgeSeconds=16, sem timestamp individual.
+- **matchesAppCatalogSourceGTFS=false**: o ZIP oficial usado no
+  teste não corresponde ao SHA-256 do arquivo que originou o
+  catálogo atualmente publicado no repositório.
+
+**Decisão operacional:** o feed tem IDs e metadados suficientes para
+experimentação, mas NÃO habilitar correção ao vivo em itinerários
+até comparar com a mesma edição exata do catálogo do Externo BH
+(ou atualizar o catálogo completo, atômico e validado).
+Não inferir que o ZIP é mais recente sem verificar a data/versão do
+feed, nem aplicar atraso de um TripUpdate a outra instância de viagem.
+Conexões metropolitanas 411C/511C permanecem fora do GTFS municipal.
+
+Fase paralela P26 (corrigir transferências e diagnóstico OSM):
+docs/P26-CORRECAO-BALDEACOES-ESTACOES.md
