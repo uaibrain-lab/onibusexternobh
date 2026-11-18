@@ -20,6 +20,19 @@ Execute `node scripts/check_p18_public_site.mjs` no Windows antes de
 considerar a publicação validada; a análise visual mobile continua pendente.
 O GPS padrão no repositório permanece desativado e o Hub não foi alterado.
 
+**P23 — 17/11/2026:** pesquisa das APIs públicas Google Maps/Moovit e
+da arquitetura aberta OpenTripPlanner. Motor CSA no navegador aprimorado:
+caminhada OSM de acesso e saída antes do scan GTFS (Dijkstra em lote),
+busca ampliada de baldeações a pé, opção Equilibrada com custo heurístico,
+filtro Pareto após validação da rua e avisos de baldeação apertada.
+Diagnóstico LOCAL sem APIs pagas com foco nas combinações 9209+5106,
+9106+5106 e 9106+51. Revisão PWA de homologação. Os pesos e algoritmos
+proprietários de Moovit/Google NÃO são conhecidos; não alegar igualdade
+de resultados. Documentação e fontes:
+[docs/P23-PESQUISA-ALGORITMOS-ROTAS.md](docs/P23-PESQUISA-ALGORITMOS-ROTAS.md).
+**P23 não publicada**, suíte completa e comparação com coordenadas reais
+pendentes; Hub UFMG/Firebase intactos.
+
 **P22 — 17/11/2026:** complementos da P21: toque em parada mantém
 rastreamento; consultas de horários exigem sentido/headsings GTFS
 coerentes e ignoram respostas antigas; separação do tempo planejado
