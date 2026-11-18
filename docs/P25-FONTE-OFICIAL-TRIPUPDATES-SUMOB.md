@@ -156,3 +156,70 @@ isso é ponto para esclarecer, não fato comprovado.
 - Próxima IA: após execução do diagnóstico, registrar números reais
   e implementar um leitor protótipo no Worker separado, sem habilitar
   no cliente antes de homologação, preservando o plano gratuito.
+
+
+## P25B — Amostra real da SUMOB recebida do usuário
+
+O usuário executou o diagnóstico no Windows, após aprovação de 3 testes
+sintéticos. Uma única requisição ao feed oficial TripUpdates retornou:
+
+- SUMOB_TRIP_UPDATES_PROBE_OK; protobuf com 96.299 bytes
+- 677 TripUpdates, todos com identificadores de viagem e linha
+- 265 linhas distintas (incluindo 5106 nos códigos mais frequentes)
+- 677 StopTimeUpdates; mediana 1, máximo 1 parada por viagem
+- Todas as 677 paradas com atraso informado; ZERO horários absolutos
+- Nenhuma viagem cancelada nesta amostra
+- FeedHeader atualizado havia 3 segundos
+- TripUpdate.timestamp não disponível; idade individual indeterminada
+
+**Conclusão:** a fonte pública fornece atrasos e estava acessível.
+Ainda NÃO há evidência de compatibilidade entre trip_id, route_id e
+stop_sequence/stop_id do realtime e os arquivos GTFS deste repositório.
+A idade do FeedHeader NÃO prova que o desvio de cada ônibus tenha sido
+medido há 3 segundos.
+
+A especificação GTFS-Realtime permite propagar o atraso de um
+StopTimeUpdate para paradas seguintes até nova informação aplicável
+ou NO_DATA, sem extrapolar para paradas anteriores. Isso é estimativa
+baseada em desvio do horário, e não garantia de ETA:
+https://gtfs.org/documentation/realtime/feed-entities/trip-updates/
+
+### Segundo diagnóstico implementado (sem deploy)
+
+scripts/audit_sumob_gtfs_match.py compara uma resposta do TripUpdates
+com routes.txt, trips.txt e stop_times.txt de um ZIP oficial local.
+Contabiliza correspondência do trip_id, route_id interno versus
+route_short_name, direction_id, stop_sequence e stop_id. Mostra apenas
+estatísticas agregadas, sem publicar identificadores individuais.
+Não altera catálogo, Worker, Firebase, Hub ou Cloudflare Pages.
+
+Foi criado tests/test_audit_sumob_gtfs_match.py. Três testes sintéticos
+equivalentes foram executados localmente pelo assistente e passaram;
+o script no Windows e o GTFS real ainda precisam ser testados.
+
+~~~powershell
+cd D:\Downloads\Externo-GPS-Teste
+git pull --ff-only origin feat/gps-worker-free-homologacao-p15-20261117
+py -m unittest discover -s tests -p "test_audit_sumob_gtfs_match.py" -v
+
+$gtfs = Join-Path (Get-Location) "GTFSBHTRANS.zip"
+Invoke-WebRequest -Uri "https://s3.amazonaws.com/mobilibus-uploads/gtfs/GTFSBHTRANS.zip" -OutFile $gtfs
+
+$env:SUMOB_TRIP_UPDATES_URL = "COLE_A_URL_OFICIAL_USADA_ANTES"
+py scripts/audit_sumob_gtfs_match.py --gtfs $gtfs
+Remove-Item Env:\SUMOB_TRIP_UPDATES_URL
+~~~
+
+A URL completa é a mesma do teste anterior do usuário; não inserir
+credenciais em arquivos do repositório ou em logs. Sem o diagnóstico de
+correspondência, NÃO habilitar previsões ao vivo.
+
+Interpretação: matchedTripId e matchedStopKey elevados indicam
+candidatos a associação; routeMatchesPublicCode alto mostra a diferença
+entre código público e ID interno. Identificadores correspondentes ainda
+não comprovam instância do serviço e calendário ativos.
+UnmatchedTripId alto requer investigação do feed/versões do GTFS.
+
+Próxima IA: registrar valores reais do segundo diagnóstico,
+verificar datas e serviços, e apenas depois desenvolver um leitor
+experimental GTFS-RT com filtros e sem custos obrigatórios.
