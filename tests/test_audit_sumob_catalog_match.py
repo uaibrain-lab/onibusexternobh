@@ -108,6 +108,20 @@ class AppCatalogTests(unittest.TestCase):
             result=audit.audit(feed(sid="unrelated"),Path(folder))
             self.assertEqual(result["stopIdMissingFromTrip"],1)
 
+    def test_scan_and_routing_shards_must_agree_on_service_id(self):
+        with tempfile.TemporaryDirectory() as folder:
+            fixture(folder, True)
+            filename=Path(folder)/"routing/5102.json.gz"
+            with gzip.open(filename,"wt",encoding="utf-8") as stream:
+                json.dump([["trip-one","wrong-service","Local",
+                    [["A",28800,28800,0,0,2],
+                     ["B",29100,29100,0,0,8]]]],stream)
+            result=audit.audit(feed(),Path(folder))
+            self.assertEqual(result["routingShardServiceMismatch"],1)
+            self.assertEqual(result["startTimeMatchesAppSchedule"],0)
+            self.assertEqual(result["stopIdAndSequenceVerified"],0)
+            self.assertFalse(result["readyForLiveETA"])
+
     def test_private_ids_never_appear_in_report(self):
         with tempfile.TemporaryDirectory() as folder:
             fixture(folder,True)
