@@ -404,17 +404,24 @@ function locationOf(endpoint,ctx){
   return s?[s[2],s[3]]:null;
 }
 function verifyWalking(itinerary,ctx,graph,reasons=null){
-  const reject=reason=>{
-    if(reasons)reasons[reason]=(reasons[reason]||0)+1;
+  const legs=itinerary.legs;
+  const reject=(reason,index=null)=>{
+    if(reasons){
+      reasons[reason]=(reasons[reason]||0)+1;
+      // Keep user coordinates private. Expose only the phase of failed
+      // pedestrian validation to the opt-in local diagnostics.
+      const stage=index===null?'journey':index===0?'access':
+        index===legs.length-1?'egress':'transfer';
+      reasons['stage_'+stage]=(reasons['stage_'+stage]||0)+1;
+    }
     return false;
   };
-  const legs=itinerary.legs;
   let walked=0;
   for(let i=0;i<legs.length;i++){
     const leg=legs[i];
     if(leg.mode!=='walk')continue;
     const from=locationOf(leg.from,ctx),to=locationOf(leg.to,ctx);
-    if(!from||!to)return reject('missingWalkingCoordinates');
+    if(!from||!to)return reject('missingWalkingCoordinates',i);
     const route=graph.route(from,to,i===0||i===legs.length-1?2500:800);
     if(!route){
       if(reasons&&typeof graph.explainFailure==='function'){
@@ -426,7 +433,7 @@ function verifyWalking(itinerary,ctx,graph,reasons=null){
         if(typeof name==='string'&&/^[A-Za-z]{3,55}$/.test(name))
           reasons['street_'+name]=(reasons['street_'+name]||0)+1;
       }
-      return reject('streetPathUnavailable');
+      return reject('streetPathUnavailable',i);
     }
     leg.pathVerified=true;
     leg.geometry=route.geometry;
@@ -446,13 +453,13 @@ function verifyWalking(itinerary,ctx,graph,reasons=null){
       start=ctx.requested;
     }else if(prev){
       start=Date.parse(prev.arrival);
-    }else return reject('invalidWalkingSequence');
+    }else return reject('invalidWalkingSequence',i);
     const finish=start+route.seconds*1000;
     if(next?.mode==='bus'){
       const margin=(prev?.mode==='bus'?TRANSFER_BUFFER:BUFFER)+
         stationAccessExtra(leg);
       if(finish+margin>Date.parse(next.departure))
-        return reject('insufficientTransferMargin');
+        return reject('insufficientTransferMargin',i);
     }
     leg.departure=stamp(start);
     leg.arrival=stamp(finish);
@@ -462,7 +469,7 @@ function verifyWalking(itinerary,ctx,graph,reasons=null){
   for(let i=1;i<legs.length;i++){
     if(legs[i-1].mode==='bus'&&legs[i].mode==='bus'&&
       Date.parse(legs[i].departure)-Date.parse(legs[i-1].arrival)<TRANSFER_BUFFER)
-      return reject('insufficientTransferMargin');
+      return reject('insufficientTransferMargin',i);
   }
   const first=Date.parse(legs[0].departure),last=Date.parse(legs.at(-1).arrival);
   if(!Number.isFinite(first)||!Number.isFinite(last)||last<=first||
