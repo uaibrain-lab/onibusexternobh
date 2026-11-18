@@ -39,8 +39,11 @@ def static_match(feed, archive: Path, *, now: int | None = None):
     if len(updates) > MAX_TRIP_UPDATES:
         raise ValueError("Mais atualizações do que o limite de auditoria")
     ids = {u.trip.trip_id for u in updates if u.trip.trip_id}
+    digest = hashlib.sha256()
     with archive.open("rb") as stream:
-        archive_sha = hashlib.file_digest(stream, "sha256").hexdigest()
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(block)
+    archive_sha = digest.hexdigest()
     catalog_source = Path(__file__).resolve().parents[1] / "catalog/source-gtfs.sha256"
     expected_sha = catalog_source.read_text(encoding="utf-8").strip().split()[0] if catalog_source.is_file() else None
     same_catalog = archive_sha == expected_sha if expected_sha else None
