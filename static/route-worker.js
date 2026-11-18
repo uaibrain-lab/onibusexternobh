@@ -684,6 +684,37 @@ async function plan(params,seq) {
     itineraries.sort((a,b)=>score(a)-score(b)||
       a.walkMetersApprox-b.walkMetersApprox||a.transfers-b.transfers);
   }
+  let diagnostics=null;
+  if(params.diagnostics===true){
+    // Opt-in offline diagnostics: expose WHY a requested combination is
+    // absent. Ordinary users never download or render this extra payload.
+    const combo=t=>t.legs.filter(x=>x.mode==='bus').map(x=>x.line).join('+');
+    const counts=arr=>{
+      const map=new Map();
+      for(const t of arr)map.set(combo(t),(map.get(combo(t))||0)+1);
+      return map;
+    };
+    const all=ranked(ctx,preference,1000);
+    const allCounts=counts(all),shortCounts=counts(candidates);
+    const validCounts=counts(itineraries);
+    const requested=Array.isArray(params.focusCombinations)
+      ?params.focusCombinations.filter(x=>typeof x==='string'&&
+        /^[a-zA-Z0-9+ -]{2,80}$/.test(x)).slice(0,12)
+      :[];
+    const focus=requested.map(lines=>({
+      lines,
+      generated:allCounts.get(lines)||0,
+      shortlisted:shortCounts.get(lines)||0,
+      streetVerified:validCounts.get(lines)||0
+    }));
+    diagnostics={originalFinalLabels:ctx.finals.length,
+      fullUniqueItineraries:all.length,shortlisted:candidates.length,
+      passedStreetVerification:itineraries.length,
+      combinationsGenerated:allCounts.size,
+      combinationsShortlisted:shortCounts.size,
+      combinationsStreetVerified:validCounts.size,
+      focus};
+  }
   itineraries=chooseDiverseItineraries(itineraries,6);
   for(const trip of itineraries){
     const summary=summarizeTravelTimes(trip);
@@ -695,6 +726,7 @@ async function plan(params,seq) {
     status:graph&&!itineraries.length&&ctx.finals.length?'walking_unavailable':
       ctx.partial?'partial':'ok',mode,preference,
     requestedAt:stamp(requested),itineraries,metroHints:hints,
+    ...(diagnostics?{diagnostics}:{}),
     stats:{connectionsScanned:ctx.scanned,hoursScanned:hours.length,
       searchDepth:expanded?'expanded':'standard',
       boardingStopRadiusMeters:ctx.accessRadius,
