@@ -64,3 +64,11 @@ Resultado observado diretamente nos logs, em 18/11/2026:
 Próxima IA: atualizar este bloco com o SHA do próximo commit de código,
 CI, Playwright e mudanças de dados quando existirem, sem apagar
 pendências anteriores e sem duplicar a automação existente.
+
+## P28D — Robustez da auditoria de coordenadas (18/11/2026)
+
+- Branch de homologação, sem merge/deploy. Commits de código `7eb76d56c41525c6639476b222b6397583e4afa3` e teste `302e2f4db25fe1aaaefd232fb864093671ebbd6e`.
+- `scripts/audit_transfer_topology.py` rejeita coordenadas `NaN`, infinitas, não numéricas ou ausentes com erro controlado. Isso evita contagens silenciosamente incorretas e exceções não previstas em relatórios topológicos; não altera o planejador, ruas OSM ou ETA.
+- `tests/test_audit_transfer_topology.py` inclui regressões sintéticas para essas cinco classes.
+- Acesso: Git local bloqueado por DNS, contornado com leitura/escrita autenticada do conector GitHub, verificando SHA de cada arquivo antes de alterar. Testes locais completos com catálogo real não executados nesta rodada; consultar CI do HEAD novo antes de considerar a mudança homologada.
+- Próxima IA: conferir commits e CI da branch, executar `py -m unittest discover -s tests -p "test_audit_transfer_topology.py" -v`, auditoria real e Playwright. Investigar viabilidade temporal/OSM das combinações 9106+5106, 9209+51 e 9209+67, sem presumir resultado. Validar GTFS-RT por instância e DER/MG somente com fonte oficial. Preservar gratuidade e não fazer deploy/merge.
