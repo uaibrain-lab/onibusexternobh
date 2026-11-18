@@ -138,7 +138,7 @@ def audit(feed, catalog: Path, now: int | None = None) -> dict:
             count["startTimeMissingOrInvalid"] += 1
             continue
         needed[line].add(tid)
-        matched.append((u, line, tid))
+        matched.append((u, line, tid, service_idx))
     # The routing shards currently hold [stop_id, arrival_sec, departure_sec,
     # pickup, dropoff]. Next rebuild may add 6th original stop_sequence.
     # Never reconstruct the original sequence as index+1: GTFS may skip IDs.
@@ -158,10 +158,16 @@ def audit(feed, catalog: Path, now: int | None = None) -> dict:
             tid = str(trip[0])
             if tid in ids:
                 shard_trips[(line, tid)] = trip
-    for update, line, tid in matched:
+    for update, line, tid, service_idx in matched:
         row = shard_trips.get((line, tid))
         if row is None:
             count["tripMissingFromRoutingShard"] += 1
+            continue
+        # A trip ID may appear in mismatched routing and scan versions.
+        # Require the per-line shard to refer to the SAME service ID.
+        expected_service=str(meta["services"][service_idx]["id"])
+        if str(row[1]) != expected_service:
+            count["routingShardServiceMismatch"] += 1
             continue
         count["matchedAppTripAndService"] += 1
         departure = row[3][0][2] if row[3] else None
@@ -212,6 +218,7 @@ def audit(feed, catalog: Path, now: int | None = None) -> dict:
         "serviceDateUnverifiable": count["serviceDateUnverifiable"],
         "matchedAppTripAndService": count["matchedAppTripAndService"],
         "tripMissingFromRoutingShard": count["tripMissingFromRoutingShard"],
+        "routingShardServiceMismatch": count["routingShardServiceMismatch"],
         "startTimeMatchesAppSchedule": count["startTimeMatchesAppSchedule"],
         "startTimeDifferentFromAppSchedule": count["startTimeDifferentFromAppSchedule"],
         "stopIdPresentInTrip": count["stopIdPresentInTrip"],
