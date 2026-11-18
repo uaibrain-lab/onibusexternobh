@@ -31,6 +31,10 @@ on:
       - tests/test_p24_metropolitan_coverage.cjs
       - tests/test_p26_transfers_station_access.cjs
       - tests/test_p27_walk_failure_explanations.cjs
+      - tests/test_p27_walking_diagnostics.cjs
+      - tests/test_audit_sumob_catalog_match.py
+      - scripts/audit_sumob_catalog_match.py
+      - scripts/build_routing.py
       - tests/test_p27_app_catalog_overlap.py
       - scripts/audit_walk_graph.py
       - tests/test_p27_walk_graph_coverage.py
