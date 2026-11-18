@@ -20,6 +20,16 @@ Execute `node scripts/check_p18_public_site.mjs` no Windows antes de
 considerar a publicação validada; a análise visual mobile continua pendente.
 O GPS padrão no repositório permanece desativado e o Hub não foi alterado.
 
+**P22 — 17/11/2026:** complementos da P21: toque em parada mantém
+rastreamento; consultas de horários exigem sentido/headsings GTFS
+coerentes e ignoram respostas antigas; separação do tempo planejado
+entre caminhada, ônibus e espera; busca de endereço responsiva e com
+coordenadas dentro da área do roteador; suite de regressão maior;
+redução da duplicidade de Actions. O site de homologação **ainda não foi
+atualizado** com essas alterações. Consulte
+[docs/P22-ROBUSTEZ-LINHAS-HORARIOS-ROTEAMENTO.md](docs/P22-ROBUSTEZ-LINHAS-HORARIOS-ROTEAMENTO.md).
+Execuções do Actions falham antes de expor etapas de teste; CI pendente.
+
 **P21 — 17/11/2026:** modo de linha temporário com retorno ao mapa e
 ponto anteriores; paradas restritas ao percurso selecionado; seletor de
 ponto com horários GTFS; busca explícita por endereço/estabelecimento
