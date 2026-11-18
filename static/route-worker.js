@@ -141,7 +141,9 @@ function neighbors(idx,expanded=false) {
   const s=stops[idx];
   const list=nearby(s[2],s[3],radius,limit)
     .filter(([m,id])=>id!==idx&&m>=2);
-  if(nearCache.size>20000)nearCache.clear();
+  // A 90-stop list for 20k distinct stops could consume excessive mobile RAM.
+  // Evict oldest cached list individually instead of clearing the entire cache.
+  if(nearCache.size>=2500)nearCache.delete(nearCache.keys().next().value);
   nearCache.set(key,list);
   return list;
 }
