@@ -94,6 +94,8 @@ if ($ReutilizarBuild) {
     if ($LASTEXITCODE -ne 0) { throw "TESTES_GPS_FALHARAM" }
     RunPython @("-m", "unittest", "discover", "-s", "tests", "-p", "test_gps_staging_build.py", "-v")
     RunPython @("-m", "unittest", "discover", "-s", "tests", "-p", "test_p27_app_catalog_overlap.py", "-v")
+    RunPython @("-m", "unittest", "discover", "-s", "tests", "-p", "test_p27_walk_graph_coverage.py", "-v")
+    RunPython @("scripts/audit_walk_graph.py")
     RunPython @("scripts/build_static_site.py", "--gps-staging")
 }
 
