@@ -17,7 +17,7 @@ const ORIGINS=new Set([
 // Endpoint is fixed: callers cannot supply their own URL.
 const REALTIME_URL='http://realtime4.mobilibus.com/web/4ch6j/vehicle-positions?accesskey=982a57efd77a9462bf1665696fb25984';
 const RT_MAX_BODY=8*1024*1024;
-const API_VERSION='p16-gtfs-rt-20261117-1';
+const API_VERSION='p24-gtfs-rt-geocode-20261117-1';
 const MAX_BODY=12*1024*1024;
 const MAX_RESPONSE_ROWS=1500;
 const MIN_CACHE_SECONDS=25;
@@ -131,6 +131,104 @@ async function readRealtime({fetchFn,cache,ctx,requestUrl}){
   return bytes;
 }
 
+// P24: static no-cost address lookup relay. A fixed Photon origin plus bounded
+// public OSM region prevents arbitrary URL fetching/SSRF. Only an explicit
+// click on supported Externo BH origin can call this endpoint. Edge-cache
+// reduces upstream usage; no coordinate of the passenger is ever forwarded.
+const PHOTON_URL='https://photon.komoot.io/api/';
+const GEO_MAX_BYTES=64*1024;
+const GEO_TTL_SECONDS=86400;
+function geocodeProperties(f){
+  const coords=f?.geometry?.coordinates;
+  if(!Array.isArray(coords)||coords.length<2)return null;
+  const lng=Number(coords[0]),lat=Number(coords[1]);
+  if(!Number.isFinite(lat)||!Number.isFinite(lng)||
+     lat<-20.45||lat>-19.50||lng<-44.40||lng>-43.50)return null;
+  const p=f?.properties||{};
+  const label=[p.name,p.street,p.housenumber,p.district,p.city||p.county]
+    .filter(v=>typeof v==='string'||typeof v==='number')
+    .map(v=>String(v).trim()).filter(Boolean);
+  const title=[...new Set(label)].join(' · ').slice(0,200);
+  return title?{lat,lng,label:title,source:'Photon / OpenStreetMap'}:null;
+}
+async function geocodeRequest(url,origin,{fetchFn,cache,ctx}){
+  // Unlike GPS status, geocoding is not accessible cross-origin or from
+  // origin-less scraping: all supported origins are already whitelisted.
+  if(!ORIGINS.has(origin))
+    return reply({available:false,error:'ORIGIN_REQUIRED'},403,origin);
+  if([...url.searchParams.keys()].some(k=>k!=='q')||
+     url.searchParams.getAll('q').length!==1)
+    return reply({available:false,error:'INVALID_QUERY'},400,origin);
+  const query=String(url.searchParams.get('q')||'').trim().replace(/\s+/g,' ');
+  if(query.length<3||query.length>130||
+     !/^[\p{L}\p{N}\s.,º°ª#'"/-]+$/u.test(query))
+    return reply({available:false,error:'INVALID_QUERY'},400,origin);
+  const key=new Request(new URL('/__geocode_cache/v1?q='+encodeURIComponent(
+    query.toLocaleLowerCase('pt-BR')),url));
+  if(cache){
+    try{
+      const cached=await cache.match(key);
+      if(cached?.ok){
+        const data=await cached.json();
+        if(data?.available===true&&Array.isArray(data.items))
+          return reply(data,200,origin);
+      }
+    }catch(_){/* edge cache is best-effort */}
+  }
+  const upstream=new URL(PHOTON_URL);
+  upstream.searchParams.set('q',query);
+  upstream.searchParams.set('lang','pt');
+  upstream.searchParams.set('limit','12');
+  // Fixed BH bias and area, never request geolocation coordinates.
+  upstream.searchParams.set('lat','-19.9208');
+  upstream.searchParams.set('lon','-43.9378');
+  upstream.searchParams.set('bbox','-44.4,-20.45,-43.5,-19.5');
+  try{
+    const res=await fetchFn(upstream.href,{method:'GET',redirect:'manual',
+      headers:{Accept:'application/json'},
+      signal:typeof AbortSignal.timeout==='function'?
+        AbortSignal.timeout(7000):undefined
+    });
+    if(res.status===429)return reply({
+      available:false,error:'GEOCODE_RATE_LIMITED',provider:'Photon'
+    },429,origin);
+    if(!res.ok||res.status>=300)return reply({
+      available:false,error:'GEOCODE_UPSTREAM_UNAVAILABLE',
+      provider:'Photon',upstreamStatus:res.status
+    },503,origin);
+    if(Number(res.headers.get('content-length')||0)>GEO_MAX_BYTES)
+      return reply({available:false,error:'GEOCODE_RESPONSE_TOO_LARGE'},503,origin);
+    const raw=await res.text();
+    if(raw.length>GEO_MAX_BYTES)
+      return reply({available:false,error:'GEOCODE_RESPONSE_TOO_LARGE'},503,origin);
+    const parsed=JSON.parse(raw);
+    if(!Array.isArray(parsed?.features))
+      return reply({available:false,error:'GEOCODE_FORMAT_ERROR'},503,origin);
+    const items=[],seen=new Set();
+    for(const feature of parsed.features.slice(0,24)){
+      const place=geocodeProperties(feature);
+      if(!place)continue;
+      const distinct=place.lat.toFixed(5)+','+place.lng.toFixed(5);
+      if(seen.has(distinct))continue;
+      seen.add(distinct);items.push(place);
+      if(items.length>=8)break;
+    }
+    const data={available:true,source:'Photon / OpenStreetMap',items};
+    if(cache){
+      const operation=cache.put(key,new Response(JSON.stringify(data),{
+        headers:{'Content-Type':'application/json',
+          'Cache-Control':'public, max-age='+GEO_TTL_SECONDS}
+      })).catch(()=>{});
+      if(ctx?.waitUntil)ctx.waitUntil(operation);else await operation;
+    }
+    return reply(data,200,origin);
+  }catch(e){
+    return reply({available:false,error:'GEOCODE_UPSTREAM_UNAVAILABLE',
+      reason:e?.name==='TimeoutError'||e?.name==='AbortError'?
+        'TIMEOUT':'NETWORK_OR_FORMAT_ERROR',provider:'Photon'},503,origin);
+  }
+}
+
 export async function handleGpsRequest(request,{fetchFn=fetch,cache=globalThis.caches?.default,ctx=null,now=Date.now()}={}){
   const origin=request.headers.get('Origin')||'';
   if(origin&&!ORIGINS.has(origin))return reply({available:false,error:'ORIGIN_NOT_ALLOWED'},403,origin);
@@ -146,7 +244,10 @@ export async function handleGpsRequest(request,{fetchFn=fetch,cache=globalThis.c
   if(url.pathname==='/api/gps/capabilities')
     return reply({service:'Externo BH GPS',apiVersion:API_VERSION,
       supportedSources:['CONVENCIONAL','SUPLEMENTAR','GTFS_RT'],
+      geocodingSupported:true,
       dataSourceVerified:false},200,origin);
+  if(url.pathname==='/api/geocode')
+    return geocodeRequest(url,origin,{fetchFn,cache,ctx});
   if(url.pathname!=='/api/gps')return reply({available:false,error:'NOT_FOUND'},404,origin);
   const source=url.searchParams.get('source');
   const rt=source==='GTFS_RT';
