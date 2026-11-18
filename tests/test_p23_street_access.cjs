@@ -72,6 +72,7 @@ test('end walking time does not inflate OSM road distance using a second 1.35 fa
  assert.equal(ctx.finals.length,1);
  assert.equal(ctx.finals[0].meters,100);
  assert.equal(ctx.finals[0].time,now+122000);
+ assert.equal(ctx.finals[0].endingSeconds,122);
 });
 test('large geocode/stop set refuses unbounded pedestrian traversal',()=>{
  const g=walkingFixture();
