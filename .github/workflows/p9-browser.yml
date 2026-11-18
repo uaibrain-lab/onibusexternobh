@@ -25,6 +25,11 @@ on:
       - tests/test_p23_pareto.cjs
       - tests/test_p23_transfer_radius.cjs
       - tests/test_p23_diagnostics.cjs
+      - tests/test_p24_boarding_candidates.cjs
+      - tests/test_p24_geocode_client.cjs
+      - tests/test_p24_geocode_worker.cjs
+      - tests/test_p24_metropolitan_coverage.cjs
+      - scripts/check_geocode_worker.mjs
       - scripts/diagnose_route.cjs
       - static/place-geocoding.js
       - static/index.html
