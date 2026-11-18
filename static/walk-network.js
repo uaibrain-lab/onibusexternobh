@@ -111,6 +111,52 @@ const WalkGraph=(()=>{
       }
       return results;
     }
+    componentIds(){
+      // Compute components only when diagnostics are requested. The normal
+      // mobile planner does NOT pay the O(nodes+edges) cost.
+      if(this._componentIds)return this._componentIds;
+      const ids=new Int32Array(this.nodes.length);
+      ids.fill(-1);
+      const queue=[];
+      let part=0;
+      for(let root=0;root<this.nodes.length;root++){
+        if(ids[root]>=0)continue;
+        queue.length=0;queue.push(root);ids[root]=part;
+        for(let cursor=0;cursor<queue.length;cursor++){
+          const at=queue[cursor];
+          for(const [next] of this.adj[at]){
+            if(ids[next]>=0)continue;
+            ids[next]=part;queue.push(next);
+          }
+        }
+        part++;
+      }
+      this._componentIds=ids;
+      return ids;
+    }
+    explainFailure(from,to,limitMeters=2500){
+      // Aggregatable explanation of a rejected OSM walk; no coordinates,
+      // node IDs or passenger locations escape from the worker.
+      const a=this.nearest(from),b=this.nearest(to);
+      if(!a||!b)return {
+        reason:!a&&!b?'bothEndpointsUnsnappped':!a?'fromUnsnapped':'toUnsnapped',
+        fromSnapMeters:a?Math.round(a[1]):null,
+        toSnapMeters:b?Math.round(b[1]):null
+      };
+      const straight=Math.round(dist(from,to));
+      if(straight+a[1]+b[1]>limitMeters)return {
+        reason:'minimumWalkingDistanceOverBudget',
+        straightDistanceMeters:straight,
+        fromSnapMeters:Math.round(a[1]),toSnapMeters:Math.round(b[1])
+      };
+      const ids=this.componentIds();
+      return {
+        reason:ids[a[0]]!==ids[b[0]]?'disconnectedPedestrianComponents':
+          'walkDetourExceedsBudgetOrSearchLimit',
+        straightDistanceMeters:straight,
+        fromSnapMeters:Math.round(a[1]),toSnapMeters:Math.round(b[1])
+      };
+    }
     route(from,to,limitMeters=2500){
       const a=this.nearest(from),b=this.nearest(to);
       if(!a||!b)return null;
