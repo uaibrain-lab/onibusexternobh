@@ -139,7 +139,7 @@ const WalkGraph=(()=>{
       // node IDs or passenger locations escape from the worker.
       const a=this.nearest(from),b=this.nearest(to);
       if(!a||!b)return {
-        reason:!a&&!b?'bothEndpointsUnsnappped':!a?'fromUnsnapped':'toUnsnapped',
+        reason:!a&&!b?'bothEndpointsUnsnapped':!a?'fromUnsnapped':'toUnsnapped',
         fromSnapMeters:a?Math.round(a[1]):null,
         toSnapMeters:b?Math.round(b[1]):null
       };
