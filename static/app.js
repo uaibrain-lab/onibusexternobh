@@ -333,11 +333,22 @@ function focusLineBoardingStop(stop,{userInitiated=false}={}){
 }
 async function loadLineStopForecast(stop){
   const seq=++lineStopForecastSeq,code=state.route?.code||'';
+  const pattern=state.pattern;
+  const expectedDirection=normalizeDestination(state.geometry?.selected?.headsign);
   const result=await api('/api/stop?id='+encodeURIComponent(stop.id));
   if(seq!==lineStopForecastSeq||!lineMode()||state.route?.code!==code||
-     String(stop.id)!==String(lineFocusStopId))return;
-  const matched=(result.routes||[]).filter(x=>String(x.code)===String(code));
-  const scheduled=matched.filter(x=>x.nextArrival?.type==='scheduled')
+     state.pattern!==pattern||String(stop.id)!==String(lineFocusStopId))return;
+  const sameLine=(result.routes||[]).filter(x=>String(x.code)===String(code));
+  // Do not silently show a bus travelling in the OPPOSITE direction.
+  // Some stops serve both headsigns. Unknown/missing headsign cannot
+  // be treated as confirmation that an arrival belongs to this pattern.
+  const matched=expectedDirection
+    ?sameLine.filter(x=>normalizeDestination(
+        x.destination||x.nextArrival?.destination)===expectedDirection)
+    :sameLine;
+  const ambiguous=!expectedDirection&&new Set(sameLine.map(x=>
+    normalizeDestination(x.destination||x.nextArrival?.destination))).size>1;
+  const scheduled=(ambiguous?[]:matched).filter(x=>x.nextArrival?.type==='scheduled')
     .sort((a,b)=>(a.nextArrival.minutes??9999)-(b.nextArrival.minutes??9999));
   if(result.expired){
     $('lineStopForecast').textContent='GTFS vencido: não há previsão confiável neste ponto.';
@@ -351,7 +362,12 @@ async function loadLineStopForecast(stop){
       '. Horário de tabela; não é ETA calculado pelo GPS.';
   }else{
     $('lineStopForecast').textContent=stop.name+
-      ': sem próximo horário programado disponível para esta linha. Não significa ausência de ônibus.';
+      (ambiguous
+        ?': este ponto recebe diferentes sentidos; selecione um percurso com destino identificado.'
+        :expectedDirection
+          ?': sem horário confirmado no GTFS para o sentido '+state.geometry.selected.headsign+'.'
+          :': sem próximo horário programado disponível para esta linha.')+
+      ' Isso não significa ausência de ônibus.';
   }
   drawSoon();
 }
