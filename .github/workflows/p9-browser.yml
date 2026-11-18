@@ -18,6 +18,7 @@ on:
       - tests/test_p21_geocoder.cjs
       - tests/test_p21_route_ranking.cjs
       - tests/test_p21_line_map.cjs
+      - tests/test_p22_timing_map.cjs
       - static/place-geocoding.js
       - static/index.html
       - static/service-worker.js
