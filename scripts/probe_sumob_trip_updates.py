@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""One-shot and read-only quality probe for PBH/SUMOB official GTFS-Realtime TripUpdates.
+r"""One-shot and read-only quality probe for PBH/SUMOB official GTFS-Realtime TripUpdates.
 
 Required free dependency:
   py -m pip install gtfs-realtime-bindings
