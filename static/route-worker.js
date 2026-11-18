@@ -203,12 +203,14 @@ function emit(node,ctx) {
   if(!insert(ctx.labels,node,ctx))return;
   const ending=ctx.ends.get(node.stop);
   if(ending!==undefined){
-    const seconds=walkSeconds(ending),ms=seconds*1000;
+    const seconds=typeof ending==='number'?walkSeconds(ending):ending.seconds;
+    const meters=typeof ending==='number'?rounded(ending):ending.meters;
+    const ms=seconds*1000;
     // Reverse planning reserves a minimum boarding buffer at the very first
     // boarding point, just as forward planning does.
     const endTime=node.time+(ctx.backward?-(ms+BUFFER):ms);
     if(endTime>=ctx.lo&&endTime<=ctx.hi){
-      ctx.finals.push({node,time:endTime,meters:rounded(ending)});
+      ctx.finals.push({node,time:endTime,meters});
       if(ctx.finals.length>1000){
         ctx.partial=true;ctx.partialReasons.finals++;ctx.finals.splice(1000);
       }
@@ -508,22 +510,38 @@ async function metroHints(origin,destination,at,railHintMode='departAt'){
 function seedStops(ctx,which) {
   const place=which==='start'?(ctx.backward?ctx.destination:ctx.origin)
                              :(ctx.backward?ctx.origin:ctx.destination);
-  // Do not silently discard viable boarding stops in dense neighborhoods:
-  // the old fixed 22-candidate cap could omit the best 2-bus route.
   const found=nearby(...place,ctx.accessRadius,ctx.accessLimit);
+  // Street access/egress is solved first, as in multimodal routing engines.
+  // One bounded Dijkstra handles all candidate stops (not N repeated A*).
+  const road=ctx.graph?.distancesToStops
+    ?ctx.graph.distancesToStops(place,found.map(([,index])=>({
+        index,coords:[stops[index][2],stops[index][3]]
+      })),2500)
+    :null;
+  const candidates=road instanceof Map
+    ?found.filter(([,id])=>road.has(id))
+    :found;
+  if(road instanceof Map){
+    const field=which==='start'?'streetOriginStops':'streetDestinationStops';
+    ctx.accessStats[field]=candidates.length;
+    ctx.accessStats.unreachableStops+=found.length-candidates.length;
+  }
   if(which==='end'){
-    for(const [metres,id] of found)ctx.ends.set(id,metres);
+    for(const [metres,id] of candidates)
+      ctx.ends.set(id,road?road.get(id):metres);
     return;
   }
-  for(const [metres,id] of found){
-    const ms=walkSeconds(metres)*1000;
+  for(const [metres,id] of candidates){
+    const access=road?.get(id);
+    const meters=access?access.meters:rounded(metres);
+    const ms=(access?access.seconds:walkSeconds(metres))*1000;
     const t=ctx.requested+(ctx.backward?-ms:ms);
     const edge=ctx.backward
       ?{mode:'walk',from:id,to:'destination',departure:t,
-        arrival:ctx.requested,metersApprox:rounded(metres),pathVerified:false}
+        arrival:ctx.requested,metersApprox:meters,pathVerified:false}
       :{mode:'walk',from:'origin',to:id,departure:ctx.requested,
-        arrival:t,metersApprox:rounded(metres),pathVerified:false};
-    insert(ctx.labels,{stop:id,time:t,rides:0,walk:rounded(metres),
+        arrival:t,metersApprox:meters,pathVerified:false};
+    insert(ctx.labels,{stop:id,time:t,rides:0,walk:meters,
       prev:null,edge},ctx);
   }
 }
@@ -596,8 +614,14 @@ async function plan(params,seq) {
     maxLabels:expanded?24:MAX_LABELS,maxOnboard:expanded?24:MAX_ONBOARD,
     accessRadius:expanded?1450:1100,accessLimit:expanded?80:48,
     partialReasons:{labels:0,onboard:0,finals:0,scanLimit:0},
+    graph:null,
+    accessStats:{streetOriginStops:null,streetDestinationStops:null,unreachableStops:0},
     lo:backward?requested-MAX_HOURS*HOUR:requested,
     hi:backward?requested:requested+MAX_HOURS*HOUR};
+  // The offline OSM graph is a static file, not a paid routing API.
+  // Graph-aware access times are calculated BEFORE timetable scanning.
+  const graph=await ensureWalkingGraph();
+  ctx.graph=graph;
   seedStops(ctx,'start');seedStops(ctx,'end');
   const first=Math.floor(ctx.lo/HOUR),last=Math.floor(ctx.hi/HOUR);
   const hours=[];
@@ -610,7 +634,6 @@ async function plan(params,seq) {
     self.postMessage({kind:'progress',seq,done:i+1,total:hours.length,
       found:ctx.finals.length,scanned:ctx.scanned});
   }
-  const graph=await ensureWalkingGraph();
   // P21: verify more than the first 32 timetable candidates on the OSM
   // streets graph. Faster trips can be ranked after a crowd of unwalkable
   // alternatives; pre-cutting them produced false "best route" claims.
@@ -643,6 +666,10 @@ async function plan(params,seq) {
       searchDepth:expanded?'expanded':'standard',
       boardingStopRadiusMeters:ctx.accessRadius,
       accessStopLimit:ctx.accessLimit,
+      pedestrianAccess:graph?'OSM street shortest paths':'estimated distance',
+      verifiedStreetOriginStops:ctx.accessStats.streetOriginStops,
+      verifiedStreetDestinationStops:ctx.accessStats.streetDestinationStops,
+      inaccessibleStreetCandidates:ctx.accessStats.unreachableStops,
       walkCandidatesEvaluated:graph?candidates.length:0,
       walkCandidatesRejected:rejectedWalkCandidates,
       labelsPerStopLimit:ctx.maxLabels,onboardLimit:ctx.maxOnboard,
