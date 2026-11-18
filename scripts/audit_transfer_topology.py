@@ -65,7 +65,12 @@ def audit(stops, routes, pairs, radius=450):
         if not isinstance(stop, list) or len(stop) < 4:
             raise ValueError("Parada do scan inválida")
         sid = str(stop[0])
-        lat, lon = float(stop[2]), float(stop[3])
+        try:
+            lat, lon = float(stop[2]), float(stop[3])
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Coordenadas de parada inválidas") from exc
+        if not (math.isfinite(lat) and math.isfinite(lon)):
+            raise ValueError("Coordenadas de parada não finitas")
         if not (-21 <= lat <= -18 and -46 <= lon <= -42):
             continue
         for code in routes.get(sid, []):
