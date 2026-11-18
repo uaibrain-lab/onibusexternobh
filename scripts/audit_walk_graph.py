@@ -25,7 +25,7 @@ def haversine(a, b):
     return 12742000 * math.asin(min(1, math.sqrt(max(0, h))))
 
 
-def audit(graph, stops, snap_limit=70):
+def audit(graph, stops, snap_limit=70, *, focus_routes=(), stop_routes=None):
     nodes = graph["nodes"]
     edges = graph["edges"]
     if (graph.get("schema") != 1 or len(nodes) != graph.get("nodeCount")
@@ -60,11 +60,19 @@ def audit(graph, stops, snap_limit=70):
     for idx, (lat, lon) in enumerate(nodes):
         index[(math.floor(lat * 1000), math.floor(lon * 1000))].append(idx)
     counts = Counter()
+    focus_codes = tuple(dict.fromkeys(str(c).strip().upper() for c in focus_routes
+                                     if str(c).strip()))
+    focus = {code: Counter() for code in focus_codes}
+    route_map = stop_routes or {}
     snap_distances = []
     for stop in stops:
         if not isinstance(stop, list) or len(stop) < 4:
             raise ValueError("Formato inválido de parada GTFS do scan")
         point = (float(stop[2]), float(stop[3]))
+        belonging = [code for code in route_map.get(str(stop[0]), [])
+                     if code in focus]
+        for code in belonging:
+            focus[code]["total"] += 1
         lat, lon = math.floor(point[0] * 1000), math.floor(point[1] * 1000)
         nearest = None
         for x in range(lat - 1, lat + 2):
@@ -75,13 +83,19 @@ def audit(graph, stops, snap_limit=70):
                         nearest = (idx, distance)
         if nearest is None:
             counts["stopsUnsnapped"] += 1
+            for code in belonging:
+                focus[code]["unsnapped"] += 1
             continue
         counts["stopsSnapped"] += 1
         snap_distances.append(nearest[1])
         if find(nearest[0]) == biggest:
             counts["stopsLargestComponent"] += 1
+            for code in belonging:
+                focus[code]["largestComponent"] += 1
         else:
             counts["stopsOtherComponents"] += 1
+            for code in belonging:
+                focus[code]["otherComponents"] += 1
     return {
         "diagnostic": "P27_OSM_PED_GRAPH_COVERAGE_AGGREGATE",
         "nodeCount": len(nodes),
@@ -100,6 +114,18 @@ def audit(graph, stops, snap_limit=70):
         "snapDistanceMedianMeters": round(statistics.median(snap_distances), 1)
             if snap_distances else None,
         "snapLimitMeters": snap_limit,
+        "focusedLines": {
+            code: {
+                "stops": data["total"],
+                "largestComponent": data["largestComponent"],
+                "otherComponents": data["otherComponents"],
+                "unsnapped": data["unsnapped"],
+                "snapCoveragePercent": round(
+                    100 * (data["total"] - data["unsnapped"]) / data["total"], 2
+                ) if data["total"] else None,
+                "inMunicipalCatalog": data["total"] > 0
+            } for code, data in focus.items()
+        },
         "caution": "Snap por distância não comprova acesso pedonal ao ponto, estação ou plataforma."
     }
 
@@ -115,8 +141,19 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--graph", type=Path, default=ROOT / "catalog/walk/graph.json.gz")
     parser.add_argument("--stops", type=Path, default=ROOT / "catalog/scan/stops.json.gz")
+    parser.add_argument("--route-stops", type=Path,
+                        default=ROOT / "catalog/routing-stop-routes.json")
+    parser.add_argument("--focus", default="9106,5106,9209,51,67,411C,511C",
+                        help="Códigos públicos separados por vírgula; somente estatísticas")
     args = parser.parse_args()
-    stats = audit(load_json_gz(args.graph), load_json_gz(args.stops))
+    codes = [v.strip().upper() for v in args.focus.split(",") if v.strip()]
+    if len(codes) > 20 or any(not v.isalnum() or len(v) > 12 for v in codes):
+        raise ValueError("Códigos de linha inválidos")
+    routes = json.loads(args.route_stops.read_text(encoding="utf-8"))
+    if not isinstance(routes, dict):
+        raise ValueError("Relação de paradas e linhas inválida")
+    stats = audit(load_json_gz(args.graph), load_json_gz(args.stops),
+                  focus_routes=codes, stop_routes=routes)
     print(json.dumps(stats, ensure_ascii=False, indent=2))
     print("P27_OSM_GRAPH_COVERAGE_OK")
 
