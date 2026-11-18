@@ -348,3 +348,11 @@ html,body{max-width:100%;overflow-x:hidden}
   padding:8px 10px;margin:0 0 8px;font-size:11px;line-height:1.5;
   overflow-wrap:anywhere;color:var(--mut)
 }
+
+/* P24: honest metropolitan-data coverage without increasing cards. */
+.route-coverage-notice{
+  padding:8px 10px;margin:4px 0 9px;border-radius:8px;
+  border:1px solid var(--line);border-left:3px solid #cf8b34;
+  background:var(--bg2);font-size:11px;line-height:1.5;
+  color:var(--mut);max-width:100%;overflow-wrap:anywhere
+}
