@@ -1060,6 +1060,8 @@ function routeStatus(message,kind='info'){
 function routeInput(which){return $(which==='origin'?'routeOriginInput':'routeDestinationInput')}
 function routeCandidates(which){return $(which==='origin'?'routeOriginResults':'routeDestinationResults')}
 function setRoutePoint(which,point){
+  // Invalidate any geocoding response still in flight for this field.
+  if(typeof geocodeSequence!=='undefined')geocodeSequence[which]++;
   invalidateRouteResults();
   const lat=Number(point.lat),lng=Number(point.lng);
   if(!Number.isFinite(lat)||!Number.isFinite(lng))return;
@@ -1169,34 +1171,48 @@ async function searchRoutePlace(which){
   const external=q.length>=3&&typeof GeoPlaces!=='undefined'
     ?GeoPlaces.search(q).then(v=>({items:v})).catch(error=>({items:[],error:error.message}))
     :Promise.resolve({items:[],error:null});
-  const [stops,places]=await Promise.all([local,external]);
+  function renderMatches(places,stops,{loading=false,error=null}={}){
+    area.replaceChildren();
+    const unique=new Set();
+    const combined=[...places,...stops].filter(p=>{
+      const lat=Number(p.lat),lng=Number(p.lng);
+      if(!Number.isFinite(lat)||!Number.isFinite(lng))return false;
+      const key=lat.toFixed(5)+','+lng.toFixed(5);
+      if(unique.has(key))return false;
+      unique.add(key);return true;
+    }).slice(0,14);
+    if(!combined.length){
+      area.textContent=loading?'Pesquisando endereço no OpenStreetMap…':
+        (error?'Busca externa indisponível. ':'')+
+        'Nenhum local confirmado. Experimente o endereço completo ou Escolher no mapa.';
+      return;
+    }
+    for(const p of combined){
+      const button=document.createElement('button');
+      button.type='button';button.className='row-item';
+      const label=document.createElement('span');label.className='name';
+      label.textContent=p.label;
+      button.append(label);
+      button.onclick=()=>setRoutePoint(which,p);
+      area.append(button);
+    }
+    if(loading){
+      const progress=document.createElement('p');progress.className='hint';
+      progress.textContent='Pontos locais disponíveis. Procurando também endereços e comércios…';
+      area.append(progress);
+    }else if(error){
+      const warn=document.createElement('p');warn.className='hint';
+      warn.textContent='Busca externa indisponível; resultados locais exibidos. '+error;
+      area.append(warn);
+    }
+  }
+  // Never hold nearby GTFS stops hostage to a slow third-party service.
+  const stops=await local;
   if(seq!==geocodeSequence[which])return;
-  area.replaceChildren();
-  const unique=new Set();
-  const combined=[...places.items,...stops].filter(p=>{
-    const key=Number(p.lat).toFixed(5)+','+Number(p.lng).toFixed(5);
-    if(unique.has(key))return false;
-    unique.add(key);return true;
-  }).slice(0,14);
-  if(!combined.length){
-    area.textContent=(places.error?'Busca externa indisponível. ':'')+
-      'Nenhum local confirmado. Experimente o endereço completo ou Escolher no mapa.';
-    return;
-  }
-  for(const p of combined){
-    const button=document.createElement('button');
-    button.type='button';button.className='row-item';
-    const label=document.createElement('span');label.className='name';
-    label.textContent=p.label;
-    button.append(label);
-    button.onclick=()=>setRoutePoint(which,p);
-    area.append(button);
-  }
-  if(places.error){
-    const warn=document.createElement('p');warn.className='hint';
-    warn.textContent='Busca externa indisponível; resultados locais exibidos. '+places.error;
-    area.append(warn);
-  }
+  renderMatches([],stops,{loading:q.length>=3&&typeof GeoPlaces!=='undefined'});
+  const places=await external;
+  if(seq!==geocodeSequence[which])return;
+  renderMatches(places.items,stops,{error:places.error});
 }
 function pickRoutePlace(which){
   state.routePick=which;switchTab('rotas',false);closeSheet();
@@ -1413,6 +1429,7 @@ for(const which of ['origin','destination']){
   $(id+'Search').onclick=()=>searchRoutePlace(which);
   $(id+'Map').onclick=()=>pickRoutePlace(which);
   routeInput(which).addEventListener('input',()=>{
+    geocodeSequence[which]++; // typing cancels previous asynchronous results
     invalidateRouteResults();
     if(which==='origin')state.routeOrigin=null;else state.routeDestination=null;
     routeCandidates(which).replaceChildren();
