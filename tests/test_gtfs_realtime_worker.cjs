@@ -60,7 +60,7 @@ test('capability probe exposes Worker revision and GTFS-RT support without conta
   });
   assert.equal(res.status,200);
   const data=await res.json();
-  assert.equal(data.apiVersion,'p16-gtfs-rt-20261117-1');
+  assert.equal(data.apiVersion,'p24-gtfs-rt-geocode-20261117-1');
   assert.ok(data.supportedSources.includes('GTFS_RT'));
   assert.equal(calls,0);
 });
