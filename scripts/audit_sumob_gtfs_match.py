@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 from collections import Counter
 import csv
+import hashlib
 import io
 import json
 import os
@@ -38,6 +39,11 @@ def static_match(feed, archive: Path, *, now: int | None = None):
     if len(updates) > MAX_TRIP_UPDATES:
         raise ValueError("Mais atualizações do que o limite de auditoria")
     ids = {u.trip.trip_id for u in updates if u.trip.trip_id}
+    with archive.open("rb") as stream:
+        archive_sha = hashlib.file_digest(stream, "sha256").hexdigest()
+    catalog_source = Path(__file__).resolve().parents[1] / "catalog/source-gtfs.sha256"
+    expected_sha = catalog_source.read_text(encoding="utf-8").strip().split()[0] if catalog_source.is_file() else None
+    same_catalog = archive_sha == expected_sha if expected_sha else None
     with zipfile.ZipFile(archive) as z:
         infos = [x for x in z.infolist() if not x.is_dir()]
         if sum(x.file_size for x in infos) > MAX_GTFS_RAW_BYTES:
@@ -136,6 +142,7 @@ def static_match(feed, archive: Path, *, now: int | None = None):
         head_ts = int(getattr(feed.header, "timestamp", 0))
         return {
             "audit": "SUMOB_REALTIME_STATIC_GTFS_ID_COMPATIBILITY_ONLY",
+            "matchesAppCatalogSourceGTFS": same_catalog,
             "rtTripUpdates": len(updates),
             "staticTripsMatching": len(static),
             "matchedTripId": counts["matchedTripId"],
@@ -160,6 +167,7 @@ def static_match(feed, archive: Path, *, now: int | None = None):
             "feedHeaderAgeSeconds": now - head_ts if head_ts else None,
             "warnings": [
                 "Correspondência de IDs não confirma instância, calendário ou serviço ativo.",
+                "Se matchesAppCatalogSourceGTFS=false, o ZIP oficial não é a mesma versão do catálogo atual.",
                 "Na ausência de timestamp por viagem, o timestamp global não prova atualização individual.",
                 "Uma parada com atraso não equivale a ETA garantido para todas as próximas.",
                 "Nenhum identificador individual nem posição foi armazenado ou divulgado."
