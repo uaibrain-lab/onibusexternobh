@@ -46,6 +46,23 @@ class TransferTopologyTests(unittest.TestCase):
             with self.subTest(value=str(invalid)), self.assertRaises(ValueError):
                 audit.audit(bad, self.routes, [("9106", "5106")], 450)
 
+    def test_invalid_route_associations_fail_closed(self):
+        for codes in ["9106", None, [9106], {"9106": True}]:
+            bad_routes = dict(self.routes, a=codes)
+            with self.subTest(codes=str(codes)), self.assertRaises(ValueError):
+                audit.audit(self.stops, bad_routes, [("9106", "5106")])
+
+    def test_conflicting_duplicate_stop_coordinates_fail_closed(self):
+        duplicate = ["a", "Parada duplicada", -19.901, -43.901]
+        with self.assertRaises(ValueError):
+            audit.audit(self.stops + [duplicate], self.routes, [("9106", "5106")])
+
+    def test_identical_duplicate_stop_does_not_inflate_counts(self):
+        result = audit.audit(self.stops + [self.stops[0].copy()], self.routes,
+                             [("9106", "5106")])["pairs"][0]
+        self.assertEqual(result["sharedStopIds"], 1)
+        self.assertEqual(result["lineAStopIds"], 2)
+
     def test_bounds_and_codes(self):
         for x in [-1,0,1001,float("nan")]:
             with self.assertRaises(ValueError):
