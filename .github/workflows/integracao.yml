@@ -9,6 +9,12 @@ on:
   pull_request:
     branches:
       - feat/externo-p9-multimodal-gratuito-20261117
+# Avoid redundant failed/queued jobs for every tiny feature-branch commit.
+# Push and PR from the same head branch share a single latest run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 jobs:
