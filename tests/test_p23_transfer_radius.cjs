@@ -5,7 +5,7 @@ const src=fs.readFileSync(path.join(__dirname,'../static/route-worker.js'),'utf8
 const a=src.indexOf('function neighbors(idx,expanded=false) {');
 const b=src.indexOf('function serviceActive(',a);
 assert.ok(a>=0&&b>a,'Transfer search extracted incorrectly');
-test('expanded search checks 450m links without changing standard 300m behavior',()=>{
+test('expanded search checks 450m + 90 diversified stops without changing standard 300m radius',()=>{
  const requests=[],cache=new Map(),stops=[null,['A','Ponto',-19.9,-43.9]];
  const neighbors=new Function('stops','nearCache','nearby',src.slice(a,b)+
    ';return neighbors')(stops,cache,(lat,lng,radius,limit)=>{
@@ -16,7 +16,8 @@ test('expanded search checks 450m links without changing standard 300m behavior'
  assert.equal(requests.length,2);
  assert.equal(requests[0].radius,300);
  assert.equal(requests[1].radius,450);
- assert.equal(requests[1].limit,28);
+ assert.equal(requests[0].limit,48);
+ assert.equal(requests[1].limit,90);
  assert.deepEqual(normal,[[120,2]]);
  assert.deepEqual(expanded,[[120,2],[350,3]]);
  assert.equal(cache.size,2,'must not accidentally reuse 300m stop-list for 450m');
