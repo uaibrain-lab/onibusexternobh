@@ -88,3 +88,60 @@ py scripts/audit_sumob_gtfs_match.py --gtfs ".\GTFSBHTRANS.zip"
 ~~~
 
 Próxima IA: atualizar **este** documento com commits e CI/Playwright atuais; preservar fronteira do repositório e gratuidade, não afirmar deploy ou benchmark sem evidência.
+
+## P27B - Conferência de sequência GTFS contra o catálogo EXATO (18/11)
+
+Estado: somente branch, sem deploy em Pages, Worker, Firebase ou Hub.
+
+Os relatórios de overlap anteriores comparam identificadores do scan, mas
+não garantem calendário, hora inicial nem a sequência original de cada
+parada. Novos recursos complementares:
+
+- scripts/audit_sumob_catalog_match.py: lê UMA vez o feed oficial SUMOB
+  e cruza com scan/index.json, scan/trips.json.gz, routing-index.json e
+  shards locais por linha. Confere trip_id, route_id/código público,
+  start_date e calendário com exceções, serviço ID idêntico entre scan
+  e shard, start_time da primeira parada e stop_id. Só verifica a
+  stop_sequence quando o shard realmente a conserva. Nunca registra
+  coordenadas de usuários, cookies, tokens ou IDs individuais.
+- tests/test_audit_sumob_catalog_match.py: testes para instâncias,
+  horário, calendário, ids públicos, sequência não consecutiva,
+  serviços de shard divergentes e privacidade.
+- scripts/build_routing.py: futuras reconstruções completas adicionam
+  o sexto campo stop_sequence aos registros de parada nos shards
+  (índices 0 a 4 não são modificados), e marcam
+  stopSequencePreserved=true. **Não migra automaticamente o catálogo
+  publicado e não ativa previsões**.
+- static/route-worker.js: no diagnóstico opt-in, falhas OSM são
+  atribuídas a stage_access, stage_transfer, stage_egress ou
+  stage_journey. tests/test_p27_walking_diagnostics.cjs confirma
+  essas categorias e ausência de coleta em fluxo normal.
+- Gate do PowerShell e watch P9 incorporam os testes novos. A suíte
+  Python principal já faz descoberta automática de tests/test_*.py.
+
+Comandos de homologação de leitura única (Windows):
+
+1. Entrar em D:\Downloads\Externo-GPS-Teste e fazer git pull --ff-only
+   da branch feat/gps-worker-free-homologacao-p15-20261117.
+2. Executar: py -m unittest discover -s tests -p "test_audit_sumob_catalog_match.py" -v
+3. Executar: node --test tests/test_p27_walking_diagnostics.cjs
+4. Reutilizar somente LOCALMENTE a variável SUMOB_TRIP_UPDATES_URL do
+   diagnóstico anterior e executar: py scripts/audit_sumob_catalog_match.py
+5. Remover a variável de ambiente depois. Não enviar URL inteira ao GitHub.
+
+Interpretação:
+- tripIdFoundInApp é compatibilidade com a versão do site, não
+  apenas com o ZIP oficial baixado novamente.
+- activeServiceMatches e startTimeMatchesAppSchedule distinguem
+  calendário e instância; routingShardServiceMismatch impede misturar
+  scans de versões diferentes.
+- stopIdPresentInTrip sozinho NÃO é prova de stop_sequence;
+  stopSequenceNotPreserved alto é esperado antes do rebuild.
+- stopIdAndSequenceVerified será zero no catálogo sem sexto campo.
+- readyForLiveETA continua SEMPRE false; timestamps individuais de
+  atraso não foram observados e propagação ainda não foi homologada.
+
+Próximos bloqueios: benchmark 9106+5106 com os mesmos locais/hora;
+reconstrução íntegra de scan + shards a partir de um ZIP validado;
+regras de atrasos e serviço; QA Android/Playwright; e DER/MG para
+411C e 511C. Não alegar paridade com Moovit/Google.
