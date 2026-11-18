@@ -72,7 +72,11 @@ def service_active(meta: dict, index: int, start_date: str) -> bool | None:
     if not (cal.get("start_date", "99999999") <= start_date <=
             cal.get("end_date", "00000000")):
         return False
-    return str(cal.get(date.strftime("%A").lower(), "0")) == "1"
+    # Locale-independent: Windows pt-BR can return "terça-feira" in %A,
+    # while the GTFS calendar always uses English weekday column names.
+    weekday=("monday","tuesday","wednesday","thursday",
+             "friday","saturday","sunday")[date.weekday()]
+    return str(cal.get(weekday, "0")) == "1"
 
 
 def seconds(value: str):
