@@ -10,14 +10,14 @@ test('expanded search checks 450m links without changing standard 300m behavior'
  const neighbors=new Function('stops','nearCache','nearby',src.slice(a,b)+
    ';return neighbors')(stops,cache,(lat,lng,radius,limit)=>{
    requests.push({lat,lng,radius,limit});
-   return [[0,1],[120,2],[350,3]];
+   return [[0,1],[120,2],[350,3]].filter(([meters])=>meters<=radius);
  });
  const normal=neighbors(1,false),expanded=neighbors(1,true);
  assert.equal(requests.length,2);
  assert.equal(requests[0].radius,300);
  assert.equal(requests[1].radius,450);
  assert.equal(requests[1].limit,28);
- assert.deepEqual(normal,[[120,2],[350,3]]);
+ assert.deepEqual(normal,[[120,2]]);
  assert.deepEqual(expanded,[[120,2],[350,3]]);
  assert.equal(cache.size,2,'must not accidentally reuse 300m stop-list for 450m');
  neighbors(1,false);neighbors(1,true);
