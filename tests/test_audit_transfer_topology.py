@@ -39,6 +39,13 @@ class TransferTopologyTests(unittest.TestCase):
         self.assertEqual(x["distinctStopPairsWithinRadius"],1)
         self.assertIn("no direction",x["note"])
 
+    def test_invalid_coordinates_fail_closed(self):
+        for invalid in [float("nan"), float("inf"), -float("inf"), "oops", None]:
+            bad = [row.copy() for row in self.stops]
+            bad[0][2] = invalid
+            with self.subTest(value=str(invalid)), self.assertRaises(ValueError):
+                audit.audit(bad, self.routes, [("9106", "5106")], 450)
+
     def test_bounds_and_codes(self):
         for x in [-1,0,1001,float("nan")]:
             with self.assertRaises(ValueError):
