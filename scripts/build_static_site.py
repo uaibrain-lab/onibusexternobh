@@ -90,7 +90,7 @@ def build(target=None, gps_staging=False):
         html=html.replace(notice,notice+'HOMOLOGAÇÃO: GPS experimental SUMOB. Sem ETA validado. ',1)
         # Stage-specific cache-busting: older HTML/CSS from the P17 build
         # must never mask a corrected canvas/map release in an installed PWA.
-        stage_version='p23-street-pareto-20261117'
+        stage_version='p24-boardings-metropolitan-geocode-20261117'
         for name in ('app.js','style.css','hub-parity.css',
                      'live-gps.js','static-bus.js','static-arrivals.js',
                      'place-geocoding.js','route-worker.js'):
