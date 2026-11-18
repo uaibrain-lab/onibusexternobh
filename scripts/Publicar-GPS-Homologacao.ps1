@@ -75,7 +75,7 @@ if ($LASTEXITCODE -ne 0) { throw "ADAPTADOR_SINTAXE_FALHOU" }
 if ($LASTEXITCODE -ne 0) { throw "APP_SINTAXE_FALHOU" }
 # Regression: P17 published successfully but canvas failed on first tile
 # because TILE_CACHE_LIMIT was undefined. Gate every future stage deploy.
-& node --test "tests/test_p20_map_layout.cjs" "tests/test_p21_geocoder.cjs" "tests/test_p21_route_ranking.cjs" "tests/test_p21_line_map.cjs" "tests/test_p22_timing_map.cjs" "tests/test_p22_stop_direction.cjs" "tests/test_p23_street_access.cjs" "tests/test_p23_balanced.cjs" "tests/test_p23_pareto.cjs" "tests/test_p23_transfer_radius.cjs" "tests/test_p23_diagnostics.cjs" "tests/test_static_worker.cjs" "tests/test_walk_network.cjs" "tests/test_unified_mobile_index.cjs" "tests/test_static_bus.cjs"
+& node --test "tests/test_p20_map_layout.cjs" "tests/test_p21_geocoder.cjs" "tests/test_p21_route_ranking.cjs" "tests/test_p21_line_map.cjs" "tests/test_p22_timing_map.cjs" "tests/test_p22_stop_direction.cjs" "tests/test_p23_street_access.cjs" "tests/test_p23_balanced.cjs" "tests/test_p23_pareto.cjs" "tests/test_p23_transfer_radius.cjs" "tests/test_p23_diagnostics.cjs" "tests/test_p24_boarding_candidates.cjs" "tests/test_p24_geocode_client.cjs" "tests/test_p24_geocode_worker.cjs" "tests/test_static_worker.cjs" "tests/test_walk_network.cjs" "tests/test_unified_mobile_index.cjs" "tests/test_static_bus.cjs"
 if ($LASTEXITCODE -ne 0) { throw "MAPA_ROTAS_BUSCA_P21_TESTES_FALHARAM" }
 & node --check "static/place-geocoding.js"
 if ($LASTEXITCODE -ne 0) { throw "GEOCODIFICADOR_P21_SINTAXE_FALHOU" }
@@ -85,6 +85,8 @@ if ($LASTEXITCODE -ne 0) { throw "MOTOR_P21_SINTAXE_FALHOU" }
 if ($LASTEXITCODE -ne 0) { throw "GRAFO_P23_SINTAXE_FALHOU" }
 & node --check "scripts/diagnose_route.cjs"
 if ($LASTEXITCODE -ne 0) { throw "DIAGNOSTICO_P23_SINTAXE_FALHOU" }
+& node --check "scripts/check_geocode_worker.mjs"
+if ($LASTEXITCODE -ne 0) { throw "GEOCODE_P24_SINTAXE_FALHOU" }
 if ($ReutilizarBuild) {
     Write-Host "P17_REUTILIZANDO_BUILD_EXISTENTE: conferindo integridade do pacote"
 } else {
@@ -157,6 +159,12 @@ if ($Publicar) {
     & node "scripts/check_staging_cors.mjs"
     if ($LASTEXITCODE -ne 0) {
         throw "P17_CORS_PROBE_FAILED: veja o diagnostico acima. Nao publique sem CORS confirmado."
+    }
+    # P24: a geocoder on the staging site is worthless if the Worker relay
+    # was not deployed or Photon itself is blocked. Fail before Pages upload.
+    & node "scripts/check_geocode_worker.mjs"
+    if ($LASTEXITCODE -ne 0) {
+        throw "P24_GEOCODE_PROXY_GATE_FAILED: execute -AtualizarWorker -Publicar; se persistir, veja o erro da fonte Photon."
     }
     if ($CriarProjeto) {
         Write-Host "CREATING_ONLY_ISOLATED_PAGES_PROJECT=$project"
