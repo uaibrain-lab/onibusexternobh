@@ -75,7 +75,7 @@ if ($LASTEXITCODE -ne 0) { throw "ADAPTADOR_SINTAXE_FALHOU" }
 if ($LASTEXITCODE -ne 0) { throw "APP_SINTAXE_FALHOU" }
 # Regression: P17 published successfully but canvas failed on first tile
 # because TILE_CACHE_LIMIT was undefined. Gate every future stage deploy.
-& node --test "tests/test_p20_map_layout.cjs" "tests/test_p21_geocoder.cjs" "tests/test_p21_route_ranking.cjs" "tests/test_p21_line_map.cjs" "tests/test_p22_timing_map.cjs" "tests/test_p22_stop_direction.cjs"
+& node --test "tests/test_p20_map_layout.cjs" "tests/test_p21_geocoder.cjs" "tests/test_p21_route_ranking.cjs" "tests/test_p21_line_map.cjs" "tests/test_p22_timing_map.cjs" "tests/test_p22_stop_direction.cjs" "tests/test_static_worker.cjs" "tests/test_walk_network.cjs" "tests/test_unified_mobile_index.cjs" "tests/test_static_bus.cjs"
 if ($LASTEXITCODE -ne 0) { throw "MAPA_ROTAS_BUSCA_P21_TESTES_FALHARAM" }
 & node --check "static/place-geocoding.js"
 if ($LASTEXITCODE -ne 0) { throw "GEOCODIFICADOR_P21_SINTAXE_FALHOU" }
