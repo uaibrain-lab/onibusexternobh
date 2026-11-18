@@ -16,7 +16,9 @@ test('navegação gratuita por Pontos, Linhas, Metrô e Rotas',async({page},info
   await expect(page.locator('#allLineList .row-item').first()).toBeVisible();
   await page.locator('#lineInput').fill('67');
   await page.locator('#goLine').click();
-  await expect(page.locator('#vehicleList')).toContainText('GPS em tempo real ainda não integrado');
+  // GPS may be enabled on staging or unavailable; never fabricate a fleet.
+  await expect(page.locator('#vehicleList')).not.toContainText('Carregando ônibus…', {timeout:20000});
+  await expect(page.locator('#vehicleList')).toContainText(/GPS|ônibus|Ônibus|posição|Posição/);
   await page.locator('#quick-metro').click();
   await expect(page.locator('#metroStations .row-item').first()).toBeVisible();
   await page.locator('#quick-rotas').click();
