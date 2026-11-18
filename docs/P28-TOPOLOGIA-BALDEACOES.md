@@ -72,3 +72,11 @@ pendências anteriores e sem duplicar a automação existente.
 - `tests/test_audit_transfer_topology.py` inclui regressões sintéticas para essas cinco classes.
 - Acesso: Git local bloqueado por DNS, contornado com leitura/escrita autenticada do conector GitHub, verificando SHA de cada arquivo antes de alterar. Testes locais completos com catálogo real não executados nesta rodada; consultar CI do HEAD novo antes de considerar a mudança homologada.
 - Próxima IA: conferir commits e CI da branch, executar `py -m unittest discover -s tests -p "test_audit_transfer_topology.py" -v`, auditoria real e Playwright. Investigar viabilidade temporal/OSM das combinações 9106+5106, 9209+51 e 9209+67, sem presumir resultado. Validar GTFS-RT por instância e DER/MG somente com fonte oficial. Preservar gratuidade e não fazer deploy/merge.
+
+## P28E — Integridade das entradas do auditor (18/11/2026)
+
+- Estado anterior confirmado: HEAD `c61b373976ac994183ac85d67f7d3cfe355426e3`, CI P2 #44324473903 `completed/success`, matrizes Python 3.11/3.13 aprovadas. Não houve deploy.
+- Novos commits: `365cd19eb3f7a512e69a046bd731ba817127048e` (validar lista de linhas por parada e rejeitar stop_id duplicado com coordenadas divergentes) e `9d31573ee7874d41ba13dfad46b90204641993e0` (regressões para associação malformada, duplicata conflitante e duplicata idêntica).
+- Motivação: dados inconsistentes poderiam produzir contagens topológicas enganadoras. A auditoria continua somente offline, sem ETA, caminhos artificiais ou mudança no planejador do usuário.
+- Acesso Git local segue indisponível (`Could not resolve host: github.com`); conector GitHub autenticado permitiu leitura e escrita com verificação de SHA. **Os testes dos novos commits ainda precisam ser confirmados no CI do novo HEAD**; não confundir sucesso do commit anterior com aprovação desta revisão.
+- Handoff: verificar CI de `9d31573` e do commit documental seguinte; executar auditoria real e Playwright no HEAD; investigar baldeações 9106+5106, 9209+51, 9209+67 com mesma data/hora e ruas OSM; conferir TripUpdates por instância exata, calendário, stop_sequence e freshness; não inferir horários DER/MG. Não fazer merge/deploy nem tocar outros repositórios.
