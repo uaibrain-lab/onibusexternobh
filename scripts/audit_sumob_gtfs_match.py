@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 from collections import Counter
 import csv
+import gzip
 import hashlib
 import io
 import json
@@ -30,7 +31,60 @@ def rows(z, name, names):
         yield from csv.DictReader(io.TextIOWrapper(stream, encoding="utf-8-sig", newline=""))
 
 
-def static_match(feed, archive: Path, *, now: int | None = None):
+def app_catalog_overlap(feed, catalog_dir: Path) -> dict:
+    """Compare RT trip IDs to the *actual* Externo BH browser scan version.
+
+    Does not imply correct schedule/date/instance; only an ID/code overlap
+    audit. Avoid exposing individual trip IDs or RT stop identifiers.
+    """
+    scan = Path(catalog_dir) / "scan" / "trips.json.gz"
+    if not scan.is_file() or scan.stat().st_size > 40_000_000:
+        raise ValueError("Catálogo scan/trips.json.gz ausente ou muito grande")
+    with gzip.open(scan, "rt", encoding="utf-8") as stream:
+        records = json.load(stream)
+    if not isinstance(records, list) or len(records) > 1_000_000:
+        raise ValueError("Catálogo de viagens inválido")
+    by_trip = {}
+    for row in records:
+        if not isinstance(row, list) or len(row) < 2:
+            raise ValueError("Linha de viagem do catálogo inválida")
+        tid, public_code = str(row[0]), str(row[1]).strip().upper()
+        by_trip.setdefault(tid, set()).add(public_code)
+    counters = Counter()
+    matched_ids = set()
+    for entity in feed.entity:
+        if not entity.HasField("trip_update"):
+            continue
+        trip = entity.trip_update.trip
+        tid = str(trip.trip_id)
+        if tid in by_trip:
+            counters["updatesWithAppTripId"] += 1
+            matched_ids.add(tid)
+            code = str(trip.route_id).strip().upper()
+            if code in by_trip[tid]:
+                counters["updatesWithAppRouteCode"] += 1
+            else:
+                counters["updatesWithAppRouteMismatch"] += 1
+        else:
+            counters["updatesWithoutAppTripId"] += 1
+    manifest = Path(catalog_dir) / "manifest.json"
+    version = None
+    if manifest.is_file():
+        value = json.loads(manifest.read_text(encoding="utf-8"))
+        version = str(value.get("gtfsVersion", "")) or None
+    return {
+        "appCatalogRTUpdateCount": counters["updatesWithAppTripId"],
+        "appCatalogRTMissingCount": counters["updatesWithoutAppTripId"],
+        "appCatalogRTPublicRouteCodeMatchCount": counters["updatesWithAppRouteCode"],
+        "appCatalogRTRouteCodeMismatchCount": counters["updatesWithAppRouteMismatch"],
+        "appCatalogUniqueTripIdsMatched": len(matched_ids),
+        "appCatalogGTFSVersion": version,
+        "appCatalogTripRows": len(records),
+        "appCatalogCaution": "Sobreposição de IDs/códigos não comprova data de serviço, horário da instância ou correspondência de parada."
+    }
+
+
+def static_match(feed, archive: Path, *, now: int | None = None, catalog_dir: Path | None = None):
     now = int(time.time()) if now is None else now
     archive = Path(archive)
     if not archive.is_file() or archive.stat().st_size > MAX_GTFS_ZIP_BYTES:
@@ -144,6 +198,7 @@ def static_match(feed, archive: Path, *, now: int | None = None):
                     counts["updatesWithDelayOnMatchedTrip"] += 1
         head_ts = int(getattr(feed.header, "timestamp", 0))
         return {
+            **(app_catalog_overlap(feed, catalog_dir) if catalog_dir else {}),
             "audit": "SUMOB_REALTIME_STATIC_GTFS_ID_COMPATIBILITY_ONLY",
             "matchesAppCatalogSourceGTFS": same_catalog,
             "rtTripUpdates": len(updates),
@@ -184,6 +239,9 @@ def main() -> int:
                         help="Arquivo ZIP GTFS estático oficial já baixado")
     parser.add_argument("--file", type=Path,
                         help="Arquivo GTFS-RT protobuf local, se houver")
+    parser.add_argument("--catalog", type=Path,
+                        default=Path(__file__).resolve().parents[1] / "catalog",
+                        help="Catálogo exato do PWA em teste; padrão: ./catalog")
     args = parser.parse_args()
     try:
         from google.transit import gtfs_realtime_pb2
@@ -201,7 +259,8 @@ def main() -> int:
         feed.ParseFromString(body)
         if not feed.header.gtfs_realtime_version:
             raise ValueError("Versão inválida do feed")
-        print(json.dumps(static_match(feed, args.gtfs), indent=2, ensure_ascii=False))
+        print(json.dumps(static_match(feed, args.gtfs, catalog_dir=args.catalog),
+                         indent=2, ensure_ascii=False))
         print("SUMOB_STATIC_GTFS_MATCH_AUDIT_OK")
         return 0
     except (ValueError, OSError, zipfile.BadZipFile, KeyError) as exc:
