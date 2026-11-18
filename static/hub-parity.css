@@ -333,3 +333,10 @@ html,body{max-width:100%;overflow-x:hidden}
   line-height:1.5;min-height:28px;overflow-wrap:anywhere}
 .route-diagnostics p{font-size:11px;line-height:1.55;color:var(--mut);
   margin:7px 0 2px;overflow-wrap:anywhere}
+
+/* P22: compact, intentionally non-promissory trip timing explanation. */
+.route-time-breakdown{
+  padding:7px 9px;margin:0 0 8px;border-radius:8px;
+  font-size:11px;line-height:1.5;overflow-wrap:anywhere;
+  color:var(--mut);background:var(--bg2);border:1px solid var(--line)
+}
