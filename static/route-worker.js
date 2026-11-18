@@ -99,7 +99,32 @@ function nearby(lat,lng,radius=1050,limit=22) {
         if(metres<=radius)result.push([metres,idx]);
       }
   result.sort((a,b)=>a[0]-b[0]);
-  return result.slice(0,limit);
+  if(result.length<=limit||limit<40)return result.slice(0,limit);
+  // For access/egress do NOT select only the geographically nearest stops:
+  // in central BH dozens of near-side bays can crowd out a different line
+  // two streets away. Retain the very nearest, then sample across 16
+  // directions and 3 distance bands before running OSM street Dijkstra.
+  const chosen=result.slice(0,Math.min(24,Math.ceil(limit/5)));
+  const buckets=Array.from({length:48},()=>[]);
+  for(const candidate of result.slice(chosen.length)){
+    const stop=stops[candidate[1]];
+    const east=(stop[3]-lng)*Math.cos(lat*Math.PI/180);
+    const north=stop[2]-lat;
+    const direction=(Math.atan2(north,east)+2*Math.PI)%(2*Math.PI);
+    const sector=Math.min(15,Math.floor(direction/(2*Math.PI)*16));
+    const band=Math.min(2,Math.floor(candidate[0]/Math.max(1,radius)*3));
+    buckets[sector*3+band].push(candidate);
+  }
+  let pending=true;
+  while(chosen.length<limit&&pending){
+    pending=false;
+    for(const bucket of buckets){
+      if(!bucket.length)continue;
+      pending=true;chosen.push(bucket.shift());
+      if(chosen.length===limit)break;
+    }
+  }
+  return chosen;
 }
 function neighbors(idx,expanded=false) {
   // Extended-mode inter-stop walks can recover alternatives that change
@@ -672,7 +697,9 @@ async function plan(params,seq) {
     onboard:new Map(),ends:new Map(),finals:[],pending:new Set(),
     scanned:0,partial:false,exceeded:false,
     maxLabels:expanded?24:MAX_LABELS,maxOnboard:expanded?24:MAX_ONBOARD,
-    accessRadius:expanded?1450:1100,accessLimit:expanded?80:48,
+    // Keep multiple viable boarding corridors, not just the first bays.
+    // OSM Dijkstra is bounded to 160 nodes per endpoint.
+    accessRadius:expanded?1700:1300,accessLimit:expanded?160:120,
     partialReasons:{labels:0,onboard:0,finals:0,scanLimit:0},
     graph:null,
     accessStats:{streetOriginStops:null,streetDestinationStops:null,unreachableStops:0},
