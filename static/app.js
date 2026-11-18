@@ -358,6 +358,7 @@ async function loadLineStopForecast(stop){
 async function selectPattern(){
   if(!state.route||!state.geometry)return;
   const code=state.route.code,pattern=$('patternInput').value;
+  const selectionSeq=routeSelectionSeq;
   state.pattern=pattern;
   if(!pattern){
     state.geometry.selected=null;$('lineStopChooser').hidden=true;lineFocusStopId=null;
@@ -369,7 +370,8 @@ async function selectPattern(){
     ?'Percurso de referência passando pelo ponto selecionado · toque acima para mudar.'
     :(p?.headsign?'Sentido: '+p.headsign+' · toque acima para mudar.':'Traçado de referência · toque acima para mudar.');
   const geo=await api('/api/route?code='+encodeURIComponent(code)+'&pattern='+encodeURIComponent(pattern));
-  if(state.route?.code!==code||state.pattern!==pattern)return;
+  if(selectionSeq!==routeSelectionSeq||
+     state.route?.code!==code||state.pattern!==pattern)return;
   if(geo?.selected){
     state.geometry={...state.geometry,selected:geo.selected};
     renderStops();
@@ -418,6 +420,10 @@ let near=state.markers.map(m=>({...m,d:Math.hypot(m.x-p[0],m.y-p[1])})).sort((a,
     ];
     state.zoom=Math.min(17.25,state.zoom+1.25);
     drawSoon();scheduleMapStops();
+  }else if(lineMode()){
+    // Touching a stop belonging to the displayed itinerary selects that
+    // boarding stop; it must not tear down the active line tracking.
+    focusLineBoardingStop(stop.stop,{userInitiated:true});
   }else focusStop(stop.stop);
   return
 }});
