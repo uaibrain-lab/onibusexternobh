@@ -20,6 +20,21 @@ Execute `node scripts/check_p18_public_site.mjs` no Windows antes de
 considerar a publicação validada; a análise visual mobile continua pendente.
 O GPS padrão no repositório permanece desativado e o Hub não foi alterado.
 
+**P24 — 17/11/2026:** auditoria dos resultados das 22:03 identificou
+dois limites distintos: a linha metropolitana 411C NÃO existe no GTFS
+municipal e o algoritmo permitia que muitas paradas vizinhas de uma
+mesma avenida esgotassem os candidatos. A busca agora preserva os mais
+próximos e distribui as vagas restantes entre 16 direções e três
+faixas de distância (120/160 pontos antes da verificação OSM).
+Pesquisa de endereço no Pages passa a usar um proxy restrito no
+Cloudflare Worker Free, com cache e teste real de geocodificação antes
+do deploy; mantém fallback local se o Photon falhar. É preciso
+**atualizar o Worker e depois o Pages de homologação** para aplicar.
+Ver [P24](docs/P24-METROPOLITANO-PONTOS-GEOCODIFICACAO.md).
+P25: importar dados metropolitanos oficiais DER/MG, somente após
+validar horários por parada, itinerários e geometrias; não interpolar
+passagens nem inventar ETA. **P24 ainda não publicada.**
+
 **P23 — 17/11/2026:** pesquisa das APIs públicas Google Maps/Moovit e
 da arquitetura aberta OpenTripPlanner. Motor CSA no navegador aprimorado:
 caminhada OSM de acesso e saída antes do scan GTFS (Dijkstra em lote),
