@@ -20,6 +20,11 @@ on:
       - tests/test_p21_line_map.cjs
       - tests/test_p22_timing_map.cjs
       - tests/test_p22_stop_direction.cjs
+      - tests/test_p23_street_access.cjs
+      - tests/test_p23_balanced.cjs
+      - tests/test_p23_pareto.cjs
+      - tests/test_p23_transfer_radius.cjs
+      - scripts/diagnose_route.cjs
       - static/place-geocoding.js
       - static/index.html
       - static/service-worker.js
