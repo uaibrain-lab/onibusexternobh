@@ -3,7 +3,7 @@
  * No predownload of 100+ MB: store at most 16 used hourly GTFS shards.
  */
 'use strict';
-const SHELL='externo-unificado-shell-v4',SHARDS='externo-unificado-hours-v2',ARRIVALS='externo-unificado-arrivals-v2';
+const SHELL='externo-unificado-shell-v5',SHARDS='externo-unificado-hours-v2',ARRIVALS='externo-unificado-arrivals-v2';
 const MAX_SHARDS=16;
 const scope=new URL(self.registration.scope);
 const base=scope.pathname.endsWith('/')?scope.pathname:scope.pathname+'/';
