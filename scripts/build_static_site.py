@@ -117,6 +117,8 @@ def build(target=None, gps_staging=False):
             '/externo/place-geocoding.js\n'
             '  Cache-Control: no-cache, max-age=0\n'
             '/externo/route-worker.js\n'
+            '  Cache-Control: no-cache, max-age=0\n'
+            '/externo/walk-network.js\n'
             '  Cache-Control: no-cache, max-age=0\n',
             encoding='utf-8')
     (public/'index.html').write_text(html,encoding='utf-8')
