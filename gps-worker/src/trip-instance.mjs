@@ -23,3 +23,38 @@ export function sameTripInstance(scheduled, realtime) {
   const a=scheduled.stopSequence,b=realtime.currentStopSequence;
   return Number.isSafeInteger(a)&&a>=0&&Number.isSafeInteger(b)&&b>=0&&a===b;
 }
+
+/**
+ * Select an exact, fresh GTFS-RT TripUpdate for a scheduled stop.
+ * This is a fail-closed adapter for already decoded TripUpdates, not a GPS ETA.
+ * No inferred times: the caller must supply an official scheduled descriptor.
+ * Returns the matching StopTimeUpdate, or null on ambiguity/staleness.
+ */
+export function findExactStopUpdate(scheduled, updates, nowSeconds) {
+  if (!scheduled || !Array.isArray(updates) || updates.length > 25000 ||
+      !Number.isSafeInteger(nowSeconds) || nowSeconds < 0) return null;
+  let selected = null;
+  for (const update of updates) {
+    if (!update || typeof update !== 'object') continue;
+    const ts = update.timestamp;
+    if (!Number.isSafeInteger(ts) || ts > nowSeconds + 60 ||
+        ts < nowSeconds - 120) continue;
+    const trip = update.trip;
+    if (!trip || typeof trip !== 'object') continue;
+    const stopUpdates = update.stopTimeUpdate;
+    if (!Array.isArray(stopUpdates) || stopUpdates.length > 1000) continue;
+    for (const stop of stopUpdates) {
+      if (!stop || !Number.isSafeInteger(stop.stopSequence) ||
+          stop.stopSequence < 0) continue;
+      if (!sameTripInstance(scheduled, {
+        tripId: trip.tripId, routeId: trip.routeId,
+        startDate: trip.startDate, startTime: trip.startTime,
+        currentStopSequence: stop.stopSequence
+      })) continue;
+      // More than one candidate is ambiguous, even when timestamps match.
+      if (selected !== null) return null;
+      selected = {trip, stop, timestamp: ts};
+    }
+  }
+  return selected;
+}
