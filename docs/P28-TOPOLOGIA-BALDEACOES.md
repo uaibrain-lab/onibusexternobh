@@ -88,3 +88,11 @@ pendências anteriores e sem duplicar a automação existente.
 - Motivação: anteriormente entradas não textuais ou pares de comprimento incorreto podiam lançar TypeError/produzir desempacotamento inesperado em vez de falha controlada. A auditoria permanece offline, somente topológica, sem mudar o roteador ou prometer ETA.
 - CI dos novos commits: consultar após o HEAD documental; não presumir sucesso do CI anterior. Testes locais de catálogo real/Playwright não executados nesta rodada, pois o checkout local permanece indisponível.
 - Handoff: validar novo CI P2 e integração; executar diagnóstico de horários e caminhadas OSM para 9106+5106, 9209+51, 9209+67 com dados de referência. Verificar GTFS-RT por trip_id/route_id/data/start_time/stop_sequence/freshness. DER/MG só com fonte oficial íntegra; sem merge/deploy.
+
+## P28G — Integridade global de stop_id (19/11/2026)
+
+- HEAD inicial `a9d510b3863f5c445126890f5ee253ff462b5e6f` (sem concorrência); CI anterior #44407764800 `completed/cancelled`, não aprovado.
+- Commits `48f4b5a517b4ebd973d9cb4a43395b04e63424a0` (auditor) e `ebea8963ccab19d95f2536022e5c595290450fa6` (regressões).
+- O auditor agora verifica coordenadas conflitantes do mesmo `stop_id` globalmente, inclusive quando a parada não pertence às linhas pesquisadas ou está fora da região. Antes, a validação por linha-alvo não cobria essas duplicatas. Mantém contagens topológicas sem prometer rota/ETA.
+- Reproduzido localmente com caso sintético mínimo (`REPRODUCED_AND_FIX_LOGIC_OK`); a suíte completa e os catálogos GTFS/OSM reais **não** foram executados localmente. GitHub autenticado permitiu edições com SHA verificado, contornando DNS do Git local. CI dos novos commits ainda não retornou workflow na consulta inicial; verificar antes de homologar.
+- Handoff: verificar CI P2 e integração no HEAD final; executar unittest completo, build estático, auditorias reais e Playwright mobile. Diagnosticar 9106+5106, 9209+51 e 9209+67 temporalmente e sobre ruas OSM. Respeitar trip_id, route_id, data de serviço, start_time, stop_sequence e frescor no GTFS-RT; não inventar DER/MG nem ETA GPS. Não fazer merge/deploy.
