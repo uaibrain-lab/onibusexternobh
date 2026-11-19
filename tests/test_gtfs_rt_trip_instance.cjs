@@ -44,3 +44,12 @@ test('reject missing timestamps and malformed stop update lists',async()=>{
   assert.equal(select(s,[{...fresh,stopTimeUpdate:null}],1700000050),null);
   assert.equal(select(s,[],1700000050),null);
 });
+
+test('conflicting stop_id cannot match the same sequence',async()=>{
+  const select=await selector;
+  const target={...s,stopId:'STOP_A'};
+  const wrong={...fresh,stopTimeUpdate:[{stopSequence:12,stopId:'STOP_B'}]};
+  assert.equal(select(target,[wrong],1700000050),null);
+  const right={...fresh,stopTimeUpdate:[{stopSequence:12,stopId:'STOP_A'}]};
+  assert.equal(select(target,[right],1700000050).stop.stopId,'STOP_A');
+});
