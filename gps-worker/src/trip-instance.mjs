@@ -51,6 +51,11 @@ export function findExactStopUpdate(scheduled, updates, nowSeconds) {
         startDate: trip.startDate, startTime: trip.startTime,
         currentStopSequence: stop.stopSequence
       })) continue;
+      // A sequence alone is insufficient when both sources identify the stop.
+      // A conflicting stop_id must never be silently treated as this stop.
+      if (typeof scheduled.stopId === 'string' && scheduled.stopId &&
+          typeof stop.stopId === 'string' && stop.stopId &&
+          scheduled.stopId !== stop.stopId) continue;
       // More than one candidate is ambiguous, even when timestamps match.
       if (selected !== null) return null;
       selected = {trip, stop, timestamp: ts};
