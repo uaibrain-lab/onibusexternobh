@@ -43,10 +43,12 @@ function coordinate(bytes,at){
   return new DataView(bytes.buffer,bytes.byteOffset+at,4).getFloat32(0,true);
 }
 function trip(bytes,s,e){
-  const t={routeId:'',tripId:''};
+  const t={routeId:'',tripId:'',startTime:'',startDate:''};
   fields(bytes,s,e,(f,w,a,b,value)=>{
     if(w===2&&f===1)t.tripId=string(bytes,a,b);
     if(w===2&&f===5)t.routeId=string(bytes,a,b);
+    if(w===2&&f===2)t.startTime=string(bytes,a,b);
+    if(w===2&&f===3)t.startDate=string(bytes,a,b);
     if(w===0&&f===6)t.directionId=value;
   });
   return t;
@@ -67,14 +69,15 @@ function vehicleDescriptor(bytes,s,e){
   return id;
 }
 function vehiclePosition(bytes,s,e){
-  let t={},p={},time=null,vehicleId='';
+  let t={},p={},time=null,vehicleId='',currentStopSequence=null;
   fields(bytes,s,e,(f,w,a,b,value)=>{
     if(f===1&&w===2)t=trip(bytes,a,b);
     if(f===2&&w===2)p=position(bytes,a,b);
     if(f===5&&w===0)time=value;
+    if(f===3&&w===0)currentStopSequence=value;
     if(f===8&&w===2)vehicleId=vehicleDescriptor(bytes,a,b);
   });
-  return {...t,...p,timestamp:time,vehicleId};
+  return {...t,...p,timestamp:time,vehicleId,currentStopSequence};
 }
 export function parseVehiclePositions(buffer,requestedRoutes,now=Date.now()){
   const bytes=buffer instanceof Uint8Array?buffer:new Uint8Array(buffer);
@@ -114,6 +117,9 @@ export function parseVehiclePositions(buffer,requestedRoutes,now=Date.now()){
         found.set(id,{
           routeId:String(v.routeId),vehicleId:v.vehicleId,
           tripId:String(v.tripId||''),
+          ...(v.startDate&&/^\d{8}$/.test(v.startDate)?{startDate:v.startDate}:{}),
+          ...(v.startTime&&/^\d{1,3}:[0-5]\d:[0-5]\d$/.test(v.startTime)?{startTime:v.startTime}:{}),
+          ...(Number.isSafeInteger(v.currentStopSequence)&&v.currentStopSequence>=0?{currentStopSequence:v.currentStopSequence}:{}),
           latitude:v.latitude,longitude:v.longitude,
           heading:Number.isFinite(v.heading)&&v.heading>=0&&v.heading<=360?v.heading:null,
           lastGpsFixAt:new Date(when).toISOString(),
