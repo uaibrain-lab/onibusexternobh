@@ -44,7 +44,7 @@ def build(target=None, gps_staging=False):
     public=target/'externo'
     public.mkdir(parents=True)
     static=ROOT/'static'
-    for name in ('app.js','style.css','hub-parity.css','route-worker.js','service-worker.js','static-bus.js','static-arrivals.js','live-gps.js','gps-config.json','place-geocoding.js','walk-network.js','metro-timing.js','manifest.webmanifest','icon-192.png','icon-512.png'):
+    for name in ('app.js','style.css','hub-parity.css','route-worker.js','service-worker.js','static-bus.js','static-arrivals.js','live-gps.js','gps-config.json','place-geocoding.js','walk-network.js','metro-timing.js','metropolitan.html','metropolitan.js','manifest.webmanifest','icon-192.png','icon-512.png'):
         shutil.copy2(static/name,public/name)
     html=(static/'index.html').read_text(encoding='utf-8')
     anchor='<html lang="pt-BR">'
@@ -124,6 +124,16 @@ def build(target=None, gps_staging=False):
     (public/'index.html').write_text(html,encoding='utf-8')
     (public/'catalog').mkdir(exist_ok=True)
     shutil.copy2(catalog/'metro.json',public/'catalog'/'metro.json')
+    # DER/MG is departures-only: never turn these records into GTFS trips.
+    der_source=catalog/'der-rmbh-411c-511c.json'
+    der=json.loads(der_source.read_text(encoding='utf-8'))
+    if (der.get('schema')!=1 or der.get('dataStatus')!='published-departures-only' or
+        der.get('routePlanningEnabled') is not False or
+        der.get('georeferencedStops') is not False or
+        der.get('calendarVerified') is not False or
+        sorted(der.get('lines',{}))!=['411C','511C']):
+        raise ValueError('DER/MG informativo inconsistente: bloquear build')
+    shutil.copy2(der_source,public/'catalog'/'der-rmbh-411c-511c.json')
     for name in ('manifest.json','routes.json','stops.json','patterns.json','shapes.json','routing-stop-routes.json','gps-nl-map.json'):
         shutil.copy2(catalog/name,public/'catalog'/name)
     shutil.copytree(scan,public/'catalog'/'scan')
