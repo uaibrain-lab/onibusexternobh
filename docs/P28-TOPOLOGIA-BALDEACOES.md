@@ -122,3 +122,11 @@ pendências anteriores e sem duplicar a automação existente.
 - Limite explícito: função recebe TripUpdates **já decodificados**; ainda falta integrar decodificação protobuf real, calendário e catálogo estático ao motor. Não usar GPS como ETA nem exibir eventos como previsões verificadas.
 - Testes de regressão adicionados ao arquivo Node, incluindo frescor, ambiguidade, divergência e incompletude. **CI deste novo HEAD ainda não confirmado no momento do commit documental**; não declarar homologação antes da execução. A suíte local completa e catálogos reais não foram executados.
 - Handoff: verificar CI do HEAD final; corrigir regressões antes de prosseguir. Integrar parser oficial TripUpdates com limites de tamanho e freshness do cabeçalho, associar horários reais do GTFS e testar 9106+5106, 9209+51, 9209+67 com caminhadas OSM por ruas. Não fazer merge/deploy, nem introduzir dependências pagas.
+
+## P28K — Integridade de stop_id no matching (19/11/2026)
+
+- HEAD inicial `117447b87354be71eb4ae699643ed5342b4eb856`, sem divergência remota. CI P2 #44632866763 `completed/success` validou P28J.
+- Commits: `75a22f599a86bc17e2396d694c5c19b28b51e193` (`gps-worker/src/trip-instance.mjs`) e `15abcfa0c8d96ca326c4913c7219d2b35231f370` (`tests/test_gtfs_rt_trip_instance.cjs`).
+- Quando tanto o horário oficial quanto o StopTimeUpdate contêm `stopId`, divergência rejeita o candidato mesmo se `stopSequence` coincide. O comparador continua exigindo todos os campos anteriores e freshness; não usa GPS como ETA.
+- Teste de regressão adicionado para stop_id conflitante e correspondente. CI deste novo HEAD pendente; não declarar homologação nem ETA operacional. Testes locais integrados, catálogo oficial e OSM não executados.
+- Handoff: conferir CI; depois integrar decodificação oficial de TripUpdates, validar eventos de chegada/partida, calendário e frescor do feed; diagnosticar pares 9106+5106, 9209+51, 9209+67 usando horários reais e ruas OSM. Não fazer merge/deploy.
