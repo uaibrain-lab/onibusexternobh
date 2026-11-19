@@ -64,6 +64,7 @@ def audit(stops, routes, pairs, radius=450):
     if not isinstance(routes, dict) or not isinstance(stops, list):
         raise ValueError("Formato do catálogo inválido")
     by_code = defaultdict(dict)
+    seen_stop_coords = {}
     for stop in stops:
         if not isinstance(stop, list) or len(stop) < 4:
             raise ValueError("Parada do scan inválida")
@@ -74,6 +75,10 @@ def audit(stops, routes, pairs, radius=450):
             raise ValueError("Coordenadas de parada inválidas") from exc
         if not (math.isfinite(lat) and math.isfinite(lon)):
             raise ValueError("Coordenadas de parada não finitas")
+        previous_stop = seen_stop_coords.get(sid)
+        if previous_stop is not None and previous_stop != (lat, lon):
+            raise ValueError("Parada duplicada com coordenadas conflitantes")
+        seen_stop_coords[sid] = (lat, lon)
         if not (-21 <= lat <= -18 and -46 <= lon <= -42):
             continue
         codes = routes.get(sid, [])
