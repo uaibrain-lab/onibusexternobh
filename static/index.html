@@ -76,6 +76,7 @@
       <label class="srch" for="lineInput"><span aria-hidden="true">⌕</span><input id="lineInput" list="routeList" placeholder="Buscar linha, ex.: 9202, S32, 62" autocomplete="off" aria-label="Buscar linha"></label>
       <datalist id="routeList"></datalist>
       <button id="goLine" type="button" class="btn primary">Consultar linha</button>
+      <p class="hint">Ônibus metropolitanos 411C e 511C: <a href="./metropolitan.html">consultar quadros de partida oficiais do DER/MG</a>. Sem horários por parada ou previsão GPS.</p>
       <div class="line-heading"><div class="line-title" id="lineTitle">Selecione uma linha</div><button type="button" id="lineExit" class="subtle" hidden>Fechar linha</button><button type="button" id="lineFavorite" class="fav-btn" aria-label="Favoritar linha" hidden>☆</button></div>
       <div class="stats"><div><strong id="vTotal">—</strong><small>Veículos encontrados</small></div><div><strong id="vRecent">—</strong><small>GPS recente (até 2 min)</small></div></div>
       <div class="block"><label for="patternInput"><strong>Sentido e percurso</strong></label><select id="patternInput" aria-describedby="patternHint"><option value="">Escolha o sentido</option></select><p class="hint" id="patternHint">A variante com mais viagens é exibida primeiro. Você pode trocar o sentido ou escolher um percurso alternativo.</p></div>
