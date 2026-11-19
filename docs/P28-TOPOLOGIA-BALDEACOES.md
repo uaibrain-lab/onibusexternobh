@@ -113,3 +113,12 @@ pendências anteriores e sem duplicar a automação existente.
 - Commit `fc716a0f8e94d0178d45d4ca479280cb9b0a46ee`: `tests/test_gtfs_rt_trip_instance.cjs` com 10 cenários, incluindo viagem após meia-noite, divergências de descritor, calendário inválido e sequência ausente.
 - Teste isolado local de implementação equivalente executado em Node 22: 10/10 aprovados. A suíte completa do checkout, catálogos GTFS/OSM e Playwright não foram executados localmente por DNS do Git. O CI deste novo HEAD ainda precisa de confirmação. O comparador é módulo preparatório e **ainda não está conectado** ao consumo real de TripUpdates; não anunciar correspondência operacional.
 - Handoff: verificar CI P2 do HEAD final; integrar o comparador somente após definir formato real de TripUpdates, freshness, horário de serviço e índice de stop_sequence; testar correspondências com catálogo oficial e validação temporal/OSM das baldeações 9106+5106, 9209+51, 9209+67. Não usar GPS como ETA, não inventar dados DER/MG, não fazer merge/deploy.
+
+## P28J — Seleção estrita de StopTimeUpdate (19/11/2026)
+
+- HEAD inicial `d2e60f4892650798bb0a2ddee45f703e7dc50bbd`, comparação remota sem concorrência; CI anterior #44613876918 `completed/success`.
+- Commits: `df9e6c1978e9104926b5c2073ea0b9165bee2708` em `gps-worker/src/trip-instance.mjs`; `5eb2f4182080a701a6f98e2b5f49ad91a59e8183` em `tests/test_gtfs_rt_trip_instance.cjs`.
+- `findExactStopUpdate` seleciona apenas StopTimeUpdate de descritor exato (trip_id, route_id, service date, start time, stop_sequence) e timestamp de atualização fresco (até 120s atrás, tolerância 60s no futuro). Duplicidade exata retorna null; dados incompletos, desatualizados e estruturas malformadas falham fechados.
+- Limite explícito: função recebe TripUpdates **já decodificados**; ainda falta integrar decodificação protobuf real, calendário e catálogo estático ao motor. Não usar GPS como ETA nem exibir eventos como previsões verificadas.
+- Testes de regressão adicionados ao arquivo Node, incluindo frescor, ambiguidade, divergência e incompletude. **CI deste novo HEAD ainda não confirmado no momento do commit documental**; não declarar homologação antes da execução. A suíte local completa e catálogos reais não foram executados.
+- Handoff: verificar CI do HEAD final; corrigir regressões antes de prosseguir. Integrar parser oficial TripUpdates com limites de tamanho e freshness do cabeçalho, associar horários reais do GTFS e testar 9106+5106, 9209+51, 9209+67 com caminhadas OSM por ruas. Não fazer merge/deploy, nem introduzir dependências pagas.
