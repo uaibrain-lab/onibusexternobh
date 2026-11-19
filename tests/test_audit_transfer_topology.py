@@ -57,6 +57,19 @@ class TransferTopologyTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             audit.audit(self.stops + [duplicate], self.routes, [("9106", "5106")])
 
+    def test_conflicting_duplicate_without_target_line_fails_closed(self):
+        extra = [["unused", "Outro ponto", -19.90, -43.90],
+                 ["unused", "Mesmo ID divergente", -19.91, -43.91]]
+        routes = dict(self.routes, unused=["OUTRA"])
+        with self.assertRaisesRegex(ValueError, "duplicada"):
+            audit.audit(self.stops + extra, routes, [("9106", "5106")])
+
+    def test_conflicting_duplicate_outside_city_fails_closed(self):
+        extra = [["outside", "Outro estado", -22.0, -43.0],
+                 ["outside", "Mesmo ID divergente", -22.1, -43.0]]
+        with self.assertRaisesRegex(ValueError, "duplicada"):
+            audit.audit(self.stops + extra, self.routes, [("9106", "5106")])
+
     def test_identical_duplicate_stop_does_not_inflate_counts(self):
         result = audit.audit(self.stops + [self.stops[0].copy()], self.routes,
                              [("9106", "5106")])["pairs"][0]
