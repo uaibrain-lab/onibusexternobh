@@ -20,6 +20,21 @@ test('explicit timezone and bounded BH origin/destination are mandatory',()=>{
  assert.throws(()=>options([...base.slice(1),'--from=-23.5,-46.6']),/região BH/);
  assert.throws(()=>options([...base,'--mode=invalid']),/inválidos/);
 });
+test('rejects normalized impossible service dates and ambiguous CLI switches',()=>{
+ for(const invalid of ['--at=2026-02-30T19:58:00-03:00',
+   '--at=2026-11-31T19:58:00-03:00','--at=2026-11-17T19:58:00+00:00']){
+   assert.throws(()=>options([...base.filter(x=>!x.startsWith('--at=')),invalid]),
+     /inválido|--at=/);
+ }
+ assert.throws(()=>options([...base,'--from=-19.8,-43.8']),/duplicado/);
+ assert.throws(()=>options([...base,'--unknown=anything']),/incorreto/);
+ assert.throws(()=>options([...base,'--focus=9106+5106,9106+5106']),/duplicadas/);
+ assert.throws(()=>options([...base,'--focus=9106+51;bad']),/inválidas/);
+ assert.throws(()=>options([...base,'--focus='+Array(13).fill('9106+5106').join(',')]),/inválidas/);
+ assert.deepEqual(options([...base,'--focus=9106+5106,9209+51']).focusCombinations,
+   ['9106+5106','9209+51']);
+});
+
 test('diagnosis never connects to a public API or sends passenger GPS externally',()=>{
  const script=fs.readFileSync(path.join(__dirname,'../scripts/diagnose_route.cjs'),'utf8');
  assert.match(script,/local-only\.invalid/);
