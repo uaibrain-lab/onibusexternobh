@@ -81,23 +81,40 @@ def event_stream(trips, index, date, seconds_start, seconds_end, first):
             if not isinstance(stops, list) or len(stops) < 2:
                 continue
             active_trips.add((str(trip_id), offset))
-            # Alighting needs a previous segment; boarding needs a next one.
-            positions = range(1, len(stops)) if first else range(len(stops)-1)
-            for pos in positions:
-                row = stops[pos]
+            # A stop may allow alighting without ANY boardable earlier stop,
+            # or boarding without ANY later stop where passengers can alight.
+            # Those are not usable bus legs; do not count them as transfers.
+            valid = []
+            for row in stops:
                 if not isinstance(row, list) or len(row) < 5:
                     raise ValueError("Parada GTFS inválida")
-                stop_id, arrive, depart, pickup, dropoff = row[:5]
-                if not (isinstance(arrive, int) and isinstance(depart, int) and
-                        0 <= arrive <= depart < 48*3600):
-                    continue
-                if first and dropoff != 0:
-                    continue
-                if not first and pickup != 0:
-                    continue
-                when = offset*86400 + (arrive if first else depart)
+                arrive, depart = row[1:3]
+                valid.append(type(arrive) is int and type(depart) is int and
+                             0 <= arrive <= depart < 48*3600)
+            eligible = []
+            if first:
+                earliest_board = None
+                for pos, row in enumerate(stops):
+                    if (pos > 0 and valid[pos] and row[4] == 0 and
+                            earliest_board is not None and earliest_board <= row[1]):
+                        eligible.append((pos, row[1]))
+                    if valid[pos] and row[3] == 0:
+                        earliest_board = (row[2] if earliest_board is None else
+                                          min(earliest_board, row[2]))
+            else:
+                latest_alight = None
+                for pos in range(len(stops) - 1, -1, -1):
+                    row = stops[pos]
+                    if (pos < len(stops) - 1 and valid[pos] and row[3] == 0 and
+                            latest_alight is not None and row[2] <= latest_alight):
+                        eligible.append((pos, row[2]))
+                    if valid[pos] and row[4] == 0:
+                        latest_alight = (row[1] if latest_alight is None else
+                                         max(latest_alight, row[1]))
+            for pos, time_seconds in eligible:
+                when = offset*86400 + time_seconds
                 if seconds_start <= when <= seconds_end:
-                    events[str(stop_id)].append((when,str(trip_id),str(headsign)))
+                    events[str(stops[pos][0])].append((when, str(trip_id), str(headsign)))
     return events, len(active_trips)
 
 

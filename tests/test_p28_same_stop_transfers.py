@@ -14,7 +14,9 @@ module=importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 
 ROUTES={"9106":"a"*16,"5106":"b"*16,"9209":"c"*16}
-def setup(root, bad_alight=False,bad_board=False):
+def setup(root, bad_alight=False,bad_board=False, bad_origin_board=False,
+          bad_destination_alight=False, origin_after_transfer=False,
+          destination_before_transfer=False):
     root=Path(root)
     (root/"routing").mkdir()
     meta={"services":{"S":{"start_date":"20261101","end_date":"20261231",
@@ -27,6 +29,12 @@ def setup(root, bad_alight=False,bad_board=False):
            ["LAST",22*3600+20*60,22*3600+20*60,0,0,15]]
     second=[["SHARED",22*3600+14*60,22*3600+14*60,int(bad_board),0,5],
             ["DESTINATION",22*3600+45*60,22*3600+45*60,0,0,7]]
+    first[0][3] = int(bad_origin_board)
+    second[1][4] = int(bad_destination_alight)
+    if origin_after_transfer:
+        first[0][1] = first[0][2] = 22*3600+11*60
+    if destination_before_transfer:
+        second[1][1] = second[1][2] = 22*3600+13*60
     overnight_first=[["ORIGIN",24*3600+40*60,24*3600+40*60,0,0,1],
                      ["SHARED",25*3600+5*60,25*3600+5*60,0,0,9]]
     overnight_second=[["SHARED",25*3600+12*60,25*3600+12*60,0,0,5],
@@ -60,6 +68,19 @@ class SameStopTransferAuditTests(unittest.TestCase):
                 setup(root,**kwargs)
                 r=module.audit(Path(root),"9106","5106",dt.date(2026,11,17),"22:00",2)
                 self.assertEqual(r["timedTransferPairs"],0)
+
+    def test_requires_a_boardable_origin_and_alightable_destination(self):
+        # The transfer stop itself may be valid even when the bus leg is not.
+        for kwargs in ({"bad_origin_board":True},
+                       {"bad_destination_alight":True},
+                       {"origin_after_transfer":True},
+                       {"destination_before_transfer":True}):
+            with self.subTest(kwargs=kwargs), tempfile.TemporaryDirectory() as root:
+                setup(root, **kwargs)
+                r=module.audit(Path(root),"9106","5106",dt.date(2026,11,17),"22:00",2)
+                self.assertEqual(r["timedTransferPairs"],0)
+                self.assertEqual(r["feasibleStops"],0)
+                self.assertFalse(r["endToEndJourneyVerified"])
 
     def test_24h_plus_times_use_previous_service_day(self):
         with tempfile.TemporaryDirectory() as root:
