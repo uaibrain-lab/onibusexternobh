@@ -73,6 +73,27 @@ jobs:
           python scripts/audit_same_stop_transfers.py --first 9209 --second 67 --date 2026-11-17 --time 22:00 --hours 3
       - name: Auditar componentes OSM das seis paradas publicas de baldeacao
         run: python scripts/audit_walk_graph.py --focus-stops=14786682,14789497,14785707,14786677,14787518,14789565
+      - name: Reproduzir consulta real de paradas GTFS com motor OSM offline
+        run: |
+          timeout 180s node scripts/diagnose_route.cjs \
+            --fromstop=14786682 --tostop=14789497 \
+            --at=2026-11-17T19:58:00-03:00 --focus=9106+5106 --depth=expanded \
+            > /tmp/externo-route-diagnostic.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          raw=Path('/tmp/externo-route-diagnostic.json').read_text(encoding='utf-8')
+          payload=json.loads(raw[:raw.rfind('\\nP23_DIAGNOSTIC_OK')])
+          assert payload['diagnostico']=='P23_GTFS_OFFLINE_SAME_ENGINE'
+          assert payload['dados']=='GTFS programado + OSM local; sem ETA GPS'
+          assert payload['status'] in ('ok','partial','walking_unavailable')
+          assert isinstance(payload['linhasEncontradas'],list)
+          assert isinstance(payload['diagnostics'],dict)
+          assert payload['arquivosLidos']>0
+          print('P28_ROUTE_REAL_STOPS_DIAGNOSTIC_OK',
+                payload['status'],len(payload['linhasEncontradas']),
+                payload['diagnostics'].get('passedStreetVerification'))
+          PY
       - name: Auditoria de franquia Spark e arquivos sob demanda
         run: python scripts/audit_static_budget.py --root dist/externo
       - name: Smoke HTTP em /externo/ sem backend de hospedagem
