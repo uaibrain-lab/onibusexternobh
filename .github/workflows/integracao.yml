@@ -83,7 +83,7 @@ jobs:
           import json
           from pathlib import Path
           raw=Path('/tmp/externo-route-diagnostic.json').read_text(encoding='utf-8')
-          payload=json.loads(raw[:raw.rfind('\\nP23_DIAGNOSTIC_OK')])
+          payload=json.loads(raw[:raw.rfind('\nP23_DIAGNOSTIC_OK')])
           assert payload['diagnostico']=='P23_GTFS_OFFLINE_SAME_ENGINE'
           assert payload['dados']=='GTFS programado + OSM local; sem ETA GPS'
           assert payload['status'] in ('ok','partial','walking_unavailable')
