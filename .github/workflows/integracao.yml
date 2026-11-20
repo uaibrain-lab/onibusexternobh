@@ -71,8 +71,8 @@ jobs:
           python scripts/audit_same_stop_transfers.py --first 9106 --second 5106 --date 2026-11-17 --time 22:00 --hours 3
           python scripts/audit_same_stop_transfers.py --first 9209 --second 51 --date 2026-11-17 --time 22:00 --hours 3
           python scripts/audit_same_stop_transfers.py --first 9209 --second 67 --date 2026-11-17 --time 22:00 --hours 3
-      - name: Medir cobertura OSM por pontos GTFS sem acessar rede
-        run: python scripts/audit_walk_graph.py
+      - name: Auditar componentes OSM das seis paradas publicas de baldeacao
+        run: python scripts/audit_walk_graph.py --focus-stops=14786682,14789497,14785707,14786677,14787518,14789565
       - name: Auditoria de franquia Spark e arquivos sob demanda
         run: python scripts/audit_static_budget.py --root dist/externo
       - name: Smoke HTTP em /externo/ sem backend de hospedagem

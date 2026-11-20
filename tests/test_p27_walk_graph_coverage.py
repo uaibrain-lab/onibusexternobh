@@ -48,6 +48,28 @@ class WalkAuditTests(unittest.TestCase):
         self.assertIsNone(line["411C"]["snapCoveragePercent"])
         self.assertNotIn("-19.9", str(line))
 
+    def test_public_transfer_stops_require_real_osm_component_evidence(self):
+        report = mod.audit(self.graph, self.stops,
+                           focus_stop_ids=("a", "b", "c", "missing"))
+        focus = report["focusedStops"]
+        self.assertEqual([focus[s]["status"] for s in ("a", "b", "c", "missing")],
+                         ["largestComponent", "otherComponent", "unsnapped",
+                          "notFoundInCatalog"])
+        self.assertEqual((focus["a"]["componentGroup"], focus["b"]["componentGroup"]), (1, 2))
+        self.assertEqual((focus["a"]["componentNodes"], focus["b"]["componentNodes"]), (3, 2))
+        self.assertEqual((focus["a"]["snapMeters"], focus["b"]["snapMeters"]), (0, 0))
+        self.assertIsNone(focus["c"]["componentGroup"])
+        self.assertNotIn("-19.9", str(focus))
+        self.assertNotIn("-43.9", str(focus))
+
+    def test_focused_stop_validation_and_duplicate_location_conflict(self):
+        for bad in (None, ("",), ("stop id",), ("a",) * 21, (42,)):
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                mod.audit(self.graph, self.stops, focus_stop_ids=bad)
+        with self.assertRaisesRegex(ValueError, "duplicada"):
+            mod.audit(self.graph, self.stops + [["a", "Conflito", -19.901, -43.901]],
+                      focus_stop_ids=["a"])
+
     def test_rejects_invalid_graph_edge(self):
         self.graph["edges"][0][2] = 0
         with self.assertRaisesRegex(ValueError, "Aresta"):

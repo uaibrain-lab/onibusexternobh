@@ -13,6 +13,7 @@ import json
 import math
 from pathlib import Path
 import statistics
+import re
 
 ROOT = Path(__file__).resolve().parents[1]
 RAD = math.pi / 180
@@ -25,7 +26,8 @@ def haversine(a, b):
     return 12742000 * math.asin(min(1, math.sqrt(max(0, h))))
 
 
-def audit(graph, stops, snap_limit=70, *, focus_routes=(), stop_routes=None):
+def audit(graph, stops, snap_limit=70, *, focus_routes=(), stop_routes=None,
+          focus_stop_ids=()):
     nodes = graph["nodes"]
     edges = graph["edges"]
     if (graph.get("schema") != 1 or len(nodes) != graph.get("nodeCount")
@@ -33,6 +35,19 @@ def audit(graph, stops, snap_limit=70, *, focus_routes=(), stop_routes=None):
         raise ValueError("Grafo OSM inconsistente")
     if not 1 <= snap_limit <= 100:
         raise ValueError("Distância de snap inválida")
+    # Only user-independent, public GTFS stop IDs are accepted here.
+    if (not isinstance(focus_stop_ids, (list, tuple))
+            or len(focus_stop_ids) > 20
+            or any(not isinstance(sid, str) or
+                   re.fullmatch(r"[A-Za-z0-9_-]{1,64}", sid) is None
+                   for sid in focus_stop_ids)):
+        raise ValueError("IDs públicos de parada inválidos")
+    focused_stops = {
+        sid: {"status": "notFoundInCatalog", "snapMeters": None,
+              "componentGroup": None, "componentNodes": None}
+        for sid in focus_stop_ids
+    }
+    focused_coords = {}
     parent = list(range(len(nodes)))
     size = [1] * len(nodes)
     def find(i):
@@ -56,6 +71,12 @@ def audit(graph, stops, snap_limit=70, *, focus_routes=(), stop_routes=None):
             size[a] += size[b]
     component_sizes = Counter(find(i) for i in range(len(nodes)))
     biggest = component_sizes.most_common(1)[0][0] if nodes else None
+    # Stable component groups, not fabricated walk links or private positions.
+    component_groups = {
+        root: rank for rank, (root, _) in enumerate(
+            sorted(component_sizes.items(), key=lambda item: (-item[1], item[0])),
+            start=1)
+    } if focused_stops else {}
     index = defaultdict(list)
     for idx, (lat, lon) in enumerate(nodes):
         index[(math.floor(lat * 1000), math.floor(lon * 1000))].append(idx)
@@ -69,7 +90,12 @@ def audit(graph, stops, snap_limit=70, *, focus_routes=(), stop_routes=None):
         if not isinstance(stop, list) or len(stop) < 4:
             raise ValueError("Formato inválido de parada GTFS do scan")
         point = (float(stop[2]), float(stop[3]))
-        belonging = [code for code in route_map.get(str(stop[0]), [])
+        sid = str(stop[0])
+        if sid in focused_stops:
+            if sid in focused_coords and focused_coords[sid] != point:
+                raise ValueError("Parada pública duplicada com coordenadas divergentes")
+            focused_coords[sid] = point
+        belonging = [code for code in route_map.get(sid, [])
                      if code in focus]
         for code in belonging:
             focus[code]["total"] += 1
@@ -82,13 +108,26 @@ def audit(graph, stops, snap_limit=70, *, focus_routes=(), stop_routes=None):
                     if distance <= snap_limit and (nearest is None or distance < nearest[1]):
                         nearest = (idx, distance)
         if nearest is None:
+            if sid in focused_stops:
+                focused_stops[sid] = {
+                    "status": "unsnapped", "snapMeters": None,
+                    "componentGroup": None, "componentNodes": None
+                }
             counts["stopsUnsnapped"] += 1
             for code in belonging:
                 focus[code]["unsnapped"] += 1
             continue
         counts["stopsSnapped"] += 1
         snap_distances.append(nearest[1])
-        if find(nearest[0]) == biggest:
+        nearest_root = find(nearest[0])
+        if sid in focused_stops:
+            focused_stops[sid] = {
+                "status": "largestComponent" if nearest_root == biggest else "otherComponent",
+                "snapMeters": round(nearest[1]),
+                "componentGroup": component_groups[nearest_root],
+                "componentNodes": component_sizes[nearest_root]
+            }
+        if nearest_root == biggest:
             counts["stopsLargestComponent"] += 1
             for code in belonging:
                 focus[code]["largestComponent"] += 1
@@ -114,6 +153,7 @@ def audit(graph, stops, snap_limit=70, *, focus_routes=(), stop_routes=None):
         "snapDistanceMedianMeters": round(statistics.median(snap_distances), 1)
             if snap_distances else None,
         "snapLimitMeters": snap_limit,
+        "focusedStops": focused_stops,
         "focusedLines": {
             code: {
                 "stops": data["total"],
@@ -145,6 +185,8 @@ def main():
                         default=ROOT / "catalog/routing-stop-routes.json")
     parser.add_argument("--focus", default="9106,5106,9209,51,67,411C,511C",
                         help="Códigos públicos separados por vírgula; somente estatísticas")
+    parser.add_argument("--focus-stops", default="",
+                        help="Até 20 stop_id públicos GTFS; sem coordenadas de usuários")
     args = parser.parse_args()
     codes = [v.strip().upper() for v in args.focus.split(",") if v.strip()]
     if len(codes) > 20 or any(not v.isalnum() or len(v) > 12 for v in codes):
@@ -152,8 +194,10 @@ def main():
     routes = json.loads(args.route_stops.read_text(encoding="utf-8"))
     if not isinstance(routes, dict):
         raise ValueError("Relação de paradas e linhas inválida")
+    focused = args.focus_stops.split(",") if args.focus_stops else []
     stats = audit(load_json_gz(args.graph), load_json_gz(args.stops),
-                  focus_routes=codes, stop_routes=routes)
+                  focus_routes=codes, stop_routes=routes,
+                  focus_stop_ids=focused)
     print(json.dumps(stats, ensure_ascii=False, indent=2))
     print("P27_OSM_GRAPH_COVERAGE_OK")
 
