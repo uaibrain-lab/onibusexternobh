@@ -88,11 +88,34 @@ jobs:
           assert payload['dados']=='GTFS programado + OSM local; sem ETA GPS'
           assert payload['status'] in ('ok','partial','walking_unavailable')
           assert isinstance(payload['linhasEncontradas'],list)
-          assert isinstance(payload['diagnostics'],dict)
+          d=payload['diagnostics']
+          assert isinstance(d,dict)
           assert payload['arquivosLidos']>0
+          # Stage counts are diagnostic evidence, not an assertion that
+          # a scheduled 9106+5106 journey necessarily exists.
+          stages=('fullUniqueItineraries','shortlisted',
+                  'passedStreetVerification','paretoRetained')
+          for key in stages:
+              assert type(d.get(key)) is int and d[key]>=0, key
+          assert d['passedStreetVerification']<=d['shortlisted']
+          assert d['paretoRetained']<=d['passedStreetVerification']
+          focus=d.get('focus')
+          assert isinstance(focus,list)
+          assert any(isinstance(x,dict) and x.get('lines')=='9106+5106'
+                     for x in focus)
+          for x in focus:
+              assert isinstance(x,dict)
+              for key in ('generated','shortlisted','streetVerified','paretoRetained'):
+                  assert type(x.get(key)) is int and x[key]>=0, key
+              assert x['streetVerified']<=x['shortlisted']
+              assert x['paretoRetained']<=x['streetVerified']
+              assert isinstance(x.get('streetRejectionReasons'),dict)
           print('P28_ROUTE_REAL_STOPS_DIAGNOSTIC_OK',
                 payload['status'],len(payload['linhasEncontradas']),
-                payload['diagnostics'].get('passedStreetVerification'))
+                d['passedStreetVerification'])
+          print('P28_ROUTE_STAGE_COUNTS',
+                json.dumps({key:d[key] for key in stages},sort_keys=True))
+          print('P28_ROUTE_FOCUS_COUNTS',json.dumps(focus,sort_keys=True))
           PY
       - name: Auditoria de franquia Spark e arquivos sob demanda
         run: python scripts/audit_static_budget.py --root dist/externo
