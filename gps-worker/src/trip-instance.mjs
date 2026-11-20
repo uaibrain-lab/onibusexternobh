@@ -41,11 +41,15 @@ export function findExactStopUpdate(scheduled, updates, nowSeconds) {
         ts < nowSeconds - 120) continue;
     const trip = update.trip;
     if (!trip || typeof trip !== 'object') continue;
+    // Match only scheduled service; canceled/added/replaced trips are not the same instance.
+    if (trip.scheduleRelationship !== undefined && trip.scheduleRelationship !== 0) continue;
     const stopUpdates = update.stopTimeUpdate;
     if (!Array.isArray(stopUpdates) || stopUpdates.length > 1000) continue;
     for (const stop of stopUpdates) {
       if (!stop || !Number.isSafeInteger(stop.stopSequence) ||
-          stop.stopSequence < 0) continue;
+          stop.stopSequence < 0 ||
+          // SKIPPED/NO_DATA/UNSCHEDULED cannot yield a scheduled-stop event.
+          (stop.scheduleRelationship !== undefined && stop.scheduleRelationship !== 0)) continue;
       if (!sameTripInstance(scheduled, {
         tripId: trip.tripId, routeId: trip.routeId,
         startDate: trip.startDate, startTime: trip.startTime,

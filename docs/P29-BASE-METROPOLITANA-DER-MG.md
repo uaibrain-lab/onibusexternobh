@@ -78,3 +78,13 @@ Arquivos UTF-8 com cabeçalho separado por TAB, registros por ponto e vírgula e
 - Só há consulta das **partidas do quadro DER/MG**. Ainda **não** existe roteiro metropolitano ponto a ponto, horário de passagem na parada ou ETA. Não inventar geometria.
 - Próxima rodada: verificar CI, validar a página no build integrado e mobile. Buscar fontes oficiais de itinerários efetivos da 411C/511C e posições de paradas, licença de reuso, validade de quadros e semântica RI/PI. Integrar planejamento somente após identificação de sentidos, sequências, calendário, horários por parada e caminhos reais OSM.
 - Nenhum deploy, merge, serviço pago, coleta de posição privada ou intervenção em outros repositórios.
+
+## P29C — Falha fechada em relações GTFS-RT (20/11/2026)
+
+- HEAD verificado antes da edição: `163d47835d29b3bf6de4c71114ba7f6b24bc9e9b`, árvore `e832af7bba73c84c73ec10cb96b2a2a04903b057`. Arquivos lidos pela API GitHub com SHA individual; somente esta branch é alvo.
+- Mudança no adaptador de TripUpdates: o decodificador preserva o campo 4 de `TripDescriptor.schedule_relationship`; o seletor de instância descarta relações de viagem diferentes de `SCHEDULED(0)` e atualizações de parada com `schedule_relationship` diferente de `SCHEDULED(0)`, incluindo `SKIPPED` e `NO_DATA`. Campos ausentes seguem o padrão 0 definido pelo protobuf. Sem nova consulta de rede ou previsão GPS/ETA.
+- Regressões protobuf cobrem códigos de relacionamento de viagem 0/1/2/3/5/6/7 e de parada 0/1/2/3, com verificação de que viagens programadas continuam aceitas.
+- Validação local: Node.js 22.16.0, `node --check` do decodificador e `node --test tests/test_gtfs_rt_trip_updates.cjs` reproduzidos com o conteúdo exato dos arquivos e a alteração proposta: **8 testes aprovados / 0 falhas**. Não confundir com suíte completa, dados reais SUMOB ou homologação de ETA.
+- CI remoto: consultar o workflow Testes P2 e integração do novo commit antes de homologar; no início desta rodada, o HEAD anterior tinha Testes P2 #44642508972 `completed/success`.
+- Sem merge, deploy, Blaze, API paga, mudança no Hub/ru-hoje ou dados de localização privada. Próximos passos: verificar CI novo, testes Playwright/mobile, auditorias 9106+5106 e 9209+51 com horários/OSM reais, temporalidade do feed e licenciamento/itinerários DER/MG.
+- Handoff: antes de novas edições, recuperar HEAD da branch e SHA dos arquivos. Manter este registro e o P27/P28 atualizados com resultados reais; o acesso GitHub autenticado contorna falha de DNS do git local.

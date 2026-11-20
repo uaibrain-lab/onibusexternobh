@@ -17,10 +17,13 @@ function u(n,value) {return [...v(n*8),...v(value)];}
 function s(n,value) {return f(n,[...Buffer.from(value)]);}
 function build({headerTime=now,tripTime=now-10,tripId='T42',stopId='STOP_A',
   stopSequence=12,departureTime=now+100,negativeDelay=false,
-  duplicate=false,deleted=false,withoutTimestamp=false}={}){
-  const trip=[...s(1,tripId),...s(2,'25:15:00'),...s(3,'20261119'),...s(5,'9106')];
+  duplicate=false,deleted=false,withoutTimestamp=false,
+  tripRelationship, stopRelationship}={}){
+  const trip=[...s(1,tripId),...s(2,'25:15:00'),...s(3,'20261119'),...s(5,'9106'),
+    ...(tripRelationship === undefined ? [] : u(4,tripRelationship))];
   const event=[...(!negativeDelay?[]:u(1,-50)), ...u(2,departureTime)];
-  const stop=[...u(1,stopSequence),...f(3,event),...s(4,stopId)];
+  const stop=[...u(1,stopSequence),...f(3,event),...s(4,stopId),
+    ...(stopRelationship === undefined ? [] : u(5,stopRelationship))];
   const upd=[...f(1,trip),...f(2,stop),...(!withoutTimestamp?u(4,tripTime):[])];
   const entity=[...s(1,'e-1'),...(deleted?u(2,1):[]),...f(3,upd)];
   const header=[...s(1,'2.0'),...u(3,headerTime)];
@@ -66,4 +69,16 @@ test('truncated, empty and oversized protobuf rejected',async()=>{
   const {parseTripUpdates}=await parser;
   for(const data of [new Uint8Array(0),build().subarray(0,7),new Uint8Array(8*1024*1024+1)])
     assert.throws(()=>parseTripUpdates(data,now));
+});
+
+test('scheduled relationships can match but canceled or skipped fail closed',async()=>{
+  const {parseTripUpdates,matchTripUpdate}=await parser;
+  assert.equal(matchTripUpdate(build({tripRelationship:0,stopRelationship:0}),sched,now).stop.departure.time,now+100);
+  for(const relationship of [1,2,3,5,6,7]) {
+    const encoded=build({tripRelationship:relationship});
+    assert.equal(parseTripUpdates(encoded,now).updates[0].trip.scheduleRelationship,relationship);
+    assert.equal(matchTripUpdate(encoded,sched,now),null);
+  }
+  for(const relationship of [1,2,3])
+    assert.equal(matchTripUpdate(build({stopRelationship:relationship}),sched,now),null);
 });

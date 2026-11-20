@@ -52,7 +52,8 @@ function readString(bytes, start, end) {
 }
 function tripDescriptor(bytes, start, end) {
   const trip = {};
-  fields(bytes, start, end, (field, wire, a, b) => {
+  fields(bytes, start, end, (field, wire, a, b, value) => {
+    if (field === 4 && wire === 0) trip.scheduleRelationship = value;
     if (wire !== 2) return;
     const key = {1: 'tripId', 2: 'startTime', 3: 'startDate', 5: 'routeId'}[field];
     if (key) trip[key] = readString(bytes, a, b);
