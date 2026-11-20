@@ -43,10 +43,12 @@ function publicStopCoordinates(ids, catalog=CATALOG){
  return found;
 }
 function options(args){
- const map={};
+ const map=Object.create(null);
+ const allowed=new Set(['from','to','fromstop','tostop','at','focus','mode','depth','preference']);
  for(const arg of args){
    const match=arg.match(/^--([a-z]+)=(.+)$/);
-   if(!match)throw Error('Argumento incorreto: '+arg);
+   if(!match||!allowed.has(match[1]))throw Error('Argumento incorreto: '+arg);
+   if(Object.hasOwn(map,match[1]))throw Error('Argumento duplicado: --'+match[1]);
    map[match[1]]=match[2];
  }
  const publicIds=['fromstop','tostop'].filter(key=>map[key]).map(key=>map[key]);
@@ -63,19 +65,28 @@ function options(args){
    return {lat:v[0],lng:v[1]};
  };
  const at=map.at||'';
- if(!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(-03:00|Z)$/.test(at)||
-    !Number.isFinite(Date.parse(at)))
+ const parsed=/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?(-03:00|Z)$/.exec(at);
+ if(!parsed||!Number.isFinite(Date.parse(at)))
    throw Error('Use --at=2026-11-17T19:58:00-03:00 (fuso explícito)');
+ const [,year,month,day,hour,minute,second='00',zone]=parsed;
+ const shifted=new Date(Date.parse(at)+(zone==='Z'?0:-3*3600000));
+ const actual=[shifted.getUTCFullYear(),shifted.getUTCMonth()+1,
+   shifted.getUTCDate(),shifted.getUTCHours(),shifted.getUTCMinutes(),shifted.getUTCSeconds()];
+ if(actual.some((value,i)=>value!==Number([year,month,day,hour,minute,second][i])))
+   throw Error('Data ou horário GTFS inválido');
  const preference=map.preference||'fastest';
  const mode=map.mode||'departAt',depth=map.depth||'expanded';
  if(!['fastest','balanced','leastWalking','leastTransfers'].includes(preference)||
     !['departAt','arriveBy'].includes(mode)||
     !['standard','expanded'].includes(depth))
    throw Error('Preferência, modo ou profundidade inválidos');
+ const focus=(map.focus||'9106+5106,9209+5106,9106+51')
+   .split(',').map(x=>x.trim().toUpperCase());
+ if(focus.length>12||focus.some(x=>! /^[A-Z0-9]{1,12}\+[A-Z0-9]{1,12}$/.test(x)))
+   throw Error('Combinações de linhas inválidas (máximo 12)');
+ if(new Set(focus).size!==focus.length)throw Error('Combinações de linhas duplicadas');
  return {origin:coords('from'),destination:coords('to'),at,
-   mode,preference,searchDepth:depth,diagnostics:true,
-   focusCombinations:(map.focus||'9106+5106,9209+5106,9106+51')
-     .split(',').map(x=>x.trim()).filter(Boolean)};
+   mode,preference,searchDepth:depth,diagnostics:true,focusCombinations:focus};
 }
 function workerEnv(){
  const messages=[],files=[];
