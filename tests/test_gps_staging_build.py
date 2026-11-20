@@ -44,7 +44,7 @@ class StagingBuildTests(unittest.TestCase):
         for name in ('app.js', 'style.css', 'hub-parity.css', 'route-worker.js',
                      'service-worker.js', 'static-bus.js', 'static-arrivals.js',
                      'live-gps.js', 'place-geocoding.js', 'walk-network.js', 'metro-timing.js',
-                     'manifest.webmanifest', 'icon-192.png', 'icon-512.png'):
+                     'metropolitan.html', 'metropolitan.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'):
             (static / name).write_text('static test fixture', encoding='utf-8')
         (scan / 'index.json').write_text(json.dumps({
             'schema': 1, 'tripCount': 1200, 'connectionCount': 11000,
@@ -58,6 +58,11 @@ class StagingBuildTests(unittest.TestCase):
                      'shapes.json', 'routing-stop-routes.json', 'gps-nl-map.json'):
             (catalog / name).write_text('{}' if name.endswith('map.json') else '[]',
                                        encoding='utf-8')
+        (catalog / 'der-rmbh-411c-511c.json').write_text(json.dumps({
+            'schema': 1, 'dataStatus': 'published-departures-only',
+            'routePlanningEnabled': False, 'georeferencedStops': False,
+            'calendarVerified': False, 'lines': {'411C': {}, '511C': {}}
+        }), encoding='utf-8')
         self.original = (static / 'gps-config.json').read_bytes()
         def fake_arrivals(catalog_root, output):
             output.mkdir(parents=True, exist_ok=True)
