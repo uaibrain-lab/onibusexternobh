@@ -58,6 +58,10 @@ class SameStopTransferAuditTests(unittest.TestCase):
             self.assertEqual(r["feasibleStops"],1)
             self.assertGreaterEqual(r["timedTransferPairs"],1)
             self.assertEqual(r["examples"][0]["scheduledWaitMinutes"],4)
+            self.assertEqual(r["stopEvidence"], [{
+                "stopId":"SHARED", "scheduledTransferPairs":1,
+                "firstArrivalEvents":1, "secondDepartureEvents":1
+            }])
             self.assertFalse(r["endToEndJourneyVerified"])
             self.assertNotIn("trip_private",json.dumps(r))
             self.assertNotIn("GPS calculated",json.dumps(r))
@@ -104,6 +108,7 @@ class SameStopTransferAuditTests(unittest.TestCase):
             r=module.audit(Path(root),"9106","9209",dt.date(2026,11,17),"22:00")
             self.assertEqual(r["sharedStops"],0)
             self.assertEqual(r["timedTransferPairs"],0)
+            self.assertEqual(r["stopEvidence"],[])
 
     def test_absent_line_is_not_invented(self):
         with tempfile.TemporaryDirectory() as root:

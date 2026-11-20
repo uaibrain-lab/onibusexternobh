@@ -144,7 +144,7 @@ def audit(catalog: Path, first: str, second: str, date: dt.date,
         "firstInCatalog":a is not None,"secondInCatalog":b is not None,
         "source":"local municipal GTFS routing shards; no GPS ETA",
         "sharedStops":0,"timedTransferPairs":0,"feasibleStops":0,
-        "examples":[],"endToEndJourneyVerified":False,
+        "examples":[],"stopEvidence":[],"endToEndJourneyVerified":False,
         "warning":"Conexões somente em parada IDÊNTICA e hora GTFS; não demonstram acesso origem/destino, sentido útil, desempenho real ou previsão de GPS."}
     if a is None or b is None:
         return result
@@ -158,6 +158,9 @@ def audit(catalog: Path, first: str, second: str, date: dt.date,
     result["activeFirstTrips"]=first_active
     result["activeSecondTrips"]=second_active
     samples=[]
+    # Per-stop evidence makes it possible to inspect the real corridor without
+    # revealing trip identifiers, positions, or claiming a complete journey.
+    stop_evidence=[]
     for sid in sorted(first_events.keys() & next_events.keys()):
         departures=sorted(next_events[sid])
         departure_times=[x[0] for x in departures]
@@ -174,6 +177,13 @@ def audit(catalog: Path, first: str, second: str, date: dt.date,
         result["timedTransferPairs"]+=possible
         if possible:
             result["feasibleStops"]+=1
+            stop_evidence.append({"stopId":sid,
+                                  "scheduledTransferPairs":possible,
+                                  "firstArrivalEvents":len(first_events[sid]),
+                                  "secondDepartureEvents":len(next_events[sid])})
+    # Sort by opportunities rather than lexical stop ID. Keep a bounded output.
+    stop_evidence.sort(key=lambda row: (-row["scheduledTransferPairs"], row["stopId"]))
+    result["stopEvidence"]=stop_evidence[:20]
     samples.sort()
     # One representative per stop gives corridor diversity.
     seen=set()
