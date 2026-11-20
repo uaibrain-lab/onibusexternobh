@@ -70,3 +70,20 @@ paradas próximas distintas.
 
 Restrições permanentes: sem Blaze, VPS, APIs comerciais, serviços pagos,
 nem modificações no Hub UFMG, ru-hoje ou repositórios relacionados.
+
+## P28M — Embarque/desembarque possível e auditoria temporal real (20/11/2026)
+
+- **HEAD conferido antes do patch:** `5ab33a244a02d28362ce3f86cd1cd6ac08be3c7d`. Commit de código/testes/CI: **`b7b9e20ed49358c48ceb999ae37c76ec363f8017`**.
+- `scripts/audit_same_stop_transfers.py`: não conta desembarque se não houver nenhum stop anterior com pickup permitido e partida cronologicamente anterior; não conta embarque se não houver stop posterior com dropoff permitido e chegada cronologicamente posterior. Cálculo em duas passagens lineares por viagem, sem coordenadas, serviços pagos ou estimativas GPS. Impede falso positivo de perna sem embarque/desembarque.
+- `tests/test_p28_same_stop_transfers.py`: regressões sintéticas para origem proibida, destino proibido e inversões cronológicas; preserva cenários de 24h+ e serviços cancelados. Reprodução isolada local: 6 casos de conectividade da perna aprovados. **Suíte integrada remota aprovada**.
+- `.github/workflows/integracao.yml`: passa a executar explicitamente a auditoria temporal com shards municipais reais, para referência de **17/11/2026 às 22h**, janela de 3h e espera de 2 a 30 min. Nenhuma coordenada pessoal foi fornecida ou armazenada.
+- **Resultados reais** do mesmo catálogo municipal versionado (não representam itinerário ponta a ponta):
+  - 9106 + 5106: 22 paradas de `stop_id` idêntico, **24 pares de horários programados** em 6 paradas, 303/411 instâncias ativas (primeira/segunda linha, contadas na janela estendida);
+  - 9209 + 51: 0 paradas compartilhadas, **0 pares**; baldeação entre paradas distintas não foi avaliada nesta auditoria;
+  - 9209 + 67: 4 paradas compartilhadas, **12 pares de horários** em 2 paradas.
+- **CI confirmado no commit de código:**
+  - Integração #44750411186: `completed/success`. **149 testes Python**, **159 testes Node/JavaScript**, preview com **9.828 pontos**, auditoria OSM e smoke HTTP aprovados. Link: https://github.com/uaibrain-lab/onibusexternobh/actions/runs/44750411186
+  - Testes P2 #44750423189: `completed/success` nas matrizes Python **3.11 e 3.13**. Uma tentativa anterior no mesmo SHA foi cancelada por concorrência; não era falha de testes. Link: https://github.com/uaibrain-lab/onibusexternobh/actions/runs/44750423189
+  - P9 Playwright #44750411046: `completed/success`, **21 testes passaram, 3 ignorados**, perfis desktop Chromium e Android emulado 360/390 px. Isso não substitui QA em dispositivo físico. Link: https://github.com/uaibrain-lab/onibusexternobh/actions/runs/44750411046
+- **Limitações que permanecem:** 24 combinações para 9106+5106 não validam a origem/destino desejados, nem sentidos, ruas OSM ou acesso a plataformas. 9209+51 necessita caminhar entre paradas diferentes. GTFS-RT ainda não está calibrado/homologado para ETA. DER/MG 411C/511C mantém apenas partidas informativas, sem horários por parada/geometria comprovados e com licença de redistribuição pendente.
+- **Handoff:** conferir o HEAD da branch e o CI após este commit documental; obter coordenadas e horários de referência não pessoais, rodar `scripts/diagnose_route.cjs` com diagnóstico por estágio para 9106+5106 / 9209+51 / 9209+67. Depois focar uma correção de roteador fundamentada em GTFS+OSM, em vez de relaxar limites arbitrariamente. Validar instância, `stop_sequence`, calendário e frescor de TripUpdates. Evitar conflitos com outros agentes consultando SHA do arquivo; nunca fazer merge, deploy ou tocar Hub/ru-hoje.
