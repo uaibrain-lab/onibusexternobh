@@ -8,11 +8,40 @@
  */
 'use strict';
 const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
+const zlib=require('node:zlib');
 const {performance}=require('node:perf_hooks');
 const ROOT=path.resolve(__dirname,'..'),CATALOG=path.resolve(ROOT,'catalog');
 const BASE='https://local-only.invalid/externo/catalog/scan/';
 const TZ='America/Sao_Paulo';
+const PUBLIC_STOP_RE=/^[A-Za-z0-9_-]{1,64}$/;
+const MAX_STOPS_GZIP=25*1024*1024,MAX_STOPS_JSON=25*1024*1024;
 
+function publicStopCoordinates(ids, catalog=CATALOG){
+ if(!Array.isArray(ids)||ids.length>2||ids.some(id=>!PUBLIC_STOP_RE.test(id)))
+   throw Error('Identificador público GTFS inválido');
+ const file=path.join(catalog,'scan/stops.json.gz');
+ if(!fs.existsSync(file)||fs.statSync(file).size>MAX_STOPS_GZIP)
+   throw Error('Catálogo público de paradas ausente ou excessivo');
+ const bytes=zlib.gunzipSync(fs.readFileSync(file),{maxOutputLength:MAX_STOPS_JSON});
+ const stops=JSON.parse(bytes.toString('utf8'));
+ if(!Array.isArray(stops)||stops.length>50000)throw Error('Catálogo GTFS de paradas inválido');
+ const wanted=new Set(ids),found=new Map();
+ for(const row of stops){
+   if(!Array.isArray(row)||row.length<4)throw Error('Parada GTFS inválida');
+   const id=String(row[0]);
+   if(!wanted.has(id))continue;
+   const lat=Number(row[2]),lng=Number(row[3]);
+   if(!Number.isFinite(lat)||!Number.isFinite(lng)||
+      lat< -20.5||lat> -19.5||lng< -44.4||lng> -43.5)
+     throw Error('Coordenadas públicas GTFS fora da região BH');
+   const previous=found.get(id);
+   if(previous&&(previous.lat!==lat||previous.lng!==lng))
+     throw Error('Stop_id GTFS duplicado com coordenadas conflitantes');
+   found.set(id,{lat,lng});
+ }
+ for(const id of wanted)if(!found.has(id))throw Error('Stop_id público ausente do catálogo: '+id);
+ return found;
+}
 function options(args){
  const map={};
  for(const arg of args){
@@ -20,7 +49,13 @@ function options(args){
    if(!match)throw Error('Argumento incorreto: '+arg);
    map[match[1]]=match[2];
  }
+ const publicIds=['fromstop','tostop'].filter(key=>map[key]).map(key=>map[key]);
+ const lookup=publicIds.length?publicStopCoordinates(publicIds):new Map();
  const coords=key=>{
+   if(map[key+'stop']){
+     if(map[key])throw Error('Escolha coordenadas OU stop_id para --'+key);
+     return lookup.get(map[key+'stop']);
+   }
    const v=(map[key]||'').split(',').map(Number);
    if(v.length!==2||!v.every(Number.isFinite)||
       v[0]<-20.5||v[0]>-19.5||v[1]<-44.4||v[1]>-43.5)
@@ -126,4 +161,4 @@ async function main(){
 }
 if(require.main===module)
  main().catch(e=>{console.error('P23_DIAGNOSTIC_FAILED:',e.stack||e.message);process.exitCode=2});
-module.exports={options,workerEnv};
+module.exports={options,workerEnv,publicStopCoordinates};

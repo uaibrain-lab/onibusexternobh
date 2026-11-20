@@ -1,7 +1,8 @@
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict');
 const fs=require('node:fs'),path=require('node:path');
-const {options}=require('../scripts/diagnose_route.cjs');
+const os=require('node:os'),zlib=require('node:zlib');
+const {options,publicStopCoordinates}=require('../scripts/diagnose_route.cjs');
 const base=['--from=-19.9000,-43.9300','--to=-19.8700,-43.9600',
  '--at=2026-11-17T19:58:00-03:00'];
 test('offline diagnostics accepts BH coordinates and focus combinations',()=>{
@@ -25,4 +26,22 @@ test('diagnosis never connects to a public API or sends passenger GPS externally
  assert.match(script,/REDE EXTERNA BLOQUEADA/);
  assert.doesNotMatch(script,/https:\/\/(api\.moovit|routes\.googleapis|photon\.komoot)/);
  assert.match(script,/focusCombinations/);
+});
+
+test('official public GTFS stop IDs resolve locally without network or passenger GPS',()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'externo-public-stops-'));
+ try{
+   fs.mkdirSync(path.join(root,'scan'));
+   const rows=[['a','Parada A',-19.9,-43.93],['b','Parada B',-19.87,-43.96]];
+   fs.writeFileSync(path.join(root,'scan/stops.json.gz'),
+     zlib.gzipSync(Buffer.from(JSON.stringify(rows))));
+   const found=publicStopCoordinates(['a','b'],root);
+   assert.deepEqual(found.get('a'),{lat:-19.9,lng:-43.93});
+   assert.deepEqual(found.get('b'),{lat:-19.87,lng:-43.96});
+   assert.throws(()=>publicStopCoordinates(['missing'],root),/ausente/);
+   assert.throws(()=>publicStopCoordinates(['../bad'],root),/inválido/);
+   fs.writeFileSync(path.join(root,'scan/stops.json.gz'),
+     zlib.gzipSync(Buffer.from(JSON.stringify([...rows,['a','Conflito',-19.8,-43.93]]))));
+   assert.throws(()=>publicStopCoordinates(['a'],root),/conflitantes/);
+ }finally{fs.rmSync(root,{recursive:true,force:true})}
 });
