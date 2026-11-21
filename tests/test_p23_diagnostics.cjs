@@ -74,3 +74,20 @@ test('official public GTFS stop IDs resolve locally without network or passenger
    assert.throws(()=>publicStopCoordinates(['a'],root),/conflitantes/);
  }finally{fs.rmSync(root,{recursive:true,force:true})}
 });
+
+test('public stop catalog fails closed for corrupt, oversized and out-of-region data',()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'externo-stop-limits-'));
+ try{
+   fs.mkdirSync(path.join(root,'scan'));
+   const file=path.join(root,'scan/stops.json.gz');
+   fs.writeFileSync(file,Buffer.from('not gzip'));
+   assert.throws(()=>publicStopCoordinates(['a'],root));
+   // A small compressed payload must not expand beyond the bounded 25 MiB limit.
+   fs.writeFileSync(file,zlib.gzipSync(Buffer.from('x'.repeat(26*1024*1024))));
+   assert.throws(()=>publicStopCoordinates(['a'],root),/ERR_BUFFER_TOO_LARGE|larger than/);
+   fs.writeFileSync(file,zlib.gzipSync(Buffer.from(JSON.stringify([
+     ['a','Invalid',-23,-43.93]
+   ]))));
+   assert.throws(()=>publicStopCoordinates(['a'],root),/fora da região BH/);
+ }finally{fs.rmSync(root,{recursive:true,force:true})}
+});
