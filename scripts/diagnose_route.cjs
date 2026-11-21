@@ -51,6 +51,10 @@ function options(args,catalog=CATALOG){
    if(Object.hasOwn(map,match[1]))throw Error('Argumento duplicado: --'+match[1]);
    map[match[1]]=match[2];
  }
+ for(const key of ['from','to']){
+   if(map[key]&&map[key+'stop'])
+     throw Error('Escolha coordenadas OU stop_id para --'+key);
+ }
  const publicIds=['fromstop','tostop'].filter(key=>map[key]).map(key=>map[key]);
  const lookup=publicIds.length?publicStopCoordinates(publicIds,catalog):new Map();
  const coords=key=>{

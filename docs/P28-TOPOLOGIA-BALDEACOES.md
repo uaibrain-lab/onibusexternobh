@@ -140,3 +140,11 @@ pendências anteriores e sem duplicar a automação existente.
 - Limites: parser/adapter criados e testados **offline**; nenhum endpoint produtivo passou a usar TripUpdates, nenhum feed oficial em tempo real foi baixado nesta rodada, sem catálogo GTFS/OSM integrado nem calibração. Não anunciar ETA operacional ou cobertura DER/MG.
 - CI do novo HEAD: verificar após este commit documental (a execução do primeiro commit apareceu `in_progress` como #44638390825; novas atualizações podem cancelar runs por concorrência). Sem merge/deploy.
 - Handoff: primeiro conferir CI e reparar regressões; depois conectar fonte oficial TripUpdates somente em diagnóstico/homologação com URLs/configuração autorizadas, verificar freshness, data de serviço, sequência, horários por parada, OSM e as baldeações 9106+5106, 9209+51 e 9209+67. Para DER/MG, obter os arquivos completos via acesso permitido, preservar SHA/proveniência e validar licença e geometria antes de converter. Não tocar outros repositórios.
+
+
+## P28M — Validação antecipada do diagnóstico offline (21/11/2026)
+
+- Base `be9dc6b7f2704a54da4f668962a6d4a4a6e10b42`, CI P2 #44847106596 aprovado. SHA dos três arquivos verificado antes da edição.
+- `scripts/diagnose_route.cjs`: rejeita `--from` junto de `--fromstop` ou `--to` junto de `--tostop` antes de ler/descompactar o catálogo. Isso evita I/O desnecessário e não mascara argumentos inválidos quando o catálogo está ausente.
+- `tests/test_p23_diagnostics.cjs`: regressão para conflito mesmo com catálogo ausente. Validação isolada da função JavaScript: 3 verificações aprovadas. Suíte integrada ainda depende do CI, não foi executada localmente.
+- Próxima IA: verificar CI do novo HEAD, executar `node --test tests/test_p23_diagnostics.cjs` no checkout completo, reproduzir 9106+5106 com catálogo e horários oficiais. Sem alterações GTFS/OSM/ETA, merge, deploy, serviço pago ou localização privada.
