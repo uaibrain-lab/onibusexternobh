@@ -35,6 +35,13 @@ test('rejects normalized impossible service dates and ambiguous CLI switches',()
    ['9106+5106','9209+51']);
 });
 
+test('invalid CLI date and focus fail before loading an absent GTFS catalog',()=>{
+ const missing=path.join(os.tmpdir(),'externo-no-catalog-for-validation');
+ assert.throws(()=>options(['--fromstop=a','--tostop=b','--at=2026-02-30T19:58:00-03:00'],missing),/inválido/);
+ assert.throws(()=>options(['--fromstop=a','--tostop=b','--at=2026-11-17T19:58:00-03:00','--focus=invalid'],missing),/Combinações de linhas inválidas/);
+ assert.throws(()=>options(['--fromstop=../bad','--tostop=b','--at=2026-11-17T19:58:00-03:00'],missing),/Identificador público GTFS inválido/);
+});
+
 test('diagnosis never connects to a public API or sends passenger GPS externally',()=>{
  const script=fs.readFileSync(path.join(__dirname,'../scripts/diagnose_route.cjs'),'utf8');
  assert.match(script,/local-only\.invalid/);
