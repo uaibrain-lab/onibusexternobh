@@ -62,6 +62,101 @@ const WalkGraph=(()=>{
         }
       return best;
     }
+    distancesToStops(origin,points,limitMeters=2500){
+      // Dijkstra ONCE for all candidate stops near the requested endpoint.
+      // Repeated A* per stop would scale poorly on Android. The result
+      // contains real street-network walk cost (not crow-flies distance).
+      if(!Array.isArray(points)||points.length>160||!Number.isFinite(limitMeters)||
+         limitMeters<=0||limitMeters>3500)return new Map();
+      const root=this.nearest(origin);
+      if(!root)return new Map();
+      const targets=new Map();
+      let targetCount=0;
+      for(const item of points){
+        if(!Number.isInteger(item.index)||!Array.isArray(item.coords))continue;
+        const snap=this.nearest(item.coords);
+        if(!snap)continue; // no verified pedestrian access, never fabricate
+        if(!targets.has(snap[0]))targets.set(snap[0],[]);
+        targets.get(snap[0]).push([item.index,snap[1]]);
+        targetCount++;
+      }
+      const results=new Map();
+      const travelTimes=new Map([[root[0],0]]);
+      const heap=new Heap();
+      heap.push([0,root[0]]);
+      let expanded=0,found=0;
+      while(heap.length&&expanded<30000){
+        const [meters,node]=heap.pop();
+        if(meters>limitMeters-root[1])break;
+        if(meters>travelTimes.get(node))continue;
+        expanded++;
+        for(const [index,stopSnap] of targets.get(node)||[]){
+          const distance=meters+root[1]+stopSnap;
+          if(distance>limitMeters)continue;
+          results.set(index,{
+            meters:Math.round(distance),
+            seconds:Math.ceil(distance/1.15)+35,
+            snapMeters:Math.round(root[1]+stopSnap)
+          });
+          found++;
+        }
+        if(found>=targetCount)return results;
+        for(const [to,edgeMeters] of this.adj[node]){
+          const next=meters+edgeMeters;
+          if(next>limitMeters-root[1]||next>= (travelTimes.get(to)??Infinity))
+            continue;
+          travelTimes.set(to,next);
+          heap.push([next,to]);
+        }
+      }
+      return results;
+    }
+    componentIds(){
+      // Compute components only when diagnostics are requested. The normal
+      // mobile planner does NOT pay the O(nodes+edges) cost.
+      if(this._componentIds)return this._componentIds;
+      const ids=new Int32Array(this.nodes.length);
+      ids.fill(-1);
+      const queue=[];
+      let part=0;
+      for(let root=0;root<this.nodes.length;root++){
+        if(ids[root]>=0)continue;
+        queue.length=0;queue.push(root);ids[root]=part;
+        for(let cursor=0;cursor<queue.length;cursor++){
+          const at=queue[cursor];
+          for(const [next] of this.adj[at]){
+            if(ids[next]>=0)continue;
+            ids[next]=part;queue.push(next);
+          }
+        }
+        part++;
+      }
+      this._componentIds=ids;
+      return ids;
+    }
+    explainFailure(from,to,limitMeters=2500){
+      // Aggregatable explanation of a rejected OSM walk; no coordinates,
+      // node IDs or passenger locations escape from the worker.
+      const a=this.nearest(from),b=this.nearest(to);
+      if(!a||!b)return {
+        reason:!a&&!b?'bothEndpointsUnsnapped':!a?'fromUnsnapped':'toUnsnapped',
+        fromSnapMeters:a?Math.round(a[1]):null,
+        toSnapMeters:b?Math.round(b[1]):null
+      };
+      const straight=Math.round(dist(from,to));
+      if(straight+a[1]+b[1]>limitMeters)return {
+        reason:'minimumWalkingDistanceOverBudget',
+        straightDistanceMeters:straight,
+        fromSnapMeters:Math.round(a[1]),toSnapMeters:Math.round(b[1])
+      };
+      const ids=this.componentIds();
+      return {
+        reason:ids[a[0]]!==ids[b[0]]?'disconnectedPedestrianComponents':
+          'walkDetourExceedsBudgetOrSearchLimit',
+        straightDistanceMeters:straight,
+        fromSnapMeters:Math.round(a[1]),toSnapMeters:Math.round(b[1])
+      };
+    }
     route(from,to,limitMeters=2500){
       const a=this.nearest(from),b=this.nearest(to);
       if(!a||!b)return null;

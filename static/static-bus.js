@@ -119,13 +119,17 @@ const StaticBus=(()=>{
       const line=String(u.searchParams.get('route')||'');
       const route=routeIndex.get(line.toUpperCase());
       if(!route)throw Error('Linha não cadastrada');
+      if(typeof StaticLive!=='undefined')
+        return StaticLive.fleet(route.id,route.code,route.name,await releaseVersion());
       return {line:route.code,name:route.name,asOf:null,
         available:false,count:null,vehicles:[],sources:{},
-        note:'GPS em tempo real ainda não conectado no modo gratuito.'};
+        note:'GPS público desativado; horários programados disponíveis.'};
     }
     if(endpoint==='/api/status'){
-      return {available:false,sources:{},
-        note:'Catálogo GTFS estático. Sem telemetria ao vivo.'};
+      return typeof StaticLive!=='undefined'
+        ?StaticLive.status()
+        :{available:false,sources:{},gpsRecent:0,
+           note:'Catálogo GTFS estático. Sem telemetria ao vivo.'};
     }
     if(endpoint==='/api/stops'){
       const q=fold(u.searchParams.get('q')||'').trim();

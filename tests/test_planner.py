@@ -98,6 +98,11 @@ class RoutePlannerTests(unittest.TestCase):
         direct=self.planner._trips('D')
         self.assertEqual(direct[0][0],'direto')
         self.assertEqual([row[0] for row in direct[0][3]],['a','c'])
+        # The sixth field retains the GTFS stop_sequence without changing
+        # the five existing attributes consumed by the Python/JS planner.
+        self.assertTrue(self.index['stopSequencePreserved'])
+        self.assertEqual([len(row) for row in direct[0][3]],[6,6])
+        self.assertEqual([row[5] for row in direct[0][3]],[1,2])
 
     def test_fastest_can_choose_transfer(self):
         r=self.planner.plan(self.a,self.c,self.at)

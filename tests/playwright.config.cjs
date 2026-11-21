@@ -1,7 +1,7 @@
 const {defineConfig,devices}=require('@playwright/test');
 module.exports=defineConfig({
  testDir:__dirname,
- testMatch:'browser-p9.spec.cjs',
+ testMatch:'browser-*.spec.cjs',
  fullyParallel:false,
  timeout:110000,
  expect:{timeout:20000},

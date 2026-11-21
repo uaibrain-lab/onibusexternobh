@@ -12,6 +12,91 @@ Esta versão reúne a experiência de quatro abas: **Pontos, Linhas, Metrô e Ro
 
 Detalhes, cronograma e riscos: [docs/INTEGRACAO-UNICA-20261117.md](docs/INTEGRACAO-UNICA-20261117.md).
 
+**P18 — 17/11/2026:** o usuário confirmou que o ambiente independente
+https://externo-bh-hml-uaibrain.pages.dev/externo/ está online.
+A auditoria HTTP do Pages publicado foi adicionada em
+[docs/P18-AUDITORIA-PAGES-PUBLICADO.md](docs/P18-AUDITORIA-PAGES-PUBLICADO.md).
+Execute `node scripts/check_p18_public_site.mjs` no Windows antes de
+considerar a publicação validada; a análise visual mobile continua pendente.
+O GPS padrão no repositório permanece desativado e o Hub não foi alterado.
+
+**P24 — 17/11/2026:** auditoria dos resultados das 22:03 identificou
+dois limites distintos: a linha metropolitana 411C NÃO existe no GTFS
+municipal e o algoritmo permitia que muitas paradas vizinhas de uma
+mesma avenida esgotassem os candidatos. A busca agora preserva os mais
+próximos e distribui as vagas restantes entre 16 direções e três
+faixas de distância (120/160 pontos antes da verificação OSM).
+Pesquisa de endereço no Pages passa a usar um proxy restrito no
+Cloudflare Worker Free, com cache e teste real de geocodificação antes
+do deploy; mantém fallback local se o Photon falhar. É preciso
+**atualizar o Worker e depois o Pages de homologação** para aplicar.
+Ver [P24](docs/P24-METROPOLITANO-PONTOS-GEOCODIFICACAO.md).
+P25: importar dados metropolitanos oficiais DER/MG, somente após
+validar horários por parada, itinerários e geometrias; não interpolar
+passagens nem inventar ETA. **P24 ainda não publicada.**
+
+**P23 — 17/11/2026:** pesquisa das APIs públicas Google Maps/Moovit e
+da arquitetura aberta OpenTripPlanner. Motor CSA no navegador aprimorado:
+caminhada OSM de acesso e saída antes do scan GTFS (Dijkstra em lote),
+busca ampliada de baldeações a pé, opção Equilibrada com custo heurístico,
+filtro Pareto após validação da rua e avisos de baldeação apertada.
+Diagnóstico LOCAL sem APIs pagas com foco nas combinações 9209+5106,
+9106+5106 e 9106+51. Revisão PWA de homologação. Os pesos e algoritmos
+proprietários de Moovit/Google NÃO são conhecidos; não alegar igualdade
+de resultados. Documentação e fontes:
+[docs/P23-PESQUISA-ALGORITMOS-ROTAS.md](docs/P23-PESQUISA-ALGORITMOS-ROTAS.md).
+**P23 não publicada**, suíte completa e comparação com coordenadas reais
+pendentes; Hub UFMG/Firebase intactos.
+
+**P22 — 17/11/2026:** complementos da P21: toque em parada mantém
+rastreamento; consultas de horários exigem sentido/headsings GTFS
+coerentes e ignoram respostas antigas; separação do tempo planejado
+entre caminhada, ônibus e espera; busca de endereço responsiva e com
+coordenadas dentro da área do roteador; suite de regressão maior;
+redução da duplicidade de Actions. O site de homologação **ainda não foi
+atualizado** com essas alterações. Consulte
+[docs/P22-ROBUSTEZ-LINHAS-HORARIOS-ROTEAMENTO.md](docs/P22-ROBUSTEZ-LINHAS-HORARIOS-ROTEAMENTO.md).
+Execuções do Actions falham antes de expor etapas de teste; CI pendente.
+
+**P21 — 17/11/2026:** modo de linha temporário com retorno ao mapa e
+ponto anteriores; paradas restritas ao percurso selecionado; seletor de
+ponto com horários GTFS; busca explícita por endereço/estabelecimento
+via Photon/OSM, com fallback local; planejador agora considera mais
+pontos de acesso, caminhadas entre paradas e itinerários distintos.
+O usuário identificou diferença em relação ao Moovit
+(9209+5106 36 min versus resultados GTFS mais lentos); tempos exatos
+ainda não homologados com as mesmas coordenadas e calendário.
+Consulte [P21](docs/P21-LINHAS-LOCAIS-ROTEAMENTO.md).
+**Não publicado no Pages; PR draft, Hub intacto.**
+
+## P17 — Site de homologação GPS oficial SUMOB, sem custos obrigatórios
+
+O GPS GTFS Realtime SUMOB foi validado no Worker gratuito com HTTP 200,
+1.779 veículos no feed e 7 posições da linha 5102. A amostra Cloudflare
+de 23 invocações (múltiplas versões) registrou CPU P99 de 7,15 ms, sem
+excessos, mas ainda não comprova capacidade em escala.
+
+- **Build normal permanece sem GPS:** `python scripts/build_static_site.py`.
+- **Build exclusivo de homologação com GPS:** 
+  `python scripts/build_static_site.py --gps-staging`.
+  A configuração `static/gps-config.json` permanece `enabled:false`
+  no GitHub e no build normal. Só o pacote de homologação liga o GPS.
+- **Primeira publicação isolada opcional:** script
+  `scripts/Publicar-GPS-Homologacao.ps1` (PowerShell 5.1) com flags
+  explícitas de criação de projeto Pages e atualização do Worker CORS.
+  **Não cria nem modifica Firebase ou ru-hoje.**
+- **Destino planejado, ainda não publicado:**
+  `https://externo-bh-hml-uaibrain.pages.dev/externo/`.
+- **Teste de build e segurança:** 
+  `python -m unittest discover -s tests -p test_gps_staging_build.py -v`.
+- **Teste de GPS isolado:** 
+  `node --test tests/test_gtfs_realtime_worker.cjs tests/test_gtfs_realtime_adapter.cjs tests/test_live_gps_adapter.cjs`.
+
+Leia [docs/P17-HOMOLOGACAO-PAGES-GPS.md](docs/P17-HOMOLOGACAO-PAGES-GPS.md)
+antes de publicar. Nenhuma previsão GPS (ETA) é alegada como confiável,
+nem há banco ou backend pago. Homologação Android e uso contínuo
+ainda pendentes.
+
 ---
 
 # P9 — Quatro abas em hospedagem estática, ruas OSM e metrô com incerteza

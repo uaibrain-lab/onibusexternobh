@@ -141,7 +141,7 @@ def build(archive, output=None):
                 out.write('[')
                 first_written=True
                 query = '''SELECT t.id, t.service, t.destination,
-                                  s.stop, s.arrive, s.depart, s.pickup, s.dropoff
+                                  s.stop, s.arrive, s.depart, s.pickup, s.dropoff, s.seq
                            FROM trips t JOIN times s ON s.trip=t.id
                            WHERE t.code=?
                            ORDER BY t.id, s.seq'''
@@ -158,7 +158,7 @@ def build(archive, output=None):
                                              ensure_ascii=False,separators=(',',':')))
                         first_written=False
                         count += 1
-                for trip_id, service, headsign, stop, arr, dep, pickup, dropoff in db.execute(query,(code,)):
+                for trip_id, service, headsign, stop, arr, dep, pickup, dropoff, seq in db.execute(query,(code,)):
                     if trip_id != previous_id:
                         if previous_id is not None:
                             write_trip()
@@ -171,7 +171,7 @@ def build(archive, output=None):
                     if stop not in gtfs_stops:
                         invalid_trip = True
                     if not invalid_trip:
-                        stops.append([stop,arr,dep,pickup,dropoff])
+                        stops.append([stop,arr,dep,pickup,dropoff,seq])
                 if meta is not None:
                     write_trip()
                 out.write(']')
@@ -186,7 +186,8 @@ def build(archive, output=None):
         dates = [s['start_date'] for s in services.values()] + list(exceptions.keys())
         ends = [s['end_date'] for s in services.values()] + list(exceptions.keys())
         index = {
-            'schema':3, 'builtUTC':dt.datetime.now(dt.timezone.utc).isoformat(),
+            'schema':3, 'stopSequencePreserved':True,
+            'builtUTC':dt.datetime.now(dt.timezone.utc).isoformat(),
             'source':'https://s3.amazonaws.com/mobilibus-uploads/gtfs/GTFSBHTRANS.zip',
             'timezone':'America/Sao_Paulo', 'validFrom':min(dates) if dates else None,
             'validThrough':max(ends) if ends else None,
