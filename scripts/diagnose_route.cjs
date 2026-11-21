@@ -42,7 +42,7 @@ function publicStopCoordinates(ids, catalog=CATALOG){
  for(const id of wanted)if(!found.has(id))throw Error('Stop_id público ausente do catálogo: '+id);
  return found;
 }
-function options(args){
+function options(args,catalog=CATALOG){
  const map=Object.create(null);
  const allowed=new Set(['from','to','fromstop','tostop','at','focus','mode','depth','preference']);
  for(const arg of args){
@@ -52,7 +52,7 @@ function options(args){
    map[match[1]]=match[2];
  }
  const publicIds=['fromstop','tostop'].filter(key=>map[key]).map(key=>map[key]);
- const lookup=publicIds.length?publicStopCoordinates(publicIds):new Map();
+ const lookup=publicIds.length?publicStopCoordinates(publicIds,catalog):new Map();
  const coords=key=>{
    if(map[key+'stop']){
      if(map[key])throw Error('Escolha coordenadas OU stop_id para --'+key);
