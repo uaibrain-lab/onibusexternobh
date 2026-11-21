@@ -165,3 +165,12 @@ pendências anteriores e sem duplicar a automação existente.
 - Teste isolado equivalente reproduzido com Node 22: 1/1 aprovado. **Não equivale à suíte integrada do novo commit**; conferir Actions do novo HEAD antes de homologar.
 - Diagnóstico real anterior da integração: 950 itinerários gerais, 96 shortlisted, 75 verificados na rede de ruas e 4 retidos; foco 9106+5106 gerou zero. Não atribuir a OSM um candidato que não foi gerado. Próximo passo: confrontar sentidos, calendário, horários e sequências de viagem GTFS reais; sem alterar limites de caminhada arbitrariamente.
 - Handoff: reler HEAD e SHAs antes de editar, conferir CI do commit de regressão e testar no catálogo completo. Nenhum merge/deploy; preservar privacidade e infraestrutura gratuita.
+
+
+## 21/11/2026 — auditoria temporal alinhada à consulta real (17h BRT)
+
+- HEAD anterior confirmado: `4cb9fd23f71c5947f4b4a1ec9f7d685acd709745`; integração Actions `44938980886` e Testes P2 `44938985687` concluídos com sucesso, Playwright P9 `44938970253` aprovado no commit de testes anterior `56d4b0ae95f8a9e8d83ca795feea3791a7f8d920`.
+- Commit de código/CI: `174da6f7027a00addbc152e518a3d6a3d5194776` altera exclusivamente `.github/workflows/integracao.yml`: a auditoria independente `audit_same_stop_transfers.py` para **9106 → 5106** passa a usar `2026-11-17 19:58`, janela de 5 horas, em vez de 22:00/3h. É o mesmo instante local da consulta real do planejador; os casos 9209/51 e 9209/67 permanecem inalterados.
+- Objetivo: expor nos logs de CI a existência (ou ausência) de pares temporais em paradas idênticas no período relevante. **Pares temporais não provam rota ponta a ponta**; a busca real segue com `generated=0` para o foco 9106+5106 na última integração observada. Não atribuir causa a OSM sem candidato gerado.
+- Validação: modificação textual única com SHA do workflow confirmado antes da edição; **novo CI ainda não confirmado** na consulta imediatamente após o commit. Não declarar testes novos aprovados sem logs do novo HEAD.
+- Handoff: conferir integração e P2 do HEAD; extrair `timedTransferPairs`, `feasibleStops`, `activeFirstTrips`, `activeSecondTrips` da auditoria 19:58 e cruzar com origem/destino, sentido e sequências de viagem. Se não houver par viável, preservar o fail-closed; se houver, criar reprodução de percurso completo antes de alterar motor. Nenhum merge/deploy, GPS ETA ou infraestrutura paga.
