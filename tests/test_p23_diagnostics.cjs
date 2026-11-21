@@ -51,6 +51,11 @@ test('official public GTFS stop IDs resolve locally without network or passenger
    fs.writeFileSync(path.join(root,'scan/stops.json.gz'),
      zlib.gzipSync(Buffer.from(JSON.stringify(rows))));
    const found=publicStopCoordinates(['a','b'],root);
+   const parsed=options(['--fromstop=a','--tostop=b','--at=2026-11-17T19:58:00-03:00'],root);
+   assert.deepEqual(parsed.origin,{lat:-19.9,lng:-43.93});
+   assert.deepEqual(parsed.destination,{lat:-19.87,lng:-43.96});
+   assert.throws(()=>options(['--fromstop=a',...base],root),/coordenadas OU stop_id/);
+   assert.throws(()=>options(['--fromstop=missing','--tostop=b','--at=2026-11-17T19:58:00-03:00'],root),/ausente/);
    assert.deepEqual(found.get('a'),{lat:-19.9,lng:-43.93});
    assert.deepEqual(found.get('b'),{lat:-19.87,lng:-43.96});
    assert.throws(()=>publicStopCoordinates(['missing'],root),/ausente/);
