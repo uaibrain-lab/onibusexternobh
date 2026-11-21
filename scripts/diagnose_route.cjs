@@ -55,8 +55,7 @@ function options(args,catalog=CATALOG){
    if(map[key]&&map[key+'stop'])
      throw Error('Escolha coordenadas OU stop_id para --'+key);
  }
- const publicIds=['fromstop','tostop'].filter(key=>map[key]).map(key=>map[key]);
- const lookup=publicIds.length?publicStopCoordinates(publicIds,catalog):new Map();
+ // Validate cheap CLI arguments before touching the potentially large GTFS stop catalog.
  const coords=key=>{
    if(map[key+'stop']){
      if(map[key])throw Error('Escolha coordenadas OU stop_id para --'+key);
@@ -89,6 +88,11 @@ function options(args,catalog=CATALOG){
  if(focus.length>12||focus.some(x=>! /^[A-Z0-9]{1,12}\+[A-Z0-9]{1,12}$/.test(x)))
    throw Error('Combinações de linhas inválidas (máximo 12)');
  if(new Set(focus).size!==focus.length)throw Error('Combinações de linhas duplicadas');
+ const publicIds=['fromstop','tostop'].filter(key=>map[key]).map(key=>map[key]);
+ // Validate stop IDs even if the local catalog is unavailable.
+ if(publicIds.some(id=>!PUBLIC_STOP_RE.test(id)))
+   throw Error('Identificador público GTFS inválido');
+ const lookup=publicIds.length?publicStopCoordinates(publicIds,catalog):new Map();
  return {origin:coords('from'),destination:coords('to'),at,
    mode,preference,searchDepth:depth,diagnostics:true,focusCombinations:focus};
 }
