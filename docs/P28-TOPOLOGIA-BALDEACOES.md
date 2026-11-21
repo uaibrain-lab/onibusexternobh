@@ -148,3 +148,12 @@ pendências anteriores e sem duplicar a automação existente.
 - `scripts/diagnose_route.cjs`: rejeita `--from` junto de `--fromstop` ou `--to` junto de `--tostop` antes de ler/descompactar o catálogo. Isso evita I/O desnecessário e não mascara argumentos inválidos quando o catálogo está ausente.
 - `tests/test_p23_diagnostics.cjs`: regressão para conflito mesmo com catálogo ausente. Validação isolada da função JavaScript: 3 verificações aprovadas. Suíte integrada ainda depende do CI, não foi executada localmente.
 - Próxima IA: verificar CI do novo HEAD, executar `node --test tests/test_p23_diagnostics.cjs` no checkout completo, reproduzir 9106+5106 com catálogo e horários oficiais. Sem alterações GTFS/OSM/ETA, merge, deploy, serviço pago ou localização privada.
+
+
+## P28 — Validação antecipada do CLI offline (21/11/2026)
+
+- Commits: `5f627c322ed26994e5f6b04738d23c855970ed05` (código), `8dc5a66a9e4dbc1057552642666b5212de414b72` (regressão).
+- `scripts/diagnose_route.cjs`: valida data, modo, preferência, profundidade, combinações e IDs públicos antes de abrir/descompactar `stops.json.gz`. Entradas inválidas não devem provocar I/O pesado nem mascarar erro de argumento com erro de catálogo ausente.
+- `tests/test_p23_diagnostics.cjs`: três regressões para data, foco e ID inválidos com catálogo inexistente.
+- Verificação isolada do parser executada no ambiente do agente: 5 casos passaram (data, foco, ID, acesso exigido para entrada válida, coordenadas válidas). **Suíte Node completa e CI do HEAD final devem ser verificados separadamente; não alegar homologação antecipada.**
+- Handoff: verificar Actions dos commits acima e deste registro; se CI falhar, corrigir antes de novas alterações. Prosseguir com diagnóstico temporal 9106+5106, sem alterar OSM ou inventar ETA. Sem merge/deploy.
