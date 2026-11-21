@@ -157,3 +157,11 @@ pendências anteriores e sem duplicar a automação existente.
 - `tests/test_p23_diagnostics.cjs`: três regressões para data, foco e ID inválidos com catálogo inexistente.
 - Verificação isolada do parser executada no ambiente do agente: 5 casos passaram (data, foco, ID, acesso exigido para entrada válida, coordenadas válidas). **Suíte Node completa e CI do HEAD final devem ser verificados separadamente; não alegar homologação antecipada.**
 - Handoff: verificar Actions dos commits acima e deste registro; se CI falhar, corrigir antes de novas alterações. Prosseguir com diagnóstico temporal 9106+5106, sem alterar OSM ou inventar ETA. Sem merge/deploy.
+
+### 21/11/2026 — cobertura de segurança do catálogo offline
+
+- HEAD inicial: `58a6c4cd0e93c2210fd3a8f93fc47163eb27a67b`. GitHub Actions: integração `44933317135` e Testes P2 `44933320253` concluídos com sucesso; P9 `44933306206` aprovado no commit anterior `8dc5a66a9e4dbc1057552642666b5212de414b72`.
+- Commit de regressão: `56d4b0ae95f8a9e8d83ca795feea3791a7f8d920`, arquivo `tests/test_p23_diagnostics.cjs`. Exercita rejeição de gzip corrompido, expansão descompactada acima de 25 MiB e coordenadas de parada fora da região BH. Não modifica motor, OSM, catálogo ou Worker.
+- Teste isolado equivalente reproduzido com Node 22: 1/1 aprovado. **Não equivale à suíte integrada do novo commit**; conferir Actions do novo HEAD antes de homologar.
+- Diagnóstico real anterior da integração: 950 itinerários gerais, 96 shortlisted, 75 verificados na rede de ruas e 4 retidos; foco 9106+5106 gerou zero. Não atribuir a OSM um candidato que não foi gerado. Próximo passo: confrontar sentidos, calendário, horários e sequências de viagem GTFS reais; sem alterar limites de caminhada arbitrariamente.
+- Handoff: reler HEAD e SHAs antes de editar, conferir CI do commit de regressão e testar no catálogo completo. Nenhum merge/deploy; preservar privacidade e infraestrutura gratuita.
