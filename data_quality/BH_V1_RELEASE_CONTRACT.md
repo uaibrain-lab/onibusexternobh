@@ -96,3 +96,19 @@ Novo validador `data_quality/bh_v1_trip_sequence.py` conectado à leitura **já 
 O resultado `sourceAudit.tripSequenceAudit` registra contagens e códigos de bloqueio. Essa auditoria cobre **ordenamento das linhas no arquivo recebido para o importador atual**; não pretende declarar que todos os GTFS públicos ordenam obrigatoriamente os CSV por viagem. Caso a SUMOB forneça um feed GTFS válido fora da ordem exigida pelo nosso importador, a V1 deve adaptar primeiro o importador e sua homologação, não aprovar silenciosamente um catálogo incoerente. Nenhum motor de rotas/itinerários/metropolitanos foi alterado.
 
 **Validação nesta rodada:** 11 testes unitários do novo validador, executados localmente com `unittest` e `compileall` aprovados. Quatro cenários de integração no ZIP sintético foram acrescentados em `test_bh_v1_source_provenance.py`, mas esses quatro **ainda não foram executados neste ambiente**. A auditoria do ZIP municipal real completo permanece pendente.
+
+
+## Validação estrutural de sentidos e variantes de ônibus (22/11/2026)
+
+O gate V1 agora aceita `--require-patterns`, que executa `bh_v1_patterns.audit_patterns` sem abrir ZIP e sem alterar o roteador/UI: valida contagem de `patterns.json` e `shapes.json` contra `manifest.json`, `tripCount` acumulado contra `trips`, ID determinístico SHA-256 das variantes tal como no importador, sentido (`0`/`1`/vazio), paradas existentes, shape referenciado, link bidirecional linha↔variantes e linha↔shapes e coordenadas finitas da geometria. O resultado `patternAudit` é `pass`/`blocked`, com contagens de variantes/viagens/linhas/paradas. No modo comum a validação é opcional; para **liberar V1**, passar explicitamente a flag e bloquear release em qualquer erro.
+
+```bash
+python -m data_quality.bh_v1_release_gate catalog --date YYYYMMDD \
+  --require-patterns --require-arrivals \
+  --arrivals-index dist/externo/catalog/arrivals/index.json \
+  --require-source-zip --source-zip /caminho/GTFSBHTRANS.zip
+```
+
+Evidência: 12 testes novos para variantes e duas regressões do gate, integrados numa suíte de **94 testes Python locais aprovados**; `compileall` passou. Os arquivos persistidos de rotas/paradas/variantes no GitHub foram conferidos separadamente: 1.144 variantes, 113.692 viagens agregadas, 326 linhas, 9.925 paradas, 9.828 utilizadas nas variantes, sem referências quebradas ou contagens divergentes nos campos inspecionados. O arquivo completo `shapes.json` não coube na leitura do conector e **não** foi homologado contra o ZIP oficial nesta rodada. O gate de geometria deve rodar no ambiente com catálogo completo.
+
+Não confundir essa prova estrutural com a correspondência de stop_times ao ZIP ou a existência real dos ônibus. V1 não inclui cálculo de rotas ou RMBH.

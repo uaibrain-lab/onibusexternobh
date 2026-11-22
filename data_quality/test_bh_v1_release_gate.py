@@ -142,6 +142,14 @@ class BhV1GateTests(unittest.TestCase):
         result = self.gate(arrivals_index=path, require_arrivals=True)
         self.assertIn('source_timetable_unreadable', result['errors'])
 
+    def test_pattern_gate_without_catalog_blocks_when_requested(self):
+        result = self.gate(require_patterns=True)
+        self.assertIn('pattern_catalog_unreadable_or_invalid', result['errors'])
+
+    def test_pattern_gate_optional_when_just_checking_dates(self):
+        self.assertEqual(self.gate()['status'], 'pass')
+        self.assertIsNone(self.gate()['patternAudit'])
+
     def test_bad_source_checksum_blocks(self):
         (self.root/'source-gtfs.sha256').write_text('bad')
         self.assertIn('missing_or_invalid_source_gtfs_sha256', self.gate()['errors'])
