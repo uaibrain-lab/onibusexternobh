@@ -6,6 +6,7 @@ on:
     paths:
       - gps-worker/src/**
       - tests/test_eta_tripupdates_worker.cjs
+      - tests/test_eta_service_alerts.cjs
       - tests/test_gtfs_rt_trip_updates.cjs
       - tests/test_gtfs_realtime_worker.cjs
       - .github/workflows/eta-tripupdates-gate.yml
@@ -28,8 +29,9 @@ jobs:
         run: |
           node --check gps-worker/src/index.mjs
           node --check gps-worker/src/arrival-predictions.mjs
+          node --check gps-worker/src/service-alerts.mjs
           node --check gps-worker/src/gtfs-rt-trip-updates.mjs
       - name: Testar ETA real sem chamar a fonte em CI
         run: |
-          node --test tests/test_eta_tripupdates_worker.cjs tests/test_gtfs_rt_trip_updates.cjs tests/test_gtfs_rt_trip_instance.cjs tests/test_gtfs_realtime_worker.cjs tests/test_gps_worker_free.cjs
+          node --test tests/test_eta_tripupdates_worker.cjs tests/test_eta_service_alerts.cjs tests/test_gtfs_rt_trip_updates.cjs tests/test_gtfs_rt_trip_instance.cjs tests/test_gtfs_realtime_worker.cjs tests/test_gps_worker_free.cjs
           echo ETA_GTFS_RT_GUARD_OK
