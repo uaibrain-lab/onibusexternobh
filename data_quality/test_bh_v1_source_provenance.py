@@ -1,5 +1,6 @@
 """Synthetic GTFS ZIP tests only. No real departures, license or URLs asserted."""
 import csv
+import gzip
 import hashlib
 import io
 import json
@@ -60,6 +61,52 @@ class SourceProvenanceTests(unittest.TestCase):
 
     def audit(self):
         return audit_source_zip(self.root,self.zip)
+
+    def make_full_static_release(self, changed=False):
+        """Synthetic ZIP, timetable and all 256 shards as a complete V1 package."""
+        from data_quality.static_arrivals_reference import _bucket_id
+        sharded = self.root / 'arrivals'
+        sharded.mkdir(exist_ok=True)
+        schedule = {
+            'S1': [['TEST','W','Destino',[85800]]],
+            'S2': [['TEST','W','Destino',[87000 + (60 if changed else 0)]]],
+        }
+        with gzip.open(self.root / 'timetable.json.gz', 'wt', encoding='utf-8') as f:
+            for sid in ('S1', 'S2'):
+                f.write(json.dumps([sid, schedule[sid]]) + '\n')
+        cal = json.loads((self.root / 'timetable-calendar.json').read_text())
+        (sharded / 'calendar.json').write_text(json.dumps(cal))
+        sizes = {}
+        for n in range(256):
+            key = f'{n:02x}'
+            group = {sid: value for sid, value in schedule.items() if _bucket_id(sid)==key}
+            blob = gzip.compress(json.dumps(group).encode('utf-8'), mtime=0)
+            name = key + '.json.gz'
+            (sharded / name).write_bytes(blob)
+            sizes[name] = len(blob)
+        idx = {'schema': 1, 'buckets': 256, 'version': 'synthetic-1',
+               'validThrough': '20261231', 'stopCount': 2, 'sizes': sizes}
+        (sharded / 'index.json').write_text(json.dumps(idx))
+        return sharded / 'index.json'
+
+    def test_full_strict_release_source_equals_compiled_and_shards(self):
+        idx = self.make_full_static_release()
+        result = audit(self.root, '20261124', arrivals_index=idx, require_arrivals=True,
+                       source_archive=self.zip, require_source_archive=True)
+        self.assertEqual(result['status'], 'pass', result)
+        self.assertEqual(result['zipTimetableAudit']['sourceStopTimeRows'], 2)
+        self.assertEqual(result['zipTimetableAudit']['status'], 'pass')
+
+    def test_full_strict_release_blocks_changed_times_even_if_shards_match(self):
+        idx = self.make_full_static_release(changed=True)
+        result = audit(self.root, '20261124', arrivals_index=idx, require_arrivals=True,
+                       source_archive=self.zip, require_source_archive=True)
+        self.assertEqual(result['sourceAudit']['status'], 'pass', result)
+        self.assertEqual(result['arrivalsAudit']['errors'], [], result)
+        self.assertEqual(result['timetableAudit']['errors'], [], result)
+        self.assertIn('zip_stop_times_differ_from_compiled_timetable', result['errors'])
+        self.assertEqual(result['status'], 'blocked')
+
 
     def test_release_gate_optional_source_zip(self):
         result = audit(self.root, "20261124", source_archive=self.zip, require_source_archive=True)

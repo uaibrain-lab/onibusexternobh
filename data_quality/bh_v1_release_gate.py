@@ -112,6 +112,7 @@ def audit(catalog, service_date, arrivals_index=None, require_arrivals=False,
     arrival_report = None
     timetable_report = None
     source_report = None
+    zip_timetable_report = None
     if require_source_archive and source_archive is None:
         errors.append("source_zip_required_for_release")
     if source_archive is not None:
@@ -124,6 +125,13 @@ def audit(catalog, service_date, arrivals_index=None, require_arrivals=False,
                 errors.append("active_service_without_scheduled_trips")
             elif active - with_times:
                 warnings.append("active_services_without_trips:" + str(len(active - with_times)))
+        # A full V1 release (strict source + static arrivals) must also prove
+        # that the ZIP stop_times *content* equals the compiled timetable.
+        # Counts, ZIP hash and timetable-vs-shards alone cannot establish this.
+        if require_source_archive and require_arrivals and source_report["status"] == "pass":
+            from data_quality.bh_v1_zip_timetable_equivalence import audit_zip_timetable
+            zip_timetable_report = audit_zip_timetable(root, source_archive)
+            errors.extend(zip_timetable_report["errors"])
     if arrivals_index is not None:
         from data_quality.static_arrivals_reference import audit_arrivals
         arrival_report = audit_arrivals(arrivals_index, root, timed_stops, version,
@@ -163,7 +171,7 @@ def audit(catalog, service_date, arrivals_index=None, require_arrivals=False,
             "errors": sorted(set(errors)), "warnings": sorted(set(warnings)),
             "scheduledNotRealtime": True, "routesAndRmbhInScope": False,
             "arrivalsAudit": arrival_report, "timetableAudit": timetable_report,
-            "sourceAudit": source_report,
+            "sourceAudit": source_report, "zipTimetableAudit": zip_timetable_report,
             "sourceSha256": digest_path.read_text(encoding="utf-8").strip() if digest_path.is_file() else None}
 
 

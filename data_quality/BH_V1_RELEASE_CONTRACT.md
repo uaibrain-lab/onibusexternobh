@@ -70,3 +70,20 @@ python -m data_quality.bh_v1_release_gate catalog --date YYYYMMDD --require-arri
 A ausência do ZIP quando requerido bloqueia o gate. Sem os argumentos, o gate anterior continua funcionando para consultas locais. Saída `sourceAudit` contém SHA-256 recalculado, contagens, falhas e **`licensedForRedistribution=unverified`** até prova documental. A correspondência do ZIP com o hash registrado prova identidade de bytes, não a licença, autenticidade da origem ou que horários publicados equivalem a observações em campo. A equivalência completa de horários entre `timetable.json.gz` e os buckets é verificada por outro gate do mesmo PR.
 
 **Evidência desta etapa:** 64 testes Python 3.13 com fixtures sintéticas executados com sucesso, além de `compileall -q data_quality`. O arquivo GTFS oficial completo não estava disponível no executor local: **a comparação de 6.691.004 passagens do ZIP real não foi executada**. O agente principal deve introduzir a opção estrita no pipeline após obter o mesmo ZIP do build, sem editar esta branch nem presumir licença verificada. Rotas, RMBH, UI, GPS e produção permanecem fora do escopo.
+
+
+## Gate estrito: equivalência do ZIP GTFS ↔ timetable ↔ buckets (22/11/2026)
+
+Nova etapa `bh_v1_zip_timetable_equivalence.py`: para o comando de homologação **com as duas flags obrigatórias** `--require-source-zip` e `--require-arrivals`, além de validar o SHA-256 do ZIP e os 256 buckets, o gate agora confere linha por linha cada `stop_time` do ZIP municipal com `catalog/timetable.json.gz`. A comparação utiliza exatamente as chaves do exportador existente: `stop_id`, código público da linha, `service_id`, `trip_headsign` e segundos desde a meia-noite do dia de serviço. Registros duplicados (mesmo stop, linha, serviço, destino e segundo) são consolidados, como faz `build_timetable.py`; grupos sem horários, segundo inválido, registros de stop ausentes/excedentes, calendários trocados e diferenças silenciosas são bloqueados.
+
+Processa os registros de origem em um banco SQLite temporário com índice, sem guardar milhões de `stop_times` em RAM; os dados temporários são descartados ao terminar. A inspeção completa pode consumir armazenamento temporário, disco e CPU proporcionais ao feed — medir o custo real na CI antes de ativar o gate sobre toda atualização. O resultado `zipTimetableAudit` contém contagens, diferenças e até dez stop_ids de amostra. **Não** cria viagens, ETAs ou rotas.
+
+Comando de aprovação de V1 (o ZIP, o timetable e os buckets precisam vir da mesma compilação):
+
+```bash
+python -m data_quality.bh_v1_release_gate catalog --date YYYYMMDD --require-arrivals --arrivals-index dist/externo/catalog/arrivals/index.json --require-source-zip --source-zip /caminho/GTFSBHTRANS.zip
+```
+
+Os outros modos de auditoria permanecem disponíveis sem o ZIP quando não se trata de aprovar a publicação. Não confundir integridade de bytes com verificação da origem oficial, licença ou pontualidade do ônibus.
+
+**Evidência executada no ambiente local desta rodada:** 80 testes sintéticos de `data_quality/` aprovados em Python 3.13 (`python -m unittest discover -s data_quality -p 'test_*.py' -q`) e `compileall -q data_quality` aprovado. Limite atual: ainda **não** foi executada a auditoria completa sobre os 6.691.004 registros do GTFS oficial porque o ZIP de origem não estava disponível no container. Nenhuma alteração fora de `data_quality/`.
