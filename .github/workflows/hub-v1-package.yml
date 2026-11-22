@@ -8,6 +8,8 @@ on:
       - .github/workflows/hub-v1-package.yml
       - scripts/prepare_hub_v1.py
       - scripts/rebuild_hub_v1_catalog.py
+      - scripts/probe_hub_v1_gps.py
+      - tests/test_hub_v1_gps_probe.py
       - scripts/build_static_site.py
       - scripts/build_static_arrivals.py
       - static/**
@@ -35,7 +37,9 @@ jobs:
           python-version: '3.11'
       - name: Testes V1 (somente municipal)
         run: |
-          python -m compileall -q data_quality scripts/prepare_hub_v1.py scripts/rebuild_hub_v1_catalog.py
+          python -m compileall -q data_quality scripts/prepare_hub_v1.py scripts/rebuild_hub_v1_catalog.py scripts/probe_hub_v1_gps.py
+          python -m unittest -q tests.test_hub_v1_gps_probe
+          node --test tests/test_gtfs_realtime_worker.cjs tests/test_gtfs_realtime_adapter.cjs tests/test_live_gps_adapter.cjs
           python -m unittest -q \
             data_quality.test_bh_v1_release_gate \
             data_quality.test_bh_v1_patterns \
@@ -53,7 +57,10 @@ jobs:
             -o /tmp/GTFSBHTRANS.zip
           python scripts/check_official_gtfs.py /tmp/GTFSBHTRANS.zip catalog/source-gtfs.sha256
           python -m scripts.rebuild_hub_v1_catalog /tmp/GTFSBHTRANS.zip catalog
-      - name: Build imutável e redução V1 (sem rotas/RMBH/GPS)
+      - name: Verificar GPS SUMOB ao vivo (posição recente e CORS do Hub)
+        run: |
+          python -m scripts.probe_hub_v1_gps catalog /tmp/hub-v1-gps-proof.json
+      - name: Build imutável e redução V1 (sem rotas e RMBH, GPS mantido)
         run: |
           python scripts/build_static_site.py --output dist --hub-v1
           python scripts/prepare_hub_v1.py dist/externo
@@ -66,7 +73,7 @@ jobs:
             --date "$(date -u +%Y%m%d)" --require-patterns \
             --require-arrivals --arrivals-index dist/externo/catalog/arrivals/index.json \
             --require-source-zip --source-zip /tmp/GTFSBHTRANS.zip
-      - name: Registrar procedência aprovada dentro do artefato (não é assinatura digital)
+      - name: Registrar GTFS e GPS validados dentro do artefato (não é assinatura digital)
         run: |
           python - <<'PY'
           import datetime
@@ -79,12 +86,16 @@ jobs:
           manifest=json.loads((cat/'manifest.json').read_text(encoding='utf8'))
           index=json.loads((cat/'arrivals/index.json').read_text(encoding='utf8'))
           build=json.loads((root/'hub-v1-build.json').read_text(encoding='utf8'))
+          gps=json.loads((root/'gps-config.json').read_text(encoding='utf8'))
+          proof=json.loads(Path('/tmp/hub-v1-gps-proof.json').read_text(encoding='utf8'))
           z=Path('/tmp/GTFSBHTRANS.zip')
           h=hashlib.sha256()
           with z.open('rb') as stream:
               for block in iter(lambda:stream.read(1024*1024),b''):h.update(block)
           recorded=Path('catalog/source-gtfs.sha256').read_text(encoding='ascii').strip()
           assert h.hexdigest()==recorded
+          assert gps['enabled'] is True and gps['provider']=='gtfs_rt'
+          assert build['gpsEnabled'] is True and proof['probePassed'] is True
           assert manifest['gtfsVersion']==build['gtfsVersion']==index['version']
           assert manifest['feedEndDate']==build['validThrough']==index['validThrough']
           qa={
@@ -96,7 +107,10 @@ jobs:
             'validThrough':manifest['feedEndDate'],
             'routes':manifest['routes'],
             'scheduledStops':index['stopCount'],'shards':256,
-            'routingEnabled':False,'metropolitanEnabled':False,'gpsEnabled':False,
+            'routingEnabled':False,'metropolitanEnabled':False,'gpsEnabled':True,
+            'gpsProvider':'gtfs_rt','gpsProbePassed':True,
+            'gpsProbeCheckedAtUtc':proof['checkedAtUtc'],
+            'gpsRecentPositionsObserved':proof['recentPositions'],
             'attestation':'CI gate passed; not cryptographically signed; no deployment'
           }
           (root/'hub-v1-qa.json').write_text(

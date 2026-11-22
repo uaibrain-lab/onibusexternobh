@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Create a municipal-only Hub V1 artifact from existing static build, never deploy."""
+"""Create a BH municipal V1 artifact with optional *real* GPS, never deploy.
+
+GPS is enabled in output only; CI will deny QA approval unless a fresh
+SUMOB GTFS-RT Worker response is observed. No invented ETA.
+"""
 import argparse
 import json
 import shutil
@@ -17,8 +21,19 @@ def prepare(directory):
     if ('data-app-mode="free-static"' not in html or
             'id="quick-rotas" aria-pressed="false" hidden disabled' not in html):
         raise ValueError('Hub V1 requires static HTML with routing hidden and disabled')
+    # V1 preserves free real-time bus positioning; only journey routing and
+    # RMBH are deferred. The source file stays OFF; this output opts in only
+    # with a verified SUMOB Worker feed and a later fail-closed CI probe.
     if gps.get('enabled') is not False:
-        raise ValueError('Hub V1 GPS must remain disabled')
+        raise ValueError('Original GPS source configuration must remain disabled')
+    if (gps.get('provider') != 'gtfs_rt' or
+            gps.get('endpoint') !=
+            'https://externo-bh-gps-free.hubufmg.workers.dev/api/gps'):
+        raise ValueError('Unexpected GPS provider/endpoint for Hub V1')
+    gps['enabled'] = True
+    gps['refreshSeconds'] = 45
+    (root/'gps-config.json').write_text(
+        json.dumps(gps,ensure_ascii=False,indent=2)+'\n',encoding='utf8')
     if (index.get('schema')!=1 or index.get('buckets')!=256 or
             index.get('version')!=manifest.get('gtfsVersion') or
             index.get('validThrough')!=manifest.get('feedEndDate') or
@@ -64,7 +79,8 @@ def prepare(directory):
             'validThrough':manifest['feedEndDate'],'municipalLines':manifest['routes'],
             'scheduledStops':index['stopCount'],'shards':256,'bytes':size,
             'files':len(files),'routingEnabled':False,'metropolitanEnabled':False,
-            'gpsEnabled':False,'scheduledNotRealtime':True}
+            'gpsEnabled':True,'gpsProvider':'gtfs_rt',
+            'gpsRefreshSeconds':45,'scheduledNotRealtime':True}
     (root/'hub-v1-build.json').write_text(json.dumps(report,indent=2)+'\n',encoding='utf8')
     print('HUB_V1_STATIC_STAGED',json.dumps(report))
     print('NO_PRODUCTION_DEPLOY')
