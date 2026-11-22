@@ -118,6 +118,12 @@ def audit(catalog, service_date, arrivals_index=None, require_arrivals=False,
         from data_quality.bh_v1_source_provenance import audit_source_zip
         source_report = audit_source_zip(root, source_archive)
         errors.extend(source_report["errors"])
+        if source_report["status"] == "pass" and active:
+            with_times = set(source_report["servicesWithScheduledTrips"])
+            if not (active & with_times):
+                errors.append("active_service_without_scheduled_trips")
+            elif active - with_times:
+                warnings.append("active_services_without_trips:" + str(len(active - with_times)))
     if arrivals_index is not None:
         from data_quality.static_arrivals_reference import audit_arrivals
         arrival_report = audit_arrivals(arrivals_index, root, timed_stops, version,

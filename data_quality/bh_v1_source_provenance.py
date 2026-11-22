@@ -75,6 +75,7 @@ def audit_source_zip(catalog, archive):
     result = {"status": "blocked", "errors": [], "warnings": [],
               "archiveSha256": None, "registeredSha256": None, "archiveBytes": None,
               "routeCount": 0, "stopCount": 0, "tripCount": 0, "stopTimeRows": 0,
+              "servicesWithScheduledTrips": [], "tripsWithoutStopTimes": 0,
               "licensedForRedistribution": "unverified", "scheduledNotRealtime": True}
     errors = result["errors"]
     try:
@@ -164,12 +165,14 @@ def audit_source_zip(catalog, archive):
             if any(row["route_id"] not in routes or row["service_id"] not in known_services for row in trips.values()):
                 errors.append("source_trip_missing_route_or_service")
 
+            trip_ids_with_times = set()
             for row in _read_rows(z, members["stop_times.txt"],
                                   ("trip_id", "stop_id", "stop_sequence", "arrival_time", "departure_time")):
                 result["stopTimeRows"] += 1
                 if row["trip_id"] not in trips or row["stop_id"] not in stops:
                     errors.append("source_stop_time_orphan_reference")
                     break
+                trip_ids_with_times.add(row["trip_id"])
                 try:
                     if int(row["stop_sequence"]) < 0:
                         raise ValueError("invalid stop sequence")
@@ -180,6 +183,10 @@ def audit_source_zip(catalog, archive):
                 except (ValueError, TypeError):
                     errors.append("source_stop_time_invalid")
                     break
+            result["tripsWithoutStopTimes"] = len(trips) - len(trip_ids_with_times)
+            result["servicesWithScheduledTrips"] = sorted({trips[tid]["service_id"] for tid in trip_ids_with_times})
+            if result["tripsWithoutStopTimes"]:
+                errors.append("source_trips_without_stop_times")
             if (result["stopTimeRows"] != manifest.get("stopTimeRows")
                     or result["stopTimeRows"] != compiled_calendar.get("records")):
                 errors.append("source_stop_times_do_not_match_counts")

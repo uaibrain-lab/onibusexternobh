@@ -134,6 +134,21 @@ class SourceProvenanceTests(unittest.TestCase):
         (self.root/'source-gtfs.sha256').write_text(hashlib.sha256(self.zip.read_bytes()).hexdigest())
         self.assertIn('source_zip_unreadable_or_invalid',self.audit()['errors'])
 
+    def test_trip_without_stop_times_blocks(self):
+        self.rows["trips.txt"].append({"trip_id":"T2","route_id":"R1","service_id":"W","trip_headsign":"Destino"})
+        self.manifest["trips"] = 2
+        self.make()
+        self.assertIn("source_trips_without_stop_times", self.audit()["errors"])
+
+    def test_calendar_service_without_departures_blocks_release(self):
+        self.rows["calendar.txt"][0]["tuesday"]="0"
+        self.rows["calendar_dates.txt"].append({"service_id":"SPECIAL","date":"20261124","exception_type":"1"})
+        self.make()
+        source = self.audit()
+        self.assertEqual(source["status"], "pass", source)
+        report = audit(self.root, "20261124", source_archive=self.zip, require_source_archive=True)
+        self.assertIn("active_service_without_scheduled_trips",report["errors"])
+
     def test_manifest_version_mismatch_blocks(self):
         self.manifest['gtfsVersion']='wrong'
         self.make()
