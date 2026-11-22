@@ -132,7 +132,11 @@ export function parseTripUpdates(buffer, nowSeconds = Math.floor(Date.now() / 10
     if (field === 2 && wire === 2) {
       if (++entities > MAX_ENTITIES) invalid();
       const update = feedEntity(bytes, a, b);
-      if (update && fresh(update.timestamp, nowSeconds)) updates.push(update);
+      // TripUpdate.timestamp is optional in GTFS-RT. Keep timestamp-less
+      // updates only under the fresh header; exact-trip matching still
+      // rejects them unless a consumer opts into feed-level freshness.
+      if (update && (update.timestamp === undefined ||
+          fresh(update.timestamp, nowSeconds))) updates.push(update);
     }
   });
   if (header === null || !fresh(header.timestamp, nowSeconds)) invalid();
