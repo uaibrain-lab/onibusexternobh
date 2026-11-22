@@ -20,8 +20,10 @@ def monitor(catalog, day, horizon=14, warn_days=14, stale_days=10):
     start=parse_day(manifest['feedStartDate']); end=parse_day(manifest['feedEndDate'])
     services=calendar['services']; exceptions=calendar.get('exceptions',{})
     errors=[]; warnings=[]; empty=[]
-    if not services or not isinstance(exceptions,dict):
+    if not isinstance(services, dict) or not isinstance(exceptions, dict) or not (services or exceptions):
         errors.append('calendar_structure_invalid')
+        services = services if isinstance(services, dict) else {}
+        exceptions = exceptions if isinstance(exceptions, dict) else {}
     for offset in range(horizon):
         d=day+dt.timedelta(days=offset)
         if d<start or d>end:
@@ -36,7 +38,7 @@ def monitor(catalog, day, horizon=14, warn_days=14, stale_days=10):
             except (ValueError,KeyError,TypeError):
                 errors.append('invalid_service_calendar')
         for sid,operation in exceptions.get(key,{}).items():
-            if sid not in services or operation not in (1,2):
+            if operation not in (1,2) or (operation == 2 and sid not in services):
                 errors.append('invalid_calendar_exception')
             elif operation==1: active.add(sid)
             else: active.discard(sid)

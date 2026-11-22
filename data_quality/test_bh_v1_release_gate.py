@@ -51,6 +51,18 @@ class BhV1GateTests(unittest.TestCase):
         self.docs['timetable-calendar.json']['exceptions'] = {'20261122': {'WK': 1}}
         self.assertEqual(self.gate('20261122')['counts']['activeServices'], 1)
 
+    def test_calendar_dates_only_service_is_valid(self):
+        self.docs['timetable-calendar.json']['services'] = {}
+        self.docs['timetable-calendar.json']['exceptions'] = {'20261124': {'SPECIAL': 1}}
+        result = self.gate('20261124')
+        self.assertEqual(result['status'], 'pass')
+        self.assertEqual(result['counts']['activeServices'], 1)
+
+    def test_calendar_dates_only_removal_is_invalid(self):
+        self.docs['timetable-calendar.json']['services'] = {}
+        self.docs['timetable-calendar.json']['exceptions'] = {'20261124': {'SPECIAL': 2}}
+        self.assertIn('invalid_service_calendar', self.gate('20261124')['errors'])
+
     def test_stop_count_mismatch_blocks(self):
         self.docs['manifest.json']['stops'] = 3
         self.assertIn('stop_count_mismatch', self.gate()['errors'])

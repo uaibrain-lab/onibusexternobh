@@ -33,7 +33,9 @@ def _active(services, exceptions, day):
         if _day(row["start_date"]) <= day <= _day(row["end_date"]) and row["start_date"] <= row["end_date"] and row[DAYS[day.weekday()]] == "1":
             active.add(sid)
     for sid, op in exceptions.get(key, {}).items():
-        if sid not in services or op not in (1, 2):
+        # GTFS allows services declared exclusively in calendar_dates.txt.
+        # A removal for a service without any base calendar is not meaningful.
+        if op not in (1, 2) or (op == 2 and sid not in services):
             raise ValueError("invalid calendar exception reference/type")
         if op == 1:
             active.add(sid)
@@ -78,12 +80,14 @@ def audit(catalog, service_date, arrivals_index=None, require_arrivals=False):
             errors.append("invalid_stop_id_name_or_coordinate")
             break
     services = calendar.get("services", {})
-    if not isinstance(services, dict) or not services:
+    exceptions = calendar.get("exceptions", {})
+    if (not isinstance(services, dict) or not isinstance(exceptions, dict) or
+            not (services or exceptions)):
         errors.append("missing_service_calendar")
         active = set()
     else:
         try:
-            active = _active(services, calendar.get("exceptions", {}), day)
+            active = _active(services, exceptions, day)
         except (ValueError, KeyError, TypeError):
             errors.append("invalid_service_calendar")
             active = set()

@@ -52,3 +52,9 @@ python -m data_quality.bh_v1_release_gate catalog --date YYYYMMDD --require-arri
 Sem a tabela de origem o gate falha fechado — não usar apenas `dist/` como parâmetro de catálogo. A equivalência prova que os buckets representam o timetable local, **não** que o timetable corresponda criptograficamente ao GTFS ZIP municipal; esse vínculo oficial e os direitos de reutilização continuam como gate separado. Nenhum cálculo de rotas/ETA ou serviço metropolitano é ativado.
 
 **Execução local desta rodada:** 36 testes em Python 3.13: 15 do gate, 11 da validação dos shards e 10 de equivalência da tabela; 36/36 passaram. Não foi realizada a validação do catálogo completo de 6,69 milhões de passagens nem homologação HTTP/mobile nesta rodada.
+
+## Calendários GTFS com apenas exceções (22/11/2026)
+
+O GTFS admite serviços definidos **somente** em `calendar_dates.txt` (sem `calendar.txt`). O gate municipal V1 e o monitor de vencimento agora aceitam uma inclusão `exception_type=1` de `service_id` sem entrada no calendário semanal, inclusive quando `services={}`. Em contrapartida, rejeitam a remoção `exception_type=2` de serviço inexistente e impedem dias sem serviço em todo o horizonte de homologação. Horários são sempre programados; a presença de um service_id no calendário não comprova passagem real nem vinculação ao conjunto original de viagens.
+
+Evidência local: **49 testes** executados em Python 3.13 após os ajustes de equivalência da tabela + calendário; `compileall -q data_quality` aprovado. A base municipal completa e a compilação HTTP real seguem sem homologação nesta rodada.

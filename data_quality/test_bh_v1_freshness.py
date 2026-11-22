@@ -28,8 +28,18 @@ class FreshnessTests(unittest.TestCase):
         self.calendar['exceptions']={d:{'A':1} for d in ('20261122','20261129','20261206')}
         self.assertEqual(self.audit()['status'],'pass')
     def test_bad_exception(self):
-        self.calendar['exceptions']={'20261122':{'BAD':1}}
+        self.calendar['exceptions']={'20261122':{'BAD':2}}
         self.assertIn('invalid_calendar_exception',self.audit()['errors'])
+    def test_calendar_dates_only_services(self):
+        self.calendar['services']={}
+        self.calendar['exceptions']={'20261122':{'SPECIAL':1}, '20261123':{'SPECIAL':1}}
+        self.assertEqual(self.audit('20261122',2)['status'],'pass')
+
+    def test_calendar_dates_only_missing_second_day_blocks(self):
+        self.calendar['services']={}
+        self.calendar['exceptions']={'20261122':{'SPECIAL':1}}
+        self.assertIn('days_without_scheduled_service',self.audit('20261122',2)['errors'])
+
     def test_stale_warning(self):self.assertIn('snapshot_not_refreshed_recently',self.audit('20261210',1)['warnings'])
     def test_future_timestamp(self):
         self.manifest['createdAtUtc']='2026-12-30T12:00:00+00:00'
