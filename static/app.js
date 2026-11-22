@@ -532,7 +532,36 @@ function renderStops(){const el=$('stopList');el.textContent='';const stops=stat
 function focusStop(stop){if(lineMapSession)restoreLineMapSession();state.selectedStop=String(stop.id);updatePointLink(state.selectedStop);state.stopCoordinates=[Number(stop.lat),Number(stop.lng)];state.selectedVehicle="";state.center=[Number(stop.lat),Number(stop.lng)];state.zoom=Math.max(state.zoom,16);switchTab('pontos',true);centerStopInAvailableMap();$('body').scrollTo({top:0,behavior:'smooth'});for(let node of $('stopList').querySelectorAll('[data-stop-id]'))node.classList.toggle('selected',node.dataset.stopId===String(stop.id));drawSoon();scheduleMapStops();openStopDetail(state.selectedStop).catch(reportError)}
 function renderAllLines(query){const el=$('allLineList');el.textContent='';let arr=state.routes||[];const q=String(query||'').trim().toLocaleLowerCase('pt-BR');if(q)arr=arr.filter(x=>(x.code+' '+x.name).toLocaleLowerCase('pt-BR').includes(q));arr=arr.slice().sort((a,b)=>Number(favorites.routes.includes(String(b.code)))-Number(favorites.routes.includes(String(a.code))));let limited=arr.slice(0,q?80:40);for(let r of limited){const wrap=document.createElement('div');wrap.className='fav-row';const b=document.createElement('button');b.type='button';b.className='row-item';const n=document.createElement('span');n.className='num';n.textContent=r.code;const t=document.createElement('span');t.className='name';const title=document.createElement('b');title.textContent=r.name||'Sem descrição';const meta=document.createElement('small');meta.textContent=`${r.patternCount} variantes GTFS`;t.append(title,meta);b.append(n,t);b.onclick=()=>selectLine(r.code).then(()=>{openSheet();$('body').scrollTo({top:0,behavior:'smooth'})}).catch(reportError);wrap.append(b,starButton('routes',r.code));el.append(wrap)}if(arr.length>limited.length){const msg=document.createElement('p');msg.className='muted info-small';msg.textContent=`Exibindo ${limited.length} de ${arr.length} linhas. Use a busca para filtrar.`;el.append(msg)}}
 let stopSearchSeq=0;
-async function searchAllStops(query){const seq=++stopSearchSeq;const el=$('stopSearchResult');el.textContent='';const q=String(query||'').trim();if(q.length<2)return;try{const data=await api('/api/stops?q='+encodeURIComponent(q));if(seq!==stopSearchSeq)return;const stops=data.items||[];if(!stops.length){const m=document.createElement('p');m.className='muted info-small';m.textContent='Nenhum ponto localizado.';el.append(m);return}for(const stop of stops){const b=document.createElement('button');b.type='button';b.className='row-item';const badge=document.createElement('span');badge.className='num';badge.textContent='●';const name=document.createElement('span');name.className='name';const title=document.createElement('b');title.textContent=stop.name;const subtitle=document.createElement('small');subtitle.textContent='Localizar no mapa';name.append(title,subtitle);b.append(badge,name);b.onclick=()=>focusStop(stop);el.append(b)}if(data.truncated){const m=document.createElement('p');m.className='muted info-small';m.textContent='Exibindo os primeiros pontos; refine sua busca.';el.append(m)}}catch(e){if(seq===stopSearchSeq){el.textContent='Não foi possível buscar os pontos.';console.error(e)}}}
+async function searchAllStops(query){
+  const seq=++stopSearchSeq,el=$('stopSearchResult');el.textContent='';
+  const q=String(query||'').trim();if(q.length<2)return;
+  try{
+    const data=await api('/api/stops?q='+encodeURIComponent(q));
+    if(seq!==stopSearchSeq)return;
+    const stops=(data.items||[]).slice().sort((a,b)=>
+      Number(favorites.stops.includes(String(b.id)))-Number(favorites.stops.includes(String(a.id))));
+    if(!stops.length){
+      const note=document.createElement('p');note.className='muted info-small';
+      note.textContent='Nenhum ponto localizado.';el.append(note);return;
+    }
+    for(const stop of stops){
+      const wrap=document.createElement('div');wrap.className='fav-row';
+      const b=document.createElement('button');b.type='button';b.className='row-item';
+      const badge=document.createElement('span');badge.className='num';badge.textContent='●';
+      const label=document.createElement('span');label.className='name';
+      const title=document.createElement('b');title.textContent=stop.name;
+      const subtitle=document.createElement('small');subtitle.textContent='Ver no mapa';
+      label.append(title,subtitle);b.append(badge,label);b.onclick=()=>focusStop(stop);
+      wrap.append(b,starButton('stops',stop.id));el.append(wrap);
+    }
+    if(data.truncated){
+      const note=document.createElement('p');note.className='muted info-small';
+      note.textContent='Exibindo os primeiros pontos; refine sua busca.';el.append(note);
+    }
+  }catch(error){
+    if(seq===stopSearchSeq){el.textContent='Não foi possível buscar os pontos.';console.error(error)}
+  }
+}
 let stopSearchTimer;
 $('stopInput').addEventListener('input',e=>{clearTimeout(stopSearchTimer);stopSearchTimer=setTimeout(()=>searchAllStops(e.target.value),220)});
 $('allLineSearch').addEventListener('input',e=>renderAllLines(e.target.value));
@@ -605,13 +634,32 @@ function renameFavorite(kind,id,title){
 function editFavoriteButton(kind,id,title){const b=document.createElement('button');b.type='button';b.className='fav-edit';b.textContent='✎';
   b.title='Renomear favorito';b.setAttribute('aria-label','Renomear '+title);b.onclick=()=>renameFavorite(kind,id,title);return b}
 
-function toggleFavorite(kind,id){id=String(id);let arr=favorites[kind];favorites[kind]=arr.includes(id)?arr.filter(v=>v!==id):[...arr,id];saveFavorites();renderFavoriteStops();renderFavoriteLines();if(state.route){$('lineFavorite').textContent=favorites.routes.includes(state.route.code)?'★':'☆';$('lineFavorite').setAttribute('aria-pressed',String(favorites.routes.includes(state.route.code)))}if(state.selectedStop)renderStopFavoriteButton()}
+function toggleFavorite(kind,id){id=String(id);let arr=favorites[kind];favorites[kind]=arr.includes(id)?arr.filter(v=>v!==id):[...arr,id];saveFavorites();renderFavoriteStops();renderFavoriteLines();renderNearbyStops();renderAllLines($('allLineSearch').value);if($('stopInput').value.trim().length>=2)void searchAllStops($('stopInput').value);if(state.route){$('lineFavorite').textContent=favorites.routes.includes(state.route.code)?'★':'☆';$('lineFavorite').setAttribute('aria-pressed',String(favorites.routes.includes(state.route.code)))}if(state.selectedStop)renderStopFavoriteButton()}
 function starButton(kind,id){let b=document.createElement('button');b.type='button';b.className='fav-btn';const current=favorites[kind].includes(String(id));b.textContent=current?'★':'☆';b.title=current?'Remover favorito':'Adicionar aos favoritos';b.setAttribute('aria-label',b.title);b.setAttribute('aria-pressed',String(current));b.onclick=e=>{e.stopPropagation();toggleFavorite(kind,id)};return b}
 let mapStopsTimer=0,mapStopsSeq=0;
 function scheduleMapStops(){clearTimeout(mapStopsTimer);mapStopsTimer=setTimeout(loadMapStops,180)}
 async function loadMapStops(){const seq=++mapStopsSeq;if(state.zoom<12.5){state.mapStops=[];drawSoon();return}const w=$canvas.clientWidth,h=$canvas.clientHeight;if(!w||!h)return;const [cx,cy]=mercator(...state.center,state.zoom);const a=invMercator(cx-(w*.65),cy+(h*.65),state.zoom),b=invMercator(cx+(w*.65),cy-(h*.65),state.zoom);const url=`/api/map-stops?minlat=${a[0]}&minlng=${a[1]}&maxlat=${b[0]}&maxlng=${b[1]}`;try{const data=await api(url);if(seq!==mapStopsSeq)return;state.mapStops=data.items||[];drawSoon()}catch(e){console.warn('Paradas do mapa indisponíveis',e)}}
 async function loadNearbyStops(lat,lng,personal){let data=await api(`/api/nearby-stops?lat=${lat}&lng=${lng}`);state.nearby=data.items||[];$('nearbyHeading').textContent=personal?'Pontos perto de você':'Pontos próximos à UFMG';$('nearbyHint').textContent=personal?'Distâncias aproximadas; sua localização não é armazenada no servidor.':'Sem localização, exibimos os pontos próximos ao campus UFMG.';renderNearbyStops()}
-function renderNearbyStops(){const area=$('nearbyStops');area.replaceChildren();for(const stop of state.nearby){let b=document.createElement('button');b.type='button';b.className='row-item';const n=document.createElement('span');n.className='num';n.textContent='●';const txt=document.createElement('span');txt.className='name';let t=document.createElement('b');t.textContent=stop.name;let d=document.createElement('small');d.textContent=`A ${stop.distanceM} m · ver linhas`;txt.append(t,d);b.append(n,txt);b.onclick=()=>focusStop(stop);area.append(b)}if(!state.nearby.length){let e=document.createElement('p');e.className='muted-empty';e.textContent='Nenhum ponto encontrado neste raio.';area.append(e)}}
+function renderNearbyStops(){
+  const area=$('nearbyStops');area.replaceChildren();
+  const nearby=state.nearby.slice().sort((a,b)=>
+    Number(favorites.stops.includes(String(b.id)))-Number(favorites.stops.includes(String(a.id))));
+  for(const stop of nearby){
+    const wrap=document.createElement('div');wrap.className='fav-row';
+    const b=document.createElement('button');b.type='button';b.className='row-item';
+    const n=document.createElement('span');n.className='num';n.textContent='●';
+    const label=document.createElement('span');label.className='name';
+    const title=document.createElement('b');title.textContent=stop.name;
+    const distance=document.createElement('small');
+    distance.textContent='A '+stop.distanceM+' m · ver linhas';
+    label.append(title,distance);b.append(n,label);b.onclick=()=>focusStop(stop);
+    wrap.append(b,starButton('stops',stop.id));area.append(wrap);
+  }
+  if(!nearby.length){
+    const empty=document.createElement('p');empty.className='muted-empty';
+    empty.textContent='Nenhum ponto encontrado neste raio.';area.append(empty);
+  }
+}
 const favoritePreviewCache=new Map();
 function favoritePreview(id){
   const cached=favoritePreviewCache.get(id);
@@ -630,7 +678,7 @@ function favoritePreview(id){
   favoritePreviewCache.set(id,{when:Date.now(),pending});return pending;
 }
 function renderFavoriteStops(){
-  const area=$('favoriteStops');area.replaceChildren();
+  const area=$('favoriteStops');if(!area)return;area.replaceChildren();
   if(!favorites.stops.length){let p=document.createElement('p');p.className='muted-empty';p.textContent='Nenhum ponto favorito ainda.';area.append(p);return}
   for(const [index,id] of favorites.stops.entries()){
     const wrap=document.createElement('div');wrap.className='fav-row';
@@ -648,7 +696,7 @@ function renderFavoriteStops(){
   }
 }
 function renderFavoriteLines(){
-  const area=$('favoriteLines');area.replaceChildren();
+  const area=$('favoriteLines');if(!area)return;area.replaceChildren();
   if(!favorites.routes.length){let p=document.createElement('p');p.className='muted-empty';p.textContent='Nenhuma linha favorita ainda.';area.append(p);return}
   for(const code of favorites.routes){
     const route=state.routes.find(r=>r.code===code),base=route?`${route.code} — ${route.name}`:code;
