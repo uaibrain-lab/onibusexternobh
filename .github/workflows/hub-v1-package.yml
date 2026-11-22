@@ -5,6 +5,7 @@ on:
     branches:
       - feat/hub-v1-municipal-package-qa-20261122
       - feat/hub-v1-gps-minibus-package-20261122
+      - fix/hub-hml-firebase-cleanurls-20261122
     paths:
       - .github/workflows/hub-v1-package.yml
       - scripts/prepare_hub_v1.py
@@ -12,6 +13,7 @@ on:
       - scripts/probe_hub_v1_gps.py
       - tests/test_hub_v1_gps_probe.py
       - tests/test_gps_bus_canvas_icon.cjs
+      - tests/test_hub_v1_clean_url_assets.py
       - scripts/build_static_site.py
       - scripts/build_static_arrivals.py
       - static/**
@@ -74,6 +76,8 @@ jobs:
           test ! -e dist/externo/catalog/scan/index.json
           test ! -e dist/externo/catalog/der-rmbh-411c-511c.json
           test -s dist/externo/catalog/arrivals/ff.json.gz
+          python tests/test_hub_v1_clean_url_assets.py dist/externo
+          python -m unittest discover -s tests -p test_hub_v1_clean_url_assets.py -q
       - name: Verificar ZIP original, variantes e cada horário publicado
         run: |
           python -m data_quality.bh_v1_release_gate catalog \
