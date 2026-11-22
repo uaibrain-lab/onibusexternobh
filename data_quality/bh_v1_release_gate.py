@@ -44,7 +44,8 @@ def _active(services, exceptions, day):
     return active
 
 
-def audit(catalog, service_date, arrivals_index=None, require_arrivals=False):
+def audit(catalog, service_date, arrivals_index=None, require_arrivals=False,
+          source_archive=None, require_source_archive=False):
     """Return JSON-safe report with errors; no success for incomplete or expired data."""
     root = Path(catalog)
     day = _day(service_date)
@@ -110,6 +111,13 @@ def audit(catalog, service_date, arrivals_index=None, require_arrivals=False):
         errors.append("static_arrivals_index_required")
     arrival_report = None
     timetable_report = None
+    source_report = None
+    if require_source_archive and source_archive is None:
+        errors.append("source_zip_required_for_release")
+    if source_archive is not None:
+        from data_quality.bh_v1_source_provenance import audit_source_zip
+        source_report = audit_source_zip(root, source_archive)
+        errors.extend(source_report["errors"])
     if arrivals_index is not None:
         from data_quality.static_arrivals_reference import audit_arrivals
         arrival_report = audit_arrivals(arrivals_index, root, timed_stops, version,
@@ -149,6 +157,7 @@ def audit(catalog, service_date, arrivals_index=None, require_arrivals=False):
             "errors": sorted(set(errors)), "warnings": sorted(set(warnings)),
             "scheduledNotRealtime": True, "routesAndRmbhInScope": False,
             "arrivalsAudit": arrival_report, "timetableAudit": timetable_report,
+            "sourceAudit": source_report,
             "sourceSha256": digest_path.read_text(encoding="utf-8").strip() if digest_path.is_file() else None}
 
 
@@ -158,8 +167,12 @@ def main(argv=None):
     parser.add_argument("--date", default=dt.datetime.now(dt.timezone(dt.timedelta(hours=-3))).strftime("%Y%m%d"))
     parser.add_argument("--arrivals-index", type=Path)
     parser.add_argument("--require-arrivals", action="store_true")
+    parser.add_argument("--source-zip", type=Path, help="Official local GTFS ZIP bytes, never downloaded")
+    parser.add_argument("--require-source-zip", action="store_true",
+                        help="Block approval unless the ZIP is provided and its SHA-256 validated")
     args = parser.parse_args(argv)
-    report = audit(args.catalog, args.date, args.arrivals_index, args.require_arrivals)
+    report = audit(args.catalog, args.date, args.arrivals_index, args.require_arrivals,
+                   args.source_zip, args.require_source_zip)
     print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
     return 0 if report["status"] == "pass" else 2
 

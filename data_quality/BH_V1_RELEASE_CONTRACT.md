@@ -58,3 +58,15 @@ Sem a tabela de origem o gate falha fechado — não usar apenas `dist/` como pa
 O GTFS admite serviços definidos **somente** em `calendar_dates.txt` (sem `calendar.txt`). O gate municipal V1 e o monitor de vencimento agora aceitam uma inclusão `exception_type=1` de `service_id` sem entrada no calendário semanal, inclusive quando `services={}`. Em contrapartida, rejeitam a remoção `exception_type=2` de serviço inexistente e impedem dias sem serviço em todo o horizonte de homologação. Horários são sempre programados; a presença de um service_id no calendário não comprova passagem real nem vinculação ao conjunto original de viagens.
 
 Evidência local: **49 testes** executados em Python 3.13 após os ajustes de equivalência da tabela + calendário; `compileall -q data_quality` aprovado. A base municipal completa e a compilação HTTP real seguem sem homologação nesta rodada.
+
+## Gate opcional de procedência do ZIP municipal (22/11/2026)
+
+`data_quality/bh_v1_source_provenance.py` valida em **somente leitura** os bytes de um ZIP GTFS municipal local contra `catalog/source-gtfs.sha256`, os IDs e códigos de linhas, paradas e coordenadas, viagens `trip_id/route_id/service_id`, calendários semanais e exceções, `feed_info` quando existir, e contagens e referências de `stop_times`. Faz streaming da tabela grande, com limite de tamanho comprimido/descomprimido e rejeição de entradas ZIP inseguras. Horários acima de 24h são válidos; horários iguais ou acima de 48h bloqueiam esta versão, pois o exportador V1 filtra esses registros e poderia deixar passagens de fora.
+
+Comando de homologação estrita (o ZIP deve ser o mesmo usado na construção do catálogo):
+```bash
+python -m data_quality.bh_v1_release_gate catalog --date YYYYMMDD --require-arrivals --arrivals-index dist/externo/catalog/arrivals/index.json --require-source-zip --source-zip /caminho/GTFSBHTRANS.zip
+```
+A ausência do ZIP quando requerido bloqueia o gate. Sem os argumentos, o gate anterior continua funcionando para consultas locais. Saída `sourceAudit` contém SHA-256 recalculado, contagens, falhas e **`licensedForRedistribution=unverified`** até prova documental. A correspondência do ZIP com o hash registrado prova identidade de bytes, não a licença, autenticidade da origem ou que horários publicados equivalem a observações em campo. A equivalência completa de horários entre `timetable.json.gz` e os buckets é verificada por outro gate do mesmo PR.
+
+**Evidência desta etapa:** 64 testes Python 3.13 com fixtures sintéticas executados com sucesso, além de `compileall -q data_quality`. O arquivo GTFS oficial completo não estava disponível no executor local: **a comparação de 6.691.004 passagens do ZIP real não foi executada**. O agente principal deve introduzir a opção estrita no pipeline após obter o mesmo ZIP do build, sem editar esta branch nem presumir licença verificada. Rotas, RMBH, UI, GPS e produção permanecem fora do escopo.
