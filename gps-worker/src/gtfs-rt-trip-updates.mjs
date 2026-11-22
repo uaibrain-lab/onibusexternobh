@@ -60,10 +60,21 @@ function tripDescriptor(bytes, start, end) {
   });
   return trip;
 }
+function signedInt32(bytes, start, end) {
+  if(end<=start||end-start>10)invalid();
+  let raw=0n;
+  for(let i=start;i<end;i++)
+    raw|=BigInt(bytes[i]&127)<<BigInt((i-start)*7);
+  const signed=BigInt.asIntN(32,raw);
+  // Canonical protobuf int32 may be encoded as 5 bytes (uint32) or,
+  // when negative, sign-extended as a 10-byte 64-bit varint.
+  if(raw!==BigInt.asUintN(32,signed)&&raw!==BigInt.asUintN(64,signed))invalid();
+  return Number(signed);
+}
 function stopEvent(bytes, start, end) {
   const event = {};
   fields(bytes, start, end, (field, wire, a, b, value) => {
-    // Do not interpret delay as an absolute arrival: time must be explicit.
+    if(field===1&&wire===0)event.delay=signedInt32(bytes,a,b);
     if (field === 2 && wire === 0 && Number.isSafeInteger(value) && value >= 0)
       event.time = value;
   });
@@ -89,6 +100,7 @@ function tripUpdate(bytes, start, end) {
       update.stopTimeUpdate.push(stopUpdate(bytes, a, b));
     }
     if (field === 4 && wire === 0) update.timestamp = value;
+    if (field === 5 && wire === 0) update.delay = signedInt32(bytes,a,b);
   });
   return update;
 }
@@ -132,7 +144,11 @@ export function parseTripUpdates(buffer, nowSeconds = Math.floor(Date.now() / 10
     if (field === 2 && wire === 2) {
       if (++entities > MAX_ENTITIES) invalid();
       const update = feedEntity(bytes, a, b);
-      if (update && fresh(update.timestamp, nowSeconds)) updates.push(update);
+      // TripUpdate.timestamp is optional in GTFS-RT. Keep timestamp-less
+      // updates only under the fresh header; exact-trip matching still
+      // rejects them unless a consumer opts into feed-level freshness.
+      if (update && (update.timestamp === undefined ||
+          fresh(update.timestamp, nowSeconds))) updates.push(update);
     }
   });
   if (header === null || !fresh(header.timestamp, nowSeconds)) invalid();

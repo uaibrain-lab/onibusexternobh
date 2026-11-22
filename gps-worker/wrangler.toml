@@ -7,3 +7,9 @@ workers_dev = true
 
 # GPS is disabled by default in static/gps-config.json.
 # Deploy/enable only after confirming origin access and free usage.
+
+# Isolated Worker for verifying ETA/alerts with live upstream feeds.
+# Never reuse the production hostname or deploy it implicitly.
+[env.eta-qa]
+name = "externo-bh-gps-eta-qa"
+workers_dev = true

@@ -42,7 +42,9 @@ test('negative signed protobuf delay does not block absolute time',async()=>{
   const {matchTripUpdate}=await parser;
   const result=matchTripUpdate(build({negativeDelay:true}),sched,now);
   assert.equal(result.stop.departure.time,now+100);
-  assert.equal(result.stop.departure.delay,undefined);
+  assert.equal(result.stop.departure.delay,-50);
+  // Delay by itself is not an absolute ETA. It must be added to the exact
+  // stop time of the GTFS trip before being displayed to a passenger.
 });
 test('feed timestamp freshness enforced separately',async()=>{
   const {parseTripUpdates}=await parser;

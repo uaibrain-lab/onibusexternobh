@@ -1,0 +1,47 @@
+name: ETA-QA Cloudflare - verificar deploy real (sem publicar)
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/eta-tripupdates-sumob-20261122
+    paths:
+      - scripts/probe-eta-qa-deployment.mjs
+      - .github/workflows/eta-qa-live-health.yml
+permissions:
+  contents: read
+concurrency:
+  group: eta-qa-live-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  canary:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verificar código do canário
+        run: node --check scripts/probe-eta-qa-deployment.mjs
+      - name: Consultar Worker Cloudflare ETA-QA sem deploy
+        id: probe
+        continue-on-error: true
+        run: node scripts/probe-eta-qa-deployment.mjs
+      - name: Exibir disponibilidade real sem dados sensíveis
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f eta-qa-live-health.json ]]; then
+            echo '### Worker Cloudflare ETA-QA - leitura real' >> "$GITHUB_STEP_SUMMARY"
+            echo 'NOT_READY significa que ainda não é seguro afirmar que o deploy funciona.' >> "$GITHUB_STEP_SUMMARY"
+            cat eta-qa-live-health.json >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'ETA_QA_LIVE_HEALTH=NOT_TESTED' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: eta-qa-live-health
+          path: eta-qa-live-health.json
+          if-no-files-found: ignore
+          retention-days: 3

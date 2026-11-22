@@ -1,0 +1,53 @@
+name: GTFS-RT TripUpdates ETA - testes sem deploy
+on:
+  push:
+    branches:
+      - feat/eta-tripupdates-sumob-20261122
+    paths:
+      - gps-worker/src/**
+      - scripts/probe-sumob-realtime.mjs
+      - tests/test_eta_tripupdates_worker.cjs
+      - tests/test_eta_service_alerts.cjs
+      - tests/test_gtfs_rt_trip_updates.cjs
+      - tests/test_gtfs_realtime_worker.cjs
+      - .github/workflows/eta-tripupdates-gate.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: eta-tripupdates-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verificar sintaxe
+        run: |
+          node --check scripts/probe-sumob-realtime.mjs
+          node --check gps-worker/src/index.mjs
+          node --check gps-worker/src/arrival-predictions.mjs
+          node --check gps-worker/src/service-alerts.mjs
+          node --check gps-worker/src/gtfs-rt-trip-updates.mjs
+      - name: Testar ETA real sem chamar a fonte em CI
+        run: |
+          node --test tests/test_eta_tripupdates_worker.cjs tests/test_eta_service_alerts.cjs tests/test_gtfs_rt_trip_updates.cjs tests/test_gtfs_rt_trip_instance.cjs tests/test_gtfs_realtime_worker.cjs tests/test_gps_worker_free.cjs
+          echo ETA_GTFS_RT_GUARD_OK
+      - name: Diagnóstico dos feeds reais da SUMOB (leitura, sem deploy)
+        continue-on-error: true
+        timeout-minutes: 2
+        run: |
+          node scripts/probe-sumob-realtime.mjs
+          cat sumob-feed-diagnostic.json >> "$GITHUB_STEP_SUMMARY"
+      - name: Anexar diagnóstico sem dados pessoais ou chaves
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sumob-feed-diagnostic
+          path: sumob-feed-diagnostic.json
+          if-no-files-found: ignore
+          retention-days: 3

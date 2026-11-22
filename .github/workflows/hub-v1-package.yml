@@ -5,6 +5,7 @@ on:
     branches:
       - feat/hub-v1-municipal-package-qa-20261122
       - feat/hub-v1-gps-minibus-package-20261122
+      - feat/eta-tripupdates-sumob-20261122
     paths:
       - .github/workflows/hub-v1-package.yml
       - scripts/prepare_hub_v1.py
@@ -14,6 +15,9 @@ on:
       - tests/test_gps_bus_canvas_icon.cjs
       - scripts/build_static_site.py
       - scripts/build_static_arrivals.py
+      - scripts/build_trip_stop_eta_index.py
+      - scripts/qa-live-eta-join.mjs
+      - tests/test_build_trip_stop_eta_index.py
       - static/**
       - catalog/**
       - data_quality/**
@@ -44,6 +48,7 @@ jobs:
         run: |
           python -m compileall -q data_quality scripts/prepare_hub_v1.py scripts/rebuild_hub_v1_catalog.py scripts/probe_hub_v1_gps.py
           python -m unittest discover -s tests -p test_hub_v1_gps_probe.py -q
+          python -m unittest -q tests.test_build_trip_stop_eta_index
           node --check static/app.js
           node --test tests/test_gps_bus_canvas_icon.cjs
           node --test tests/test_gtfs_realtime_worker.cjs tests/test_gtfs_realtime_adapter.cjs tests/test_live_gps_adapter.cjs
@@ -71,6 +76,14 @@ jobs:
         run: |
           python scripts/build_static_site.py --output dist --hub-v1
           python scripts/prepare_hub_v1.py dist/externo
+          python -m scripts.build_trip_stop_eta_index /tmp/GTFSBHTRANS.zip catalog dist/externo/catalog/rt-trips
+          test -s dist/externo/catalog/rt-trips/index.json
+          test -s dist/externo/catalog/rt-trips/ff.json.gz
+      - name: Validar atraso e chegada com viagens REAIS SUMOB + GTFS
+        timeout-minutes: 3
+        run: |
+          node scripts/qa-live-eta-join.mjs dist/externo/catalog
+          test -s sumob-eta-join-qa.json
           test ! -e dist/externo/catalog/scan/index.json
           test ! -e dist/externo/catalog/der-rmbh-411c-511c.json
           test -s dist/externo/catalog/arrivals/ff.json.gz
@@ -103,6 +116,14 @@ jobs:
           assert h.hexdigest()==recorded
           assert gps['enabled'] is True and gps['provider']=='gtfs_rt'
           assert build['gpsEnabled'] is True and proof['probePassed'] is True
+          rt_index=json.loads((cat/'rt-trips/index.json').read_text(encoding='utf8'))
+          assert rt_index['schema']==1 and rt_index['buckets']==256
+          assert rt_index['version']==manifest['gtfsVersion']
+          assert rt_index['rows']==manifest['stopTimeRows']
+          join=json.loads(Path('sumob-eta-join-qa.json').read_text(encoding='utf8'))
+          assert join['catalogVersion']==manifest['gtfsVersion']
+          assert join['activeService']>=1 and join['plausibleETAs']>=1
+          assert len(rt_index['sizes'])==256
           assert manifest['gtfsVersion']==build['gtfsVersion']==index['version']
           assert manifest['feedEndDate']==build['validThrough']==index['validThrough']
           qa={
@@ -114,6 +135,8 @@ jobs:
             'validThrough':manifest['feedEndDate'],
             'routes':manifest['routes'],
             'scheduledStops':index['stopCount'],'shards':256,
+            'rtTripIndexSchema':1,'rtTripIndexRows':rt_index['rows'],
+            'liveTripJoinValidated':True,'liveTripJoinMatches':join['plausibleETAs'],
             'routingEnabled':False,'metropolitanEnabled':False,'gpsEnabled':True,
             'gpsProvider':'gtfs_rt','gpsProbePassed':True,
             'gpsProbeCheckedAtUtc':proof['checkedAtUtc'],
