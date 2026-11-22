@@ -38,7 +38,12 @@ def read_json(path: Path, compressed=False):
         if len(raw) > MAX_JSON_BYTES:
             raise ValueError("Shard GTFS descompactado excede limite")
         return json.loads(raw)
-    # Bound even the uncompressed routing index; never read arbitrary-sized files.\n    with path.open("rb") as source:\n        raw = source.read(MAX_ARCHIVE_BYTES + 1)\n    if len(raw) > MAX_ARCHIVE_BYTES:\n        raise ValueError("Índice GTFS acima do limite")\n    return json.loads(raw)
+    # Bound even the uncompressed routing index; never read arbitrary-sized files.
+    with path.open("rb") as source:
+        raw = source.read(MAX_ARCHIVE_BYTES + 1)
+    if len(raw) > MAX_ARCHIVE_BYTES:
+        raise ValueError("Índice GTFS acima do limite")
+    return json.loads(raw)
 
 
 def active(index, service_id: str, day: dt.date) -> bool:
