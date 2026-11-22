@@ -61,8 +61,9 @@ test('switching away from an independently opened line closes tracking without c
  const h=harness('linhas');
  h.state.userPosition=[-19.8,-43.8];
  h.enter({tab:'linhas',center:[-19.85,-43.85],zoom:14.5});
+ // V1 hides the planner: a legacy request for Rotas safely opens Pontos.
  h.switchTab('rotas');
- assert.equal(h.tab(),'rotas');
+ assert.equal(h.tab(),'pontos');
  assert.equal(h.state.route,null);
  assert.deepEqual(h.state.center,[-19.85,-43.85]);
  assert.deepEqual(h.state.userPosition,[-19.8,-43.8]);
