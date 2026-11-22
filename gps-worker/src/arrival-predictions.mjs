@@ -77,7 +77,11 @@ export function officialTripDelays(decoded,requestedRoutes,nowSeconds=Math.floor
      throw Error('ETA_INVALID_INPUT');
   const wanted=new Set(requestedRoutes.map(String));
   if(!wanted.size)return [];
-  const out=[],seen=new Set();
+  const seen=new Set();
+  // Avoid starvation when a stop is served by many routes: the first
+  // 250 updates in a feed may all belong to one busy route. Collect valid
+  // observations by requested route and distribute the response fairly.
+  const groups=new Map([...wanted].sort().map(route=>[route,[]]));
   for(const update of decoded.updates){
     const trip=update.trip||{};
     if(!wanted.has(String(trip.routeId||''))||
@@ -98,12 +102,25 @@ export function officialTripDelays(decoded,requestedRoutes,nowSeconds=Math.floor
       const key=trip.tripId+'|'+trip.startDate+'|'+stop.stopSequence;
       if(seen.has(key))continue;
       seen.add(key);
-      out.push({routeId:String(trip.routeId),tripId:String(trip.tripId),
+      groups.get(String(trip.routeId)).push({
+        routeId:String(trip.routeId),tripId:String(trip.tripId),
         startDate:String(trip.startDate),startTime:String(trip.startTime),
         observedStopId:String(stop.stopId),observedStopSequence:stop.stopSequence,
-        delaySeconds:delay,lastFeedUpdateAt:new Date(time*1000).toISOString()});
-      if(out.length>=250)return out;
+        delaySeconds:delay,lastFeedUpdateAt:new Date(time*1000).toISOString()
+      });
     }
+  }
+  const out=[],ordered=[...groups.values()],limit=250;
+  for(let depth=0;out.length<limit;depth++){
+    let added=false;
+    for(const group of ordered){
+      if(depth<group.length){
+        out.push(group[depth]);
+        added=true;
+        if(out.length>=limit)break;
+      }
+    }
+    if(!added)break;
   }
   return out;
 }
