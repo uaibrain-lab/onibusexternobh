@@ -16,6 +16,18 @@ function bucketId(id){let n=0;for(const ch of String(id))n=(n*31+ch.charCodeAt(0
 const index=JSON.parse(await readFile(join(folder,'rt-trips/index.json'),'utf-8'));
 const manifest=JSON.parse(await readFile(join(folder,'manifest.json'),'utf-8'));
 const calendar=JSON.parse(await readFile(join(folder,'arrivals/calendar.json'),'utf-8'));
+const staticRoutes=JSON.parse(await readFile(join(folder,'routes.json'),'utf-8'));
+const byPublicCode=new Map();
+for(const r of staticRoutes){
+  const code=String(r.code||'').trim().toUpperCase(),id=String(r.id||'');
+  if(!code||!id)continue;
+  if(byPublicCode.has(code)&&byPublicCode.get(code)!==id)byPublicCode.set(code,null);
+  else if(!byPublicCode.has(code))byPublicCode.set(code,id);
+}
+const canonicalRoute=code=>{
+  const value=String(code).trim().toUpperCase();
+  return byPublicCode.has(value)?byPublicCode.get(value):value;
+};
 if(index.schema!==1||index.buckets!==256||index.version!==manifest.gtfsVersion)
   throw Error('ETA_JOIN_CATALOG_INCOMPATIBLE');
 
@@ -62,6 +74,7 @@ function secs(value){
 const quality={checkedAt:new Date(now).toISOString(),
   catalogVersion:manifest.gtfsVersion,officialUpdates:updates.length,
   examined:0,stopsWithStaticRows:0,stopWithSameTripId:0,
+  officialRoutePublicCodeMapped:0,
   stopWithSameRouteId:0,stopWithSameSequence:0,
   stopWithTripAndRoute:0,stopWithTripAndSequence:0,
   stopWithRouteAndSequence:0,
@@ -70,16 +83,18 @@ const quality={checkedAt:new Date(now).toISOString(),
 for(const u of updates.slice(0,300)){
   quality.examined++;
   const rows=await rowsFor(u.observedStopId);
+  const routeId=canonicalRoute(u.routeId);
+  if(routeId&&routeId!==u.routeId)quality.officialRoutePublicCodeMapped++;
   if(rows.length)quality.stopsWithStaticRows++;
   if(rows.some(r=>r[0]===u.tripId))quality.stopWithSameTripId++;
-  if(rows.some(r=>r[1]===u.routeId))quality.stopWithSameRouteId++;
+  if(rows.some(r=>r[1]===routeId))quality.stopWithSameRouteId++;
   if(rows.some(r=>r[3]===u.observedStopSequence))quality.stopWithSameSequence++;
-  if(rows.some(r=>r[0]===u.tripId&&r[1]===u.routeId))quality.stopWithTripAndRoute++;
+  if(rows.some(r=>r[0]===u.tripId&&r[1]===routeId))quality.stopWithTripAndRoute++;
   if(rows.some(r=>r[0]===u.tripId&&r[3]===u.observedStopSequence))
     quality.stopWithTripAndSequence++;
-  if(rows.some(r=>r[1]===u.routeId&&r[3]===u.observedStopSequence))
+  if(rows.some(r=>r[1]===routeId&&r[3]===u.observedStopSequence))
     quality.stopWithRouteAndSequence++;
-  const matches=rows.filter(r=>r[0]===u.tripId&&r[1]===u.routeId&&
+  const matches=rows.filter(r=>r[0]===u.tripId&&r[1]===routeId&&
     r[3]===u.observedStopSequence);
   if(matches.length!==1)continue;
   quality.matchedTripRouteSequence++;
