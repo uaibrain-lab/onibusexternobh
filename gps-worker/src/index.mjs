@@ -1,4 +1,6 @@
 import {parseVehiclePositions} from './gtfs-rt.mjs';
+import {parseTripUpdates} from './gtfs-rt-trip-updates.mjs';
+import {officialStopPredictions} from './arrival-predictions.mjs';
 /* Externo BH GPS reader: independent Cloudflare Workers Free candidate.
  * No KV, D1, secret, scheduled task, paid plan, private geolocation or routing.
  * Disabled at the client until public PBH access and Free quotas are verified.
@@ -18,6 +20,9 @@ const ORIGINS=new Set([
 // Alternative official SUMOB GTFS-RT feed, publicly catalogued under CC BY 4.0.
 // Endpoint is fixed: callers cannot supply their own URL.
 const REALTIME_URL='http://realtime4.mobilibus.com/web/4ch6j/vehicle-positions?accesskey=982a57efd77a9462bf1665696fb25984';
+// SUMOB/PBH public CC BY 4.0 feed published at dados.pbh.gov.br.
+// Caller can NEVER supply the upstream host or feed credentials.
+const TRIP_UPDATES_URL='http://realtime4.mobilibus.com/web/4ch6j/trip-updates?accesskey=982a57efd77a9462bf1665696fb25984';
 const RT_MAX_BODY=8*1024*1024;
 const API_VERSION='p24-gtfs-rt-geocode-20261117-1';
 const MAX_BODY=12*1024*1024;
@@ -101,6 +106,84 @@ async function readFeed(source,{fetchFn,cache,ctx,now,requestUrl}){
     else await store;
   }
   return body;
+}
+async function readTripUpdates({fetchFn,cache,ctx,requestUrl}){
+  const key=new Request(new URL('/__gps_cache/raw/TRIP_UPDATES',requestUrl));
+  if(cache){
+    try{
+      const cached=await cache.match(key);
+      if(cached?.ok){
+        const bytes=await cached.arrayBuffer();
+        if(bytes.byteLength>=5&&bytes.byteLength<=RT_MAX_BODY)return bytes;
+      }
+    }catch{ /* Cache opcional. */ }
+  }
+  const response=await fetchFn(TRIP_UPDATES_URL,{
+    headers:{Accept:'application/x-protobuf,application/octet-stream'},
+    redirect:'manual',
+    signal:typeof AbortSignal.timeout==='function'?AbortSignal.timeout(9000):undefined
+  });
+  if(!response.ok||response.status>=300)throw Error('ETA_HTTP_'+response.status);
+  if(Number(response.headers.get('content-length')||0)>RT_MAX_BODY)
+    throw Error('GTFS_RT_TRIP_UPDATES_TOO_LARGE');
+  const body=await response.arrayBuffer();
+  if(body.byteLength<5||body.byteLength>RT_MAX_BODY)
+    throw Error('GTFS_RT_TRIP_UPDATES_TOO_LARGE');
+  if(cache){
+    const put=cache.put(key,new Response(body,{headers:{
+      'Content-Type':'application/octet-stream',
+      'Cache-Control':'public, max-age='+MIN_CACHE_SECONDS
+    }})).catch(()=>{});
+    if(ctx?.waitUntil)ctx.waitUntil(put);else await put;
+  }
+  return body;
+}
+async function arrivalRequest(url,origin,{fetchFn,cache,ctx,now}){
+  const stop=url.searchParams.get('stop');
+  if(url.searchParams.getAll('stop').length!==1||
+     [...url.searchParams.keys()].some(k=>k!=='stop')||
+     !/^[0-9]{1,20}$/.test(String(stop||'')))
+    return reply({available:false,error:'INVALID_STOP'},400,origin);
+  const key=new Request(new URL('/__gps_cache/filtered/arrivals/'+stop,url));
+  if(cache){
+    try{
+      const hit=await cache.match(key);
+      if(hit?.ok){
+        const data=await hit.json();
+        if(data?.available===true&&data.stopId===stop&&
+           now-Date.parse(data.fetchedAt||'')<30000&&
+           now>=Date.parse(data.fetchedAt||'')&&Array.isArray(data.items))
+          return reply(data,200,origin);
+      }
+    }catch{/* Cache opcional. */}
+  }
+  try{
+    const raw=await readTripUpdates({fetchFn,cache,ctx,requestUrl:url.href});
+    const parsed=parseTripUpdates(raw,Math.floor(now/1000));
+    const items=officialStopPredictions(parsed,stop,Math.floor(now/1000));
+    const data={available:true,source:'SUMOB_GTFS_RT_TRIP_UPDATES',
+      stopId:stop,fetchedAt:new Date(now).toISOString(),
+      feedTimestamp:new Date(parsed.feedTimestamp*1000).toISOString(),
+      items,attribution:'Superintendência de Mobilidade Urbana de Belo Horizonte (SUMOB)',
+      license:'CC BY 4.0'};
+    if(cache){
+      const put=cache.put(key,new Response(JSON.stringify(data),{headers:{
+        'Content-Type':'application/json',
+        'Cache-Control':'public, max-age='+MIN_CACHE_SECONDS
+      }})).catch(()=>{});
+      if(ctx?.waitUntil)ctx.waitUntil(put);else await put;
+    }
+    return reply(data,200,origin);
+  }catch(err){
+    const message=String(err?.message||'');
+    const reason=/^ETA_HTTP_[0-9]{3}$/.test(message)?'UPSTREAM_HTTP':
+      message==='GTFS_RT_TRIP_UPDATES_TOO_LARGE'?'FEED_TOO_LARGE':
+      message==='GTFS_RT_TRIP_UPDATES_INVALID'?'FEED_INVALID_OR_STALE':
+      err?.name==='TimeoutError'||err?.name==='AbortError'?'UPSTREAM_TIMEOUT':
+      'SOURCE_UNAVAILABLE';
+    return reply({available:false,error:'ARRIVALS_UNAVAILABLE',reason,
+      source:'SUMOB_GTFS_RT_TRIP_UPDATES'},503,origin);
+  }
 }
 async function readRealtime({fetchFn,cache,ctx,requestUrl}){
   const key=new Request(new URL('/__gps_cache/raw/GTFS_RT',requestUrl));
@@ -246,10 +329,13 @@ export async function handleGpsRequest(request,{fetchFn=fetch,cache=globalThis.c
   if(url.pathname==='/api/gps/capabilities')
     return reply({service:'Externo BH GPS',apiVersion:API_VERSION,
       supportedSources:['CONVENCIONAL','SUPLEMENTAR','GTFS_RT'],
-      geocodingSupported:true,
+      geocodingSupported:true,tripUpdatesSupported:true,
+      tripUpdatesEndpoint:'/api/arrivals?stop=14791950',
       dataSourceVerified:false},200,origin);
   if(url.pathname==='/api/geocode')
     return geocodeRequest(url,origin,{fetchFn,cache,ctx});
+  if(url.pathname==='/api/arrivals')
+    return arrivalRequest(url,origin,{fetchFn,cache,ctx,now});
   if(url.pathname!=='/api/gps')return reply({available:false,error:'NOT_FOUND'},404,origin);
   const source=url.searchParams.get('source');
   const rt=source==='GTFS_RT';
