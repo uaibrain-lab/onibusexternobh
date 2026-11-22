@@ -19,24 +19,31 @@ STAGING_HOST='externo-bh-hml-uaibrain.pages.dev'
 STAGING_ENDPOINT='https://externo-bh-gps-free.hubufmg.workers.dev/api/gps'
 
 
-def build(target=None, gps_staging=False):
+def build(target=None, gps_staging=False, hub_v1=False):
+    if hub_v1 and gps_staging:
+        raise ValueError('Hub V1 cannot enable experimental GPS')
     target=Path(target) if target else ROOT/'dist'
     catalog=ROOT/'catalog'
     scan=catalog/'scan'
     info=scan/'index.json'
-    if not info.exists():
-        raise FileNotFoundError('Catálogo binário ausente; execute build_static_scan.py primeiro.')
-    manifest=json.loads(info.read_text(encoding='utf-8'))
-    if (manifest.get('schema') not in (1,2) or manifest.get('tripCount',0)<1000 or
-        manifest.get('connectionCount',0)<10000):
-        raise ValueError('Índice estático incompleto ou de versão incompatível')
-    # Route searches and point arrivals MUST share one official GTFS edition.
-    # A partial refresh cannot publish mismatched stops or stale stop times.
     source=json.loads((catalog/'manifest.json').read_text(encoding='utf-8'))
-    if (str(source.get('feedEndDate'))!=str(manifest.get('validThrough')) or
-        int(source.get('stops',0))!=int(manifest.get('stopCount',-1)) or
-        int(source.get('trips',0))!=int(manifest.get('tripCount',-1))):
-        raise ValueError('GTFS inconsistente entre índices de rotas e horários por parada')
+    if hub_v1:
+        # This release contains no origin/destination routing or large scan.
+        if (int(source.get('routes',0))<100 or int(source.get('stops',0))<1000 or
+                int(source.get('trips',0))<1000 or int(source.get('stopTimeRows',0))<10000):
+            raise ValueError('Municipal GTFS catalog is incomplete')
+        manifest={'validThrough':source.get('feedEndDate')}
+    else:
+        if not info.exists():
+            raise FileNotFoundError('Catálogo binário ausente; execute build_static_scan.py primeiro.')
+        manifest=json.loads(info.read_text(encoding='utf-8'))
+        if (manifest.get('schema') not in (1,2) or manifest.get('tripCount',0)<1000 or
+                manifest.get('connectionCount',0)<10000):
+            raise ValueError('Índice estático incompleto ou de versão incompatível')
+        if (str(source.get('feedEndDate'))!=str(manifest.get('validThrough')) or
+            int(source.get('stops',0))!=int(manifest.get('stopCount',-1)) or
+            int(source.get('trips',0))!=int(manifest.get('tripCount',-1))):
+            raise ValueError('GTFS inconsistente entre índices de rotas e horários por parada')
     if not (catalog/'metro.json').is_file():
         raise FileNotFoundError('Catálogo do metrô ausente.')
     if target.exists():
@@ -124,26 +131,28 @@ def build(target=None, gps_staging=False):
     (public/'index.html').write_text(html,encoding='utf-8')
     (public/'catalog').mkdir(exist_ok=True)
     shutil.copy2(catalog/'metro.json',public/'catalog'/'metro.json')
-    # DER/MG is departures-only: never turn these records into GTFS trips.
-    der_source=catalog/'der-rmbh-411c-511c.json'
-    der=json.loads(der_source.read_text(encoding='utf-8'))
-    if (der.get('schema')!=1 or der.get('dataStatus')!='published-departures-only' or
-        der.get('routePlanningEnabled') is not False or
-        der.get('georeferencedStops') is not False or
-        der.get('calendarVerified') is not False or
-        sorted(der.get('lines',{}))!=['411C','511C']):
-        raise ValueError('DER/MG informativo inconsistente: bloquear build')
-    shutil.copy2(der_source,public/'catalog'/'der-rmbh-411c-511c.json')
+    if not hub_v1:
+        # DER/MG is departures-only: never turn these records into GTFS trips.
+        der_source=catalog/'der-rmbh-411c-511c.json'
+        der=json.loads(der_source.read_text(encoding='utf-8'))
+        if (der.get('schema')!=1 or der.get('dataStatus')!='published-departures-only' or
+            der.get('routePlanningEnabled') is not False or
+            der.get('georeferencedStops') is not False or
+            der.get('calendarVerified') is not False or
+            sorted(der.get('lines',{}))!=['411C','511C']):
+            raise ValueError('DER/MG informativo inconsistente: bloquear build')
+        shutil.copy2(der_source,public/'catalog'/'der-rmbh-411c-511c.json')
     for name in ('manifest.json','routes.json','stops.json','patterns.json','shapes.json','routing-stop-routes.json','gps-nl-map.json'):
         shutil.copy2(catalog/name,public/'catalog'/name)
-    shutil.copytree(scan,public/'catalog'/'scan')
+    if not hub_v1:
+        shutil.copytree(scan,public/'catalog'/'scan')
     # Do not ship the 18 MiB monolithic timetable to mobile visitors.
     # Build small, per-stop shards directly into the static release.
     build_arrivals(catalog,public/'catalog'/'arrivals')
     # The real OSM network is optional until validated. Do NOT fabricate one
     # from straight-line GTFS stop coordinates.
     walking=catalog/'walk'/'graph.json.gz'
-    if walking.is_file():
+    if not hub_v1 and walking.is_file():
         import gzip
         with gzip.open(walking,'rt',encoding='utf-8') as f:
             graph=json.load(f)
@@ -175,6 +184,9 @@ def build(target=None, gps_staging=False):
             ]
         }
     }
+    if hub_v1:
+        config['hosting']['headers']=[h for h in config['hosting']['headers']
+                                      if '/scan/' not in h['source']]
     (target/'firebase.json').write_text(
         json.dumps(config,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
     total=sum(p.stat().st_size for p in public.rglob('*') if p.is_file())
@@ -196,5 +208,6 @@ if __name__=='__main__':
     p.add_argument('--output',default=None)
     p.add_argument('--gps-staging',action='store_true',
                    help='ATENÇÃO: ativa GPS SOMENTE em dist/ para projeto Cloudflare Pages isolado')
+    p.add_argument('--hub-v1',action='store_true',help='Município + metrô, sem rotas/RMBH')
     args=p.parse_args()
-    build(args.output,gps_staging=args.gps_staging)
+    build(args.output,gps_staging=args.gps_staging,hub_v1=args.hub_v1)
