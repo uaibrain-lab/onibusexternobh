@@ -212,3 +212,11 @@ https://github.com/uaibrain-lab/onibusexternobh/actions/runs/44223309587
 
 **Sem deploy nesta rodada.** O Worker GPS não recebeu ETA e o
 site não foi atualizado. Não usar -ReutilizarBuild na P27.
+
+## P27 — Fast path mobile sem candidatos OSM (22/11/2026)
+
+- HEAD inicial `45087804f54c0beeee74df9f80375a71c33ca24e`; integração #45020205933 e P2 #45020211293 aprovados nesse HEAD anterior. PR principal #19; nenhuma edição em arquivos de importadores/datasets do agente auxiliar.
+- Código `dc3b9cf87312387b9485c61d63ed52b0950d93a7` (`static/walk-network.js`): `distancesToStops` retorna mapa vazio quando nenhum destino tem snap válido. Antes, executava Dijkstra sem nenhum alvo, podendo expandir até 30.000 nós OSM em dispositivos móveis. Não altera rotas existentes, conectividade, GPS ou ETA.
+- Regressão `28482ceb2ee9954f2525b5775df6d50bfdade884` (`tests/test_walk_network.cjs`): alvos vazios/sem snap não percorrem adjacências; destino válido mantém distância real.
+- Verificações isoladas executadas no runtime JS com grafo sintético: 3/3 aprovadas (alvos vazios, alvos sem snap, destino válido). **Suíte Node completa e CI dos commits novos ainda não confirmados**; verificar Actions no novo HEAD antes de homologar. Sem benchmark real quantificado nem jornada E2E comprovada nesta rodada.
+- Próximo gate: confirmar integração e P2 no novo HEAD, executar `node --test tests/test_walk_network.cjs` no checkout completo e diagnóstico `scripts/diagnose_route.cjs` com coordenadas/data/hora de referência verificadas. Investigar 9106+5106 e 9209+51/67 por calendário, direção, acesso e rede OSM, sem fabricar conexões. Sem merge/deploy.
