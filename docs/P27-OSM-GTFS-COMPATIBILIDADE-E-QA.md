@@ -236,3 +236,12 @@ site não foi atualizado. Não usar -ReutilizarBuild na P27.
 - Teste `a661b93a7ce81ea0f7e8373c15aef4de38c2df88` (`tests/test_walk_network.cjs`): dois endpoints com snap em nós diferentes, custo de acesso superior ao orçamento, instrumentação para impedir expansão de adjacências.
 - Validação local isolada: três asserções Node sobre a condição de limite passaram; **não foi executado o arquivo completo de testes em checkout local** (DNS do git indisponível). Conferir CI no HEAD final, rodar `node --test tests/test_walk_network.cjs` quando disponível.
 - Próximo gate: jornadas reais GTFS + caminhada OSM para 9106→5106 e 9209→51/67; medir latência em Android e verificar horários/serviço e conectividade. Sem alterações nos datasets do auxiliar, merge ou deploy.
+
+## Escopo V1 municipal aprovado em 22/11/2026
+
+- Decisão de produto: adiar planejador, baldeações/caminhadas OSM e RMBH até nova autorização; priorizar pontos, linhas/sentidos, horários GTFS municipais programados por calendário, metrô informativo, favoritos, PWA e localização opcional. GPS ao vivo não é requisito de lançamento.
+- Base inicial `03f1df16b149c1e35a6f163d5891dbcdc104be6a`: integração #45035901115 e P2 #45035908369 aprovados. PR principal #19.
+- UI `e683bc7210609dd1ef4adfe5c319107cb6b6fdba`: aba Rotas oculta/desabilitada, painel `inert`, link metropolitano retirado do fluxo municipal; código e arquivos futuros preservados.
+- Guarda `947b8def04fa0ea2548ebfbe2e32ac5082ef5542`: chamadas internas de `switchTab('rotas')` voltam a Pontos. Teste `9ce1a6ae0bc1f013cd5532350736d661ca32f955` protege o contrato V1.
+- Validação: CI novo pendente de confirmação; executar `node --test tests/test_unified_ui.cjs`, regressões de mapa/horários/metro/favoritos, build estático, HTTP e Playwright mobile. Não declarar V1 homologada antes desses gates; Android real ainda não verificado.
+- Próxima rodada: confirmar CI, verificar se há outras entradas de planejador em UI/links, testar GTFS municipal e cache offline, preparar preview gratuito sem deploy. Sem editar datasets/importadores do agente auxiliar, sem merge/deploy.
