@@ -15,31 +15,48 @@ export function officialStopPredictions(decoded,stopId,nowSeconds=Math.floor(Dat
   if(!STOP.test(String(stopId))||!decoded||!Array.isArray(decoded.updates)||
      !Number.isSafeInteger(nowSeconds))throw Error('ETA_INVALID_INPUT');
   const seen=new Set(),out=[];
+  const feedTime=decoded.feedTimestamp;
   for(const u of decoded.updates){
-    if(!u||!Number.isSafeInteger(u.timestamp)||
-      Math.abs(nowSeconds-u.timestamp)>120)continue;
+    if(!u)continue;
+    // In GTFS-RT TripUpdate.timestamp is optional: a recent feed header is
+    // an acceptable freshness fallback, but NEVER fallback for a stale
+    // explicitly supplied per-trip timestamp.
+    const tripTime=u.timestamp;
+    const timeSource=tripTime===undefined?'feed':'trip';
+    const timestamp=timeSource==='trip'?tripTime:feedTime;
+    if(!Number.isSafeInteger(timestamp)||
+       timestamp<nowSeconds-120||timestamp>nowSeconds+60)continue;
     const t=u.trip||{};
     if(!/^[A-Za-z0-9_.:-]{1,90}$/.test(String(t.tripId||''))||
        !/^[A-Za-z0-9_.:-]{1,90}$/.test(String(t.routeId||''))||
        (t.startDate&&!validDate(t.startDate))||
        (t.scheduleRelationship!==undefined&&t.scheduleRelationship!==0))continue;
-    for(const st of u.stopTimeUpdate||[]){
-      if(String(st.stopId||'')!==String(stopId)||
-         !Number.isSafeInteger(st.stopSequence)||st.stopSequence<0||
+    const matched=(u.stopTimeUpdate||[]).filter(st=>
+      String(st?.stopId||'')===String(stopId));
+    // A loop may visit the same stop more than once. If the official
+    // record does not identify the sequence, there is no safe disambiguation.
+    if(matched.length>1&&matched.some(st=>!Number.isSafeInteger(st.stopSequence)))
+      continue;
+    for(const st of matched){
+      if((st.stopSequence!==undefined&&
+          (!Number.isSafeInteger(st.stopSequence)||st.stopSequence<0))||
          (st.scheduleRelationship!==undefined&&st.scheduleRelationship!==0))continue;
       const arrival=st.arrival?.time;
       const departure=st.departure?.time;
       const at=Number.isSafeInteger(arrival)&&arrival>0?arrival:
         Number.isSafeInteger(departure)&&departure>0?departure:null;
       if(at===null||at<nowSeconds-30||at>nowSeconds+2*3600)continue;
-      const key=t.tripId+'|'+String(t.startDate||'')+'|'+st.stopSequence;
+      const key=t.tripId+'|'+String(t.startDate||'')+'|'+
+        (st.stopSequence??'stop:'+String(stopId));
       if(seen.has(key))continue;
       seen.add(key);
       out.push({routeId:t.routeId,tripId:t.tripId,
         ...(t.startDate?{startDate:t.startDate}:{}),
-        stopId:String(stopId),stopSequence:st.stopSequence,
+        stopId:String(stopId),
+        ...(Number.isSafeInteger(st.stopSequence)?{stopSequence:st.stopSequence}:{}),
         at:new Date(at*1000).toISOString(),
-        lastFeedUpdateAt:new Date(u.timestamp*1000).toISOString(),
+        lastFeedUpdateAt:new Date(timestamp*1000).toISOString(),
+        freshnessSource:timeSource,
         eventType:arrival===at?'arrival':'departure'});
     }
   }
