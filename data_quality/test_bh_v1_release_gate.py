@@ -98,6 +98,9 @@ class BhV1GateTests(unittest.TestCase):
                'validThrough': '20261130', 'stopCount': 2, 'sizes': sizes}
         path = root / 'index.json'
         path.write_text(json.dumps(idx), encoding='utf-8')
+        with gzip.open(self.root / 'timetable.json.gz', 'wt', encoding='utf-8') as stream:
+            for sid in ('S1', 'S2'):
+                stream.write(json.dumps([sid, [['TEST','WK','Synthetic',[600,900]]]]) + '\n')
         return path
 
     def test_package_with_all_shards_passes_release_gate(self):
@@ -111,6 +114,21 @@ class BhV1GateTests(unittest.TestCase):
         (path.parent / '00.json.gz').unlink()
         result = self.gate(arrivals_index=path, require_arrivals=True)
         self.assertIn('static_arrivals_bucket_unreadable', result['errors'])
+
+    def test_modified_departure_blocks_even_with_valid_shard_index(self):
+        path = self.sample_arrivals()
+        with gzip.open(self.root / 'timetable.json.gz', 'wt', encoding='utf-8') as stream:
+            stream.write(json.dumps(['S1', [['TEST','WK','Synthetic',[600,901]]]]) + '\n')
+            stream.write(json.dumps(['S2', [['TEST','WK','Synthetic',[600,900]]]]) + '\n')
+        result = self.gate(arrivals_index=path, require_arrivals=True)
+        self.assertIn('published_timetable_differs_from_source', result['errors'])
+        self.assertEqual(result['timetableAudit']['mismatchedStops'], 1)
+
+    def test_missing_timetable_blocks_static_release(self):
+        path = self.sample_arrivals()
+        (self.root / 'timetable.json.gz').unlink()
+        result = self.gate(arrivals_index=path, require_arrivals=True)
+        self.assertIn('source_timetable_unreadable', result['errors'])
 
     def test_bad_source_checksum_blocks(self):
         (self.root/'source-gtfs.sha256').write_text('bad')

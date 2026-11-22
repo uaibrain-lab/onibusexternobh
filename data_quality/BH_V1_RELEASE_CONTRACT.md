@@ -40,3 +40,15 @@ Invariantes bloqueantes: esquema/versão/validade do índice, nomes e tamanhos e
 O contrato **não** comprova que os 256 buckets vieram do ZIP identificado por `source-gtfs.sha256`, nem que o GTFS continua atualizado, nem substitui testes HTTP/browser e comparação com a origem oficial. O agente principal deve integrar o comando somente depois do build concluído e antes de autorizar a promoção/publicação, com fail-closed em qualquer erro. Se o validador informar `blocked`, **não publicar** o pacote. Preservar a aba Rotas apenas como código inativo para V2, sem depender de OSM/RMBH/GPS na V1.
 
 Testes locais desta ampliação: `python -m unittest discover -s data_quality -p 'test_*.py' -v` em checkout de testes contendo 24 casos (13 de gate + 11 de buckets) e `python -m compileall -q data_quality` — ambos passaram em Python 3.13. Os testes HTTP reais e o build estático completo **não foram executados nesta rodada**.
+
+## Gate de equivalência da tabela municipal (22/11/2026)
+
+Após auditar os 256 buckets, o gate agora **compara o conteúdo real** de `catalog/timetable.json.gz` (tabela GTFS municipal por parada, usada para gerar os buckets) com `dist/externo/catalog/arrivals/00..ff.json.gz`: mantém apenas uma impressão SHA-256 por stop e compara os arrays completos de horários, linha, serviço e destino. A comparação detecta horas alteradas **mesmo quando contagens e o índice coincidem**, pontos ausentes ou excedentes, duplicidades, origem gzip ausente/corrompida e buckets inconsistentes. Limites de leitura compactada/descompactada protegem a análise. O resultado `timetableAudit` inclui status, SHA-256 do **arquivo derivado** `timetable.json.gz`, contagens e motivo de bloqueio.
+
+Comando inalterado, deve rodar **após build** com ambos `catalog/timetable.json.gz` original da mesma compilação e `dist/.../arrivals/index.json` presente:
+```bash
+python -m data_quality.bh_v1_release_gate catalog --date YYYYMMDD --require-arrivals --arrivals-index dist/externo/catalog/arrivals/index.json
+```
+Sem a tabela de origem o gate falha fechado — não usar apenas `dist/` como parâmetro de catálogo. A equivalência prova que os buckets representam o timetable local, **não** que o timetable corresponda criptograficamente ao GTFS ZIP municipal; esse vínculo oficial e os direitos de reutilização continuam como gate separado. Nenhum cálculo de rotas/ETA ou serviço metropolitano é ativado.
+
+**Execução local desta rodada:** 36 testes em Python 3.13: 15 do gate, 11 da validação dos shards e 10 de equivalência da tabela; 36/36 passaram. Não foi realizada a validação do catálogo completo de 6,69 milhões de passagens nem homologação HTTP/mobile nesta rodada.
