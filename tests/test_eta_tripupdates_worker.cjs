@@ -9,10 +9,12 @@ function f(n,p){return [...v(n*8+2),...v(p.length),...p];}
 function u(n,value){return [...v(n*8),...v(value)];}
 function s(n,text){return f(n,[...Buffer.from(text)]);}
 function wire({stop='14791950',route='5102',at=NOW+240,tripRelationship,stopRelationship,
-  old=false,withoutTimestamp=false,withoutSequence=false,duplicateStop=false}={}){
-  const trip=[...s(1,'TRIP-5102-A'),...s(3,'20261119'),...s(5,route),
+  old=false,withoutTimestamp=false,withoutSequence=false,duplicateStop=false,
+  delayOnly=false,delaySeconds=180}={}){
+  const trip=[...s(1,'TRIP-5102-A'),...s(2,'19:00:00'),...s(3,'20261119'),...s(5,route),
     ...(tripRelationship===undefined?[]:u(4,tripRelationship))];
-  const stopInfo=[...(withoutSequence?[]:u(1,12)),...f(2,u(2,at)),...s(4,stop),
+  const stopInfo=[...(withoutSequence?[]:u(1,12)),
+    ...f(2,delayOnly?u(1,delaySeconds):u(2,at)),...s(4,stop),
     ...(stopRelationship===undefined?[]:u(5,stopRelationship))];
   const update=[...f(1,trip),...f(2,stopInfo),
     ...(duplicateStop?f(2,stopInfo):[]),
@@ -131,4 +133,43 @@ test('o cabeçalho vencido não pode legitimar atualização sem timestamp',asyn
     now:(NOW+190)*1000,cache:null,fetchFn:async()=>new Response(input)});
   assert.equal(response.status,503);
   assert.equal((await response.json()).reason,'FEED_INVALID_OR_STALE');
+});
+
+test('atraso real vinculado a trip_id e stop_sequence, sem confundir com horário absoluto',async()=>{
+  const {handleGpsRequest}=await worker;
+  for(const delay of [-65,0,120]){
+    const response=await handleGpsRequest(req('?stop=14791950&routes=5102'),{
+      now:NOW*1000,cache:null,fetchFn:async()=>new Response(
+        wire({delayOnly:true,delaySeconds:delay,withoutTimestamp:true}))});
+    assert.equal(response.status,200);
+    const data=await response.json();
+    assert.deepEqual(data.items,[],'Atraso não pode virar horário de chegada sem GTFS');
+    assert.equal(data.relativeUpdates.length,1);
+    const update=data.relativeUpdates[0];
+    assert.equal(update.delaySeconds,delay);
+    assert.equal(update.tripId,'TRIP-5102-A');
+    assert.equal(update.observedStopId,'14791950');
+    assert.equal(update.observedStopSequence,12);
+    assert.equal(update.startDate,'20261119');
+    assert.equal(update.startTime,'19:00:00');
+  }
+  const wrong=await handleGpsRequest(req('?stop=14791950&routes=9999'),{
+    now:NOW*1000,cache:null,fetchFn:async()=>new Response(
+      wire({delayOnly:true}))});
+  assert.equal((await wrong.json()).relativeUpdates.length,0);
+});
+test('consulta de atrasos proíbe seleção de feed externo, rotas duplicadas e dados sem sequência',async()=>{
+  const {handleGpsRequest}=await worker;
+  const bad=['?stop=14791950&routes=5102,5102',
+    '?stop=14791950&routes=%2F%2Fevil',
+    '?stop=14791950&routes=5102&routes=9999',
+    '?stop=14791950&routes=5102&url=https://evil.example'];
+  for(const q of bad){
+    const response=await handleGpsRequest(req(q),{now:NOW*1000,cache:null});
+    assert.equal(response.status,400);
+  }
+  const noSeq=await handleGpsRequest(req('?stop=14791950&routes=5102'),{
+    now:NOW*1000,cache:null,fetchFn:async()=>new Response(
+      wire({delayOnly:true,withoutSequence:true}))});
+  assert.deepEqual((await noSeq.json()).relativeUpdates,[]);
 });
