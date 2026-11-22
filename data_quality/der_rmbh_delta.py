@@ -19,6 +19,11 @@ def load(path):
         raise ValueError("unsupported DER catalog schema")
     if doc.get("source", {}).get("publisher") != "DER-MG":
         raise ValueError("unexpected source publisher")
+    if not isinstance(doc.get("inputs"), dict) or not doc["inputs"]:
+        raise ValueError("missing DER input provenance")
+    for name, evidence in doc["inputs"].items():
+        if not isinstance(evidence, dict) or not isinstance(evidence.get("sha256"), str) or len(evidence["sha256"]) != 64 or any(c not in "0123456789abcdef" for c in evidence["sha256"].lower()):
+            raise ValueError("invalid DER source SHA-256: " + str(name))
     keys = set()
     for line in doc["lines"]:
         key = (line["codLinha"], line["numLinha"])
@@ -63,6 +68,10 @@ def compare(old, new):
         "oldLineCount": len(a), "newLineCount": len(b),
         "oldDepartureCount": sum(len(d["departures"]) for r in a.values() for d in r["departureBoards"]),
         "newDepartureCount": sum(len(d["departures"]) for r in b.values() for d in r["departureBoards"]),
+        "sourceInputsChanged": old["inputs"] != new["inputs"],
+        "oldInputs": old["inputs"], "newInputs": new["inputs"],
+        "sourceMetadataChanged": old["source"] != new["source"],
+        "coverageMetadataChanged": old.get("coverage") != new.get("coverage"),
         "validity": "unverified", "license": "unverified",
         "warning": "Catalog comparison is not proof of service-day validity, coordinates, or redistribution rights"
     }
