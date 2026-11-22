@@ -39,7 +39,7 @@ test('Três abas V1, botões e avisos não se sobrepõem',async({page},info)=>{
         return {x:r.x,y:r.y,left:r.left,right:r.right,top:r.top,bottom:r.bottom,
           width:r.width,height:r.height};
       };
-      const ids=['pontos','linhas','metro','rotas'];
+      const ids=['pontos','linhas','metro'];
       const sheet=rect(document.getElementById('sheet'));
       const tabs=ids.map(id=>rect(document.getElementById('quick-'+id)));
       const toast=rect(document.getElementById('mapToast'));
