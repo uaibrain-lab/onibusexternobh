@@ -14,6 +14,17 @@ on:
       - tests/test_hub_v1_gps_probe.py
       - static/**
       - catalog/**
+  pull_request:
+    branches:
+      - feat/integracao-final-exclusiva-onibus-20261117
+    paths:
+      - .github/workflows/hub-v1-package.yml
+      - scripts/prepare_hub_v1.py
+      - scripts/rebuild_hub_v1_catalog.py
+      - scripts/probe_hub_v1_gps.py
+      - scripts/build_static_site.py
+      - static/**
+      - catalog/**
   workflow_dispatch:
 
 permissions:
@@ -40,6 +51,8 @@ jobs:
       - name: Compilacao Python e regressao GPS (sem exigir feed ao vivo)
         run: |
           python -m compileall -q scripts/prepare_hub_v1.py scripts/rebuild_hub_v1_catalog.py scripts/probe_hub_v1_gps.py
+          node --check static/app.js
+          node --check static/service-worker.js
           python -m unittest discover -s tests -p 'test_hub_v1_gps_probe.py' -q
           node --test tests/test_gtfs_realtime_worker.cjs tests/test_gtfs_realtime_adapter.cjs tests/test_live_gps_adapter.cjs
       - name: Verificar ZIP oficial e renovar catalogo somente no workspace
