@@ -194,3 +194,38 @@ test('250 observações são distribuídas entre linhas; linha minoritária não
   assert.equal(result.filter(item=>item.routeId==='51').length,240);
   assert.deepEqual(officialTripDelays(feed,['999'],NOW),[]);
 });
+
+test('marcadores oficiais NO_DATA e SKIPPED preservam propagação segura',async()=>{
+  const {officialTripDelays}=await predictions;
+  const trip={tripId:'T-51',routeId:'51',startDate:'20261119',startTime:'19:00:00'};
+  const stopTimeUpdate=[
+    {stopId:'14780100',stopSequence:3,arrival:{delay:120}},
+    {stopId:'14780200',stopSequence:4,scheduleRelationship:2},
+    {stopId:'14780300',stopSequence:5,departure:{delay:240}},
+    {stopId:'14780400',stopSequence:6,scheduleRelationship:1},
+    {stopId:'14780500',stopSequence:7,arrival:{delay:360,time:NOW+300}},
+  ];
+  const values=officialTripDelays({feedTimestamp:NOW,updates:[
+    {trip,timestamp:NOW-10,stopTimeUpdate}
+  ]},['51'],NOW);
+  assert.deepEqual(values.map(x=>x.observedStopSequence),[3,4,5,6,7]);
+  assert.equal(values[0].delaySeconds,120);
+  assert.equal(values[1].kind,'NO_DATA');
+  assert.equal(values[1].delaySeconds,undefined);
+  assert.equal(values[2].delaySeconds,240);
+  assert.equal(values[3].kind,'SKIPPED');
+  assert.equal(values[4].kind,'NO_DATA',
+    'Um horário absoluto tem prioridade sobre um delay relativo conflitante');
+});
+test('duas previsões conflitantes para o mesmo trip+stop bloqueiam ETA',async()=>{
+  const {officialTripDelays}=await predictions;
+  const trip={tripId:'T-51',routeId:'51',startDate:'20261119',startTime:'19:00:00'};
+  const feed={feedTimestamp:NOW,updates:[{trip,stopTimeUpdate:[
+    {stopId:'14791950',stopSequence:12,arrival:{delay:120}},
+    {stopId:'14791950',stopSequence:12,arrival:{delay:240}}
+  ]}]};
+  const result=officialTripDelays(feed,['51'],NOW);
+  assert.equal(result.length,1);
+  assert.equal(result[0].kind,'NO_DATA');
+  assert.equal(result[0].delaySeconds,undefined);
+});
