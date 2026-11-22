@@ -139,17 +139,31 @@ export function officialTripDelays(decoded,requestedRoutes,nowSeconds=Math.floor
       groups.get(String(trip.routeId)).set(key,record);
     }
   }
-  const out=[],ordered=[...groups.values()].map(group=>[...group.values()]),limit=250;
-  for(let depth=0;out.length<limit;depth++){
-    let added=false;
-    for(const group of ordered){
-      if(depth<group.length){
-        out.push(group[depth]);
-        added=true;
-        if(out.length>=limit)break;
-      }
+  // Critical: the API cap must not split a single trip, because dropping
+  // the NO_DATA/SKIPPED marker after a preceding delay could fabricate
+  // an arrival. Emit a COMPLETE trip or none of its observations.
+  const limit=250,queues=[...groups.values()].map(group=>{
+    const byInstance=new Map();
+    for(const record of group.values()){
+      const instance=record.tripId+'|'+record.startDate+'|'+record.startTime;
+      if(!byInstance.has(instance))byInstance.set(instance,[]);
+      byInstance.get(instance).push(record);
     }
-    if(!added)break;
+    return [...byInstance.values()];
+  });
+  const out=[],positions=queues.map(()=>0);
+  while(out.length<limit){
+    let visited=false;
+    for(let index=0;index<queues.length;index++){
+      const queue=queues[index];
+      if(positions[index]>=queue.length)continue;
+      visited=true;
+      const tripRecords=queue[positions[index]++];
+      if(out.length+tripRecords.length>limit)continue;
+      out.push(...tripRecords);
+      if(out.length>=limit)break;
+    }
+    if(!visited)break;
   }
   return out;
 }
