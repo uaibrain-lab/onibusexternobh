@@ -81,6 +81,8 @@ const WalkGraph=(()=>{
         targetCount++;
       }
       const results=new Map();
+      // No snapped candidates: avoid a needless 30k-node Dijkstra on mobile.
+      if(targetCount===0)return results;
       const travelTimes=new Map([[root[0],0]]);
       const heap=new Heap();
       heap.push([0,root[0]]);
