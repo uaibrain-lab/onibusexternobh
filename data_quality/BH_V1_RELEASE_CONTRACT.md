@@ -87,3 +87,12 @@ python -m data_quality.bh_v1_release_gate catalog --date YYYYMMDD --require-arri
 Os outros modos de auditoria permanecem disponíveis sem o ZIP quando não se trata de aprovar a publicação. Não confundir integridade de bytes com verificação da origem oficial, licença ou pontualidade do ônibus.
 
 **Evidência executada no ambiente local desta rodada:** 80 testes sintéticos de `data_quality/` aprovados em Python 3.13 (`python -m unittest discover -s data_quality -p 'test_*.py' -q`) e `compileall -q data_quality` aprovado. Limite atual: ainda **não** foi executada a auditoria completa sobre os 6.691.004 registros do GTFS oficial porque o ZIP de origem não estava disponível no container. Nenhuma alteração fora de `data_quality/`.
+
+
+## Integridade de sequência por viagem no ZIP municipal (22/11/2026)
+
+Novo validador `data_quality/bh_v1_trip_sequence.py` conectado à leitura **já existente** de `stop_times.txt` em `bh_v1_source_provenance.py`, sem novo scan e sem usar disco adicional. Rastreia apenas a sequência, última hora de partida e contagem por `trip_id`. Rejeita: `stop_sequence` duplicado ou decrescente, chegada anterior à partida da parada anterior, viagens com uma única parada, viagens sem horários e blocos não contíguos de `trip_id` (exigência do importador municipal atual `scripts/update_gtfs.py`). Reconhece horários acima da meia-noite conforme a tabela GTFS.
+
+O resultado `sourceAudit.tripSequenceAudit` registra contagens e códigos de bloqueio. Essa auditoria cobre **ordenamento das linhas no arquivo recebido para o importador atual**; não pretende declarar que todos os GTFS públicos ordenam obrigatoriamente os CSV por viagem. Caso a SUMOB forneça um feed GTFS válido fora da ordem exigida pelo nosso importador, a V1 deve adaptar primeiro o importador e sua homologação, não aprovar silenciosamente um catálogo incoerente. Nenhum motor de rotas/itinerários/metropolitanos foi alterado.
+
+**Validação nesta rodada:** 11 testes unitários do novo validador, executados localmente com `unittest` e `compileall` aprovados. Quatro cenários de integração no ZIP sintético foram acrescentados em `test_bh_v1_source_provenance.py`, mas esses quatro **ainda não foram executados neste ambiente**. A auditoria do ZIP municipal real completo permanece pendente.

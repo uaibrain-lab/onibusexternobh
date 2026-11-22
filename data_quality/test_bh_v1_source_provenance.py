@@ -196,6 +196,38 @@ class SourceProvenanceTests(unittest.TestCase):
         report = audit(self.root, "20261124", source_archive=self.zip, require_source_archive=True)
         self.assertIn("active_service_without_scheduled_trips",report["errors"])
 
+    def test_trip_stop_sequence_duplicate_blocks(self):
+        self.rows['stop_times.txt'][1]['stop_sequence'] = '1'
+        self.make()
+        self.assertIn('source_stop_sequence_not_increasing', self.audit()['errors'])
+
+    def test_trip_time_moves_backward_blocks(self):
+        self.rows['stop_times.txt'][1]['arrival_time'] = '23:30:00'
+        self.rows['stop_times.txt'][1]['departure_time'] = '23:30:00'
+        self.make()
+        self.assertIn('source_trip_times_not_monotonic', self.audit()['errors'])
+
+    def test_trip_with_only_one_stop_blocks(self):
+        self.rows['stop_times.txt'] = self.rows['stop_times.txt'][:1]
+        self.make()
+        self.assertIn('source_trips_with_fewer_than_two_stops', self.audit()['errors'])
+
+    def test_trip_disjoint_blocks_blocks(self):
+        self.rows['trips.txt'].append({
+            'trip_id':'T2', 'route_id':'R1', 'service_id':'W', 'trip_headsign':'Destino'
+        })
+        self.rows['stop_times.txt'].insert(1, {
+            'trip_id':'T2', 'stop_id':'S1', 'stop_sequence':'1',
+            'arrival_time':'23:55:00', 'departure_time':'23:55:00'
+        })
+        self.rows['stop_times.txt'].append({
+            'trip_id':'T2', 'stop_id':'S2', 'stop_sequence':'2',
+            'arrival_time':'24:20:00', 'departure_time':'24:20:00'
+        })
+        self.manifest['trips'] = 2
+        self.make()
+        self.assertIn('source_trip_noncontiguous_stop_times', self.audit()['errors'])
+
     def test_manifest_version_mismatch_blocks(self):
         self.manifest['gtfsVersion']='wrong'
         self.make()

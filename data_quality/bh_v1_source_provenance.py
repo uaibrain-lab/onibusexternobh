@@ -13,6 +13,7 @@ import io
 import json
 import math
 from pathlib import Path, PurePosixPath
+from data_quality.bh_v1_trip_sequence import TripSequenceAudit
 import re
 import zipfile
 
@@ -76,6 +77,7 @@ def audit_source_zip(catalog, archive):
               "archiveSha256": None, "registeredSha256": None, "archiveBytes": None,
               "routeCount": 0, "stopCount": 0, "tripCount": 0, "stopTimeRows": 0,
               "servicesWithScheduledTrips": [], "tripsWithoutStopTimes": 0,
+              "tripSequenceAudit": None,
               "licensedForRedistribution": "unverified", "scheduledNotRealtime": True}
     errors = result["errors"]
     try:
@@ -166,6 +168,7 @@ def audit_source_zip(catalog, archive):
                 errors.append("source_trip_missing_route_or_service")
 
             trip_ids_with_times = set()
+            sequence_audit = TripSequenceAudit(trips)
             for row in _read_rows(z, members["stop_times.txt"],
                                   ("trip_id", "stop_id", "stop_sequence", "arrival_time", "departure_time")):
                 result["stopTimeRows"] += 1
@@ -174,15 +177,19 @@ def audit_source_zip(catalog, archive):
                     break
                 trip_ids_with_times.add(row["trip_id"])
                 try:
-                    if int(row["stop_sequence"]) < 0:
+                    sequence = int(row["stop_sequence"])
+                    if sequence < 0:
                         raise ValueError("invalid stop sequence")
                     arrival = _parse_gtfs_clock(row["arrival_time"] or row["departure_time"])
                     departure = _parse_gtfs_clock(row["departure_time"] or row["arrival_time"])
                     if departure < arrival:
                         raise ValueError("departure before arrival")
+                    sequence_audit.add(row["trip_id"], sequence, arrival, departure)
                 except (ValueError, TypeError):
                     errors.append("source_stop_time_invalid")
                     break
+            result["tripSequenceAudit"] = sequence_audit.report()
+            errors.extend(result["tripSequenceAudit"]["errors"])
             result["tripsWithoutStopTimes"] = len(trips) - len(trip_ids_with_times)
             result["servicesWithScheduledTrips"] = sorted({trips[tid]["service_id"] for tid in trip_ids_with_times})
             if result["tripsWithoutStopTimes"]:
