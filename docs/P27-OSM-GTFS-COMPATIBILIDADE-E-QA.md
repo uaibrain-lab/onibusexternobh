@@ -245,3 +245,10 @@ site não foi atualizado. Não usar -ReutilizarBuild na P27.
 - Guarda `947b8def04fa0ea2548ebfbe2e32ac5082ef5542`: chamadas internas de `switchTab('rotas')` voltam a Pontos. Teste `9ce1a6ae0bc1f013cd5532350736d661ca32f955` protege o contrato V1.
 - Validação: CI novo pendente de confirmação; executar `node --test tests/test_unified_ui.cjs`, regressões de mapa/horários/metro/favoritos, build estático, HTTP e Playwright mobile. Não declarar V1 homologada antes desses gates; Android real ainda não verificado.
 - Próxima rodada: confirmar CI, verificar se há outras entradas de planejador em UI/links, testar GTFS municipal e cache offline, preparar preview gratuito sem deploy. Sem editar datasets/importadores do agente auxiliar, sem merge/deploy.
+
+## V1 municipal — Playwright touch targets, 22/11/2026
+
+- HEAD inicial `1e11ab3f40e84a22bbc0a4befd171c4c3b89c77e`; integração #45052175047 e P2 #45052177409 aprovados, Playwright #45052175164 falhou em 6 casos (desktop/Android 390/360) por incluir aba Rotas oculta nas métricas: altura zero era comparada ao mínimo de 44 px. Outros 9 passaram e 9 foram ignorados.
+- `009188e161df89d004fdc2823b4aa211640ecc8d`: `tests/browser-p15.spec.cjs` mede altura só de Pontos, Linhas e Metrô, mas continua exigindo Rotas oculta.
+- `ae1338445ce2b6e953afa1f9c94514a3dc853edd`: `tests/browser-p20-map-ui.spec.cjs` restringe cálculo de altura, sobreposição e largura às três abas visíveis, preservando checagem explícita da aba adiada.
+- Verificação isolada local Node: 3 asserções passaram sobre seleção de abas visíveis e altura mínima; não é execução Playwright. Gate obrigatório: conferir novo workflow P9 em desktop e Android emulados, integração/P2, depois Android físico e build/HTTP/GTFS municipal. Sem merge/deploy nem alteração de importadores/dados do agente auxiliar.
