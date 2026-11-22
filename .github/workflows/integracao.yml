@@ -81,6 +81,12 @@ jobs:
           assert result['timedTransferPairs']>0, 'Regressão: nenhuma baldeação temporal 9106/5106'
           assert result['feasibleStops']>0, 'Regressão: nenhuma parada de baldeação 9106/5106'
           print('P28_REFERENCE_TIMED_TRANSFERS_GATE_OK',result['timedTransferPairs'],result['feasibleStops'])
+          constrained=subprocess.check_output(cmd+['--origin-stop','14786682',
+                                                   '--destination-stop','14789497'],text=True)
+          payload=json.loads(constrained[:constrained.rfind(marker)])
+          assert payload['originDestinationConstrained'] is True
+          assert 0 <= payload['originDestinationConstrainedPairs'] <= payload['timedTransferPairs']
+          print('P28_REFERENCE_ORIGIN_DESTINATION_PAIRS',payload['originDestinationConstrainedPairs'])
           PY
           python scripts/audit_same_stop_transfers.py --first 9209 --second 51 --date 2026-11-17 --time 22:00 --hours 3
           python scripts/audit_same_stop_transfers.py --first 9209 --second 67 --date 2026-11-17 --time 22:00 --hours 3
