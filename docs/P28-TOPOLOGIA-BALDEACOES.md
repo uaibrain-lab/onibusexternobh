@@ -222,3 +222,10 @@ pendências anteriores e sem duplicar a automação existente.
 - `tests/test_p28_same_stop_transfers.py` cobre cinco estruturas inválidas e mantém um caso de catálogo válido.
 - Validação pré-publicação: seis checagens isoladas de estrutura Python executadas com sucesso. Checkout completo bloqueado por DNS; a validação isolada não substitui a suíte real. **Conferir CI do HEAD final antes de considerar homologado.**
 - Handoff: executar `python -m unittest discover -s tests -p 'test_p28_same_stop_transfers.py' -v`, verificar integração, P2 e Playwright. Priorizar diagnóstico real das alternativas pedestres 9106→5106 com ruas OSM e calendário GTFS; os 58 pares temporais de mesma parada não atendem às duas paradas públicas exatas investigadas. Não forçar itinerário, inventar ETA ou alterar produção.
+
+## P28 — Cronologia entre paradas (22/11/2026)
+
+- Código: `3aaeeb76718c8c754082d65169a202e821ddf658` (`scripts/audit_same_stop_transfers.py`). A auditoria deixa de contar eventos de viagens cujo horário de chegada em uma parada antecede a partida da parada anterior; não modifica o roteador nem cria ETA.
+- Teste: `73ca7a7702f3939a9d60a197d236ac66955c98af` (`tests/test_p28_same_stop_transfers.py`). Caso sintético de cronologia invertida deve produzir zero pares, preservando `endToEndJourneyVerified=false`.
+- Validação pré-publicação: quatro casos sintéticos da condição cronológica avaliados em JavaScript; **não equivale à execução da suíte Python**. Conferir GitHub Actions no HEAD deste documento e executar `python -m unittest discover -s tests -p 'test_p28_same_stop_transfers.py' -v` antes de homologar.
+- Handoff: primeiro conferir HEAD, commits concorrentes, CI e SHA dos arquivos; se CI falhar, corrigir antes de novas funcionalidades. Diagnosticar 9106→5106 com paradas alternativas e ruas OSM reais, sem assumir conexão ou ETA. Sem merge/deploy.
