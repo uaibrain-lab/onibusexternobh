@@ -50,6 +50,24 @@ def setup(root, bad_alight=False,bad_board=False, bad_origin_board=False,
             json.dump(rows,stream)
 
 class SameStopTransferAuditTests(unittest.TestCase):
+    def test_malformed_routing_index_fails_closed(self):
+        valid = {"files": {}, "services": {"S": {}},
+                 "exceptions": {"20261117": {"S": 1}}}
+        invalid = [[], None, {"files": {}, "services": {}, "exceptions": []},
+                   {"files": {}, "services": {"S": []}, "exceptions": {}},
+                   {"files": {}, "services": {}, "exceptions": {"20261117": []}}]
+        for index in invalid:
+            with self.subTest(index=index), tempfile.TemporaryDirectory() as root:
+                (Path(root) / "routing-index.json").write_text(
+                    json.dumps(index), encoding="utf-8")
+                with self.assertRaises(ValueError):
+                    module.audit(Path(root), "9106", "5106",
+                                 dt.date(2026, 11, 17), "22:00")
+        with tempfile.TemporaryDirectory() as root:
+            setup(root)
+            self.assertIsInstance(module.audit(Path(root), "9106", "5106",
+                                               dt.date(2026, 11, 17), "22:00"), dict)
+
     def test_feasible_scheduled_shared_stop_no_estimated_eta(self):
         with tempfile.TemporaryDirectory() as root:
             setup(root)
