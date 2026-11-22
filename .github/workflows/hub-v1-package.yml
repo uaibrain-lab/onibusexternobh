@@ -1,0 +1,89 @@
+name: Externo BH V1 - pacote municipal para Hub (sem deploy)
+
+on:
+  push:
+    branches:
+      - feat/hub-v1-municipal-package-qa-20261122
+    paths:
+      - .github/workflows/hub-v1-package.yml
+      - scripts/prepare_hub_v1.py
+      - scripts/build_static_site.py
+      - scripts/build_static_arrivals.py
+      - static/**
+      - catalog/**
+      - data_quality/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hub-v1-municipal-branch
+  cancel-in-progress: true
+
+jobs:
+  build-qa:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Testes V1 (somente municipal)
+        run: |
+          python -m compileall -q data_quality scripts/prepare_hub_v1.py
+          python -m unittest -q \
+            data_quality.test_bh_v1_release_gate \
+            data_quality.test_bh_v1_patterns \
+            data_quality.test_bh_v1_freshness \
+            data_quality.test_static_arrivals_reference \
+            data_quality.test_bh_v1_source_provenance \
+            data_quality.test_bh_v1_timetable_consistency \
+            data_quality.test_bh_v1_zip_timetable_equivalence \
+            data_quality.test_bh_v1_trip_sequence
+      - name: Build imutável e redução V1 (sem rotas/RMBH/GPS)
+        run: |
+          python scripts/build_static_site.py --output dist
+          python scripts/prepare_hub_v1.py dist/externo
+          test ! -e dist/externo/catalog/scan/index.json
+          test ! -e dist/externo/catalog/der-rmbh-411c-511c.json
+          test -s dist/externo/catalog/arrivals/ff.json.gz
+      - name: Comparar catálogo real, variantes e 256 shards
+        run: |
+          python -m data_quality.bh_v1_release_gate catalog \
+            --date "$(date -u +%Y%m%d)" --require-patterns \
+            --require-arrivals --arrivals-index dist/externo/catalog/arrivals/index.json
+      - name: Smoke HTTP local (não publica)
+        run: |
+          python -m http.server 8765 --bind 127.0.0.1 --directory dist >/tmp/hub-v1-http.log 2>&1 &
+          PID=$!
+          trap 'kill "$PID" 2>/dev/null || true' EXIT
+          sleep 2
+          curl -fsS http://127.0.0.1:8765/externo/ | grep -q 'data-app-mode="free-static"'
+          curl -fsS http://127.0.0.1:8765/externo/catalog/arrivals/index.json >/dev/null
+          curl -fsS http://127.0.0.1:8765/externo/catalog/metro.json >/dev/null
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8765/externo/catalog/scan/index.json)" = "404"
+          echo HUB_V1_HTTP_OK
+      - name: Publicar apenas artefato de homologação (não faz deploy)
+        uses: actions/upload-artifact@v4
+        with:
+          name: externo-hub-v1-municipal-sem-rotas
+          path: dist/externo/
+          compression-level: 0
+          retention-days: 7
+          if-no-files-found: error
+      - name: Validar ZIP municipal oficial atual contra o snapshot
+        run: |
+          curl --fail --location --retry 3 --retry-delay 8 \
+            --connect-timeout 20 --max-time 240 \
+            https://s3.amazonaws.com/mobilibus-uploads/gtfs/GTFSBHTRANS.zip \
+            -o /tmp/GTFSBHTRANS.zip
+          python -m data_quality.bh_v1_release_gate catalog \
+            --date "$(date -u +%Y%m%d)" \
+            --require-patterns --require-arrivals \
+            --arrivals-index dist/externo/catalog/arrivals/index.json \
+            --require-source-zip --source-zip /tmp/GTFSBHTRANS.zip
+          echo HUB_V1_SOURCE_GTFS_APPROVED
