@@ -4,7 +4,7 @@ const assert=require('node:assert/strict');
 const worker=import('../gps-worker/src/index.mjs');
 const predictions=import('../gps-worker/src/arrival-predictions.mjs');
 const NOW=1795120000;
-function v(num){let n=BigInt(num);const out=[];while(n>127n){out.push(Number((n&127n)|128n));n>>=7n;}out.push(Number(n));return out;}
+function v(num){let n=BigInt(num);if(n<0n)n=BigInt.asUintN(64,n);const out=[];while(n>127n){out.push(Number((n&127n)|128n));n>>=7n;}out.push(Number(n));return out;}
 function f(n,p){return [...v(n*8+2),...v(p.length),...p];}
 function u(n,value){return [...v(n*8),...v(value)];}
 function s(n,text){return f(n,[...Buffer.from(text)]);}
