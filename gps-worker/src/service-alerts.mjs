@@ -139,9 +139,14 @@ export function parseServiceAlerts(buffer,{routes=[],stopId=null,nowSeconds=Math
     if(item.periods.length&&!item.periods.some(p=>
       (p.start===null||p.start<=nowSeconds)&&
       (p.end===null||p.end>=nowSeconds)))continue;
-    const affected=item.entities.filter(e=>
-      (e.routeId&&wanted.has(e.routeId))||
-      (e.stopId&&stopId!==null&&e.stopId===String(stopId)));
+    // GTFS-RT EntitySelector combina campos com AND: rota X no ponto Y
+    // não deve avisar outros pontos da rota X.
+    const affected=item.entities.filter(e=>{
+      if(!e.routeId&&!e.stopId)return false;
+      if(e.routeId&&!wanted.has(e.routeId))return false;
+      if(e.stopId&&(stopId===null||e.stopId!==String(stopId)))return false;
+      return true;
+    });
     if(!affected.length)continue;
     const id=String(item.id||'');
     if(id&&seen.has(id))continue;
