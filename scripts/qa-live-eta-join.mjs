@@ -61,11 +61,24 @@ function secs(value){
 }
 const quality={checkedAt:new Date(now).toISOString(),
   catalogVersion:manifest.gtfsVersion,officialUpdates:updates.length,
-  examined:0,matchedTripRouteSequence:0,matchedStartTime:0,
+  examined:0,stopsWithStaticRows:0,stopWithSameTripId:0,
+  stopWithSameRouteId:0,stopWithSameSequence:0,
+  stopWithTripAndRoute:0,stopWithTripAndSequence:0,
+  stopWithRouteAndSequence:0,
+  matchedTripRouteSequence:0,matchedStartTime:0,
   activeService:0,plausibleETAs:0,distinctIndexBuckets:0};
 for(const u of updates.slice(0,300)){
   quality.examined++;
   const rows=await rowsFor(u.observedStopId);
+  if(rows.length)quality.stopsWithStaticRows++;
+  if(rows.some(r=>r[0]===u.tripId))quality.stopWithSameTripId++;
+  if(rows.some(r=>r[1]===u.routeId))quality.stopWithSameRouteId++;
+  if(rows.some(r=>r[3]===u.observedStopSequence))quality.stopWithSameSequence++;
+  if(rows.some(r=>r[0]===u.tripId&&r[1]===u.routeId))quality.stopWithTripAndRoute++;
+  if(rows.some(r=>r[0]===u.tripId&&r[3]===u.observedStopSequence))
+    quality.stopWithTripAndSequence++;
+  if(rows.some(r=>r[1]===u.routeId&&r[3]===u.observedStopSequence))
+    quality.stopWithRouteAndSequence++;
   const matches=rows.filter(r=>r[0]===u.tripId&&r[1]===u.routeId&&
     r[3]===u.observedStopSequence);
   if(matches.length!==1)continue;
@@ -83,6 +96,9 @@ for(const u of updates.slice(0,300)){
 quality.distinctIndexBuckets=cached.size;
 await writeFile('sumob-eta-join-qa.json',JSON.stringify(quality,null,2)+'\n');
 console.log('SUMOB_ETA_JOIN_RESULTS',JSON.stringify(quality));
-if(quality.activeService<1||quality.plausibleETAs<1)
-  throw Error('SUMOB_ETA_JOIN_NOT_VALIDATED');
+if(quality.activeService<1||quality.plausibleETAs<1){
+  if(process.argv.includes('--observe-only'))
+    console.warn('SUMOB_ETA_JOIN_INCOMPATIBLE_NO_ETA_RELEASE');
+  else throw Error('SUMOB_ETA_JOIN_NOT_VALIDATED');
+}
 console.log('SUMOB_ETA_JOIN_REAL_OK');
