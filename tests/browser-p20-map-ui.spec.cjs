@@ -21,15 +21,16 @@ test('Mapa inicial sai de Carregando mapa mesmo sem tiles OSM',async({page})=>{
   expect(sizes.height).toBeGreaterThan(300);
   expect(errors).toEqual([]);
 });
-test('Quatro abas, botões e avisos não se sobrepõem',async({page},info)=>{
+test('Três abas V1, botões e avisos não se sobrepõem',async({page},info)=>{
   const errors=[];
   page.on('pageerror',error=>errors.push(error.message));
   await page.route('https://tile.openstreetmap.org/**',route=>route.abort('failed'));
   await page.goto('/externo/',{waitUntil:'domcontentloaded'});
   await expect(page.locator('#map')).toHaveAttribute('data-render-status','ready',{timeout:15000});
   await expect(page.locator('#mapToast')).not.toHaveText(/Carregando mapa/i,{timeout:15000});
+  await expect(page.locator('#quick-rotas')).toBeHidden();
   const measures=[];
-  for(const tab of ['pontos','linhas','metro','rotas']){
+  for(const tab of ['pontos','linhas','metro']){
     await page.locator('#quick-'+tab).click();
     await expect(page.locator('#'+tab+'Pane')).toBeVisible();
     const data=await page.evaluate(()=>{
