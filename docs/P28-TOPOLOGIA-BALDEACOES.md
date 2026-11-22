@@ -204,3 +204,12 @@ pendências anteriores e sem duplicar a automação existente.
 - Validação local isolada equivalente em Python: `P28_INDEX_SIZE_GATE_OK 2/2`; **não** equivale à suíte integrada. Verificar CI do HEAD e corrigir qualquer regressão antes de novas alterações.
 - Bloqueio funcional permanece: 9106→5106 apresenta 58 pares temporais em seis paradas, mas zero pares restritos aos IDs de origem/destino de referência. Investigar acessos pedestres e corredores alternativos com GTFS e OSM reais; não fabricar rota nem ETA.
 - Handoff: conferir Actions após o commit documental, reconsultar HEAD e SHA antes de novas escritas. Sem merge, deploy, custos pagos ou mudanças em outros repositórios.
+
+
+## Correção de regressão CI — 22/11/2026, 01h BRT
+
+- HEAD anterior `e596d333fd363a127adb8d8fd43e3e74d241b210`: integração #44978837744 e P2 #44978842336 **falharam** (não homologado). Os logs mostram 16 erros e uma falha no auditor P28, com `read_json()` retornando `None` para índice válido.
+- Causa confirmada em `scripts/audit_same_stop_transfers.py`: a edição do limite de 32 MiB inseriu sequências literais `\\n` dentro de um comentário Python. O comentário absorvia o bloco inteiro, impedindo a leitura do JSON não comprimido.
+- Correção `ed0af6deff279d27b1f47fd9f62d1fde5369ef8a`: restauradas quebras de linha reais no bloco `with path.open('rb')`, preservando o limite e a exceção para arquivo excessivo. Nenhuma alteração em GTFS, horários, OSM, GPS ou planejador.
+- Verificação necessária: confirmar integração e P2 do HEAD corrigido e resultados do teste `test_uncompressed_routing_index_is_size_bounded`; não considerar aprovado antes de CI. Prosseguir somente após o gate verde.
+- Sem merge/deploy e sem alterações fora deste repositório.
