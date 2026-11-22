@@ -149,6 +149,13 @@ def audit(catalog: Path, first: str, second: str, date: dt.date,
         raise ValueError("Identificador público GTFS inválido")
     catalog=Path(catalog)
     index=read_json(catalog/"routing-index.json")
+    if (not isinstance(index, dict) or
+            any(not isinstance(index.get(key), dict) for key in ("files", "services", "exceptions"))):
+        raise ValueError("Índice GTFS estruturalmente inválido")
+    if any(not isinstance(service, dict) for service in index["services"].values()):
+        raise ValueError("Serviço GTFS inválido")
+    if any(not isinstance(exceptions, dict) for exceptions in index["exceptions"].values()):
+        raise ValueError("Exceções GTFS inválidas")
     a,b=read_line(catalog,index,first),read_line(catalog,index,second)
     result={"audit":"SAME_GTFS_STOP_SCHEDULED_TRANSFERS_ONLY",
         "first":first,"second":second,"serviceDate":date.isoformat(),
