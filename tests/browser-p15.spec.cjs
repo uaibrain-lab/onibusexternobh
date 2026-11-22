@@ -15,10 +15,11 @@ test('UI integrada, GPS opcional desligado e métricas reais de navegador',async
   const toggle=page.locator('#sheet-toggle');
   if(await toggle.isVisible())await toggle.click();
   await expect(page.locator('#nearbyStops .row-item').first()).toBeVisible({timeout:25000});
-  for(const pane of ['pontos','linhas','metro','rotas']){
+  for(const pane of ['pontos','linhas','metro']){
     await page.locator('#quick-'+pane).click();
     await expect(page.locator('#'+pane+'Pane')).toBeVisible();
   }
+  await expect(page.locator('#quick-rotas')).toBeHidden();
   const result=await page.evaluate(()=>{
     const tabHeights=['pontos','linhas','metro','rotas']
       .map(key=>Math.round(document.querySelector('#quick-'+key).getBoundingClientRect().height));
