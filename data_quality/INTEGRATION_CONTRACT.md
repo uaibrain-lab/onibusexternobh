@@ -34,3 +34,9 @@ O segundo comando apenas demonstra a interface; a data precisa ser escolhida con
 4. A integração do contrato no roteador pertence ao agente principal; esta branch não edita arquivos do principal.
 
 **Critério de aprovação futuro:** testes sintéticos verdes + checksum da fonte oficial + licença/validade identificadas + ao menos uma jornada completa real por fonte, com todas as paradas e horários comparados ao GTFS/DER de origem, sem transferências inferidas.
+
+## Interface adicional DER RMBH (homologação 22/11/2026)
+
+`der_rmbh_reference.read_itineraries(path)` e `read_departures(path)` produzem apenas linhas brutas e saída de auditoria (`coverage(...)`). **Não são uma fonte GTFS, um roteador nem uma lista de chegadas por parada.** O agente principal não deve converter `clockSeconds` em horário para embarque intermediário: representa exclusivamente `HORA_PARTIDA` do quadro, sem definição oficial de parada inicial ou dia civil. Preservar `COD_LINHA + NUM_LINHA`, `TIPO_DIA`, `NOME_QUADRO` e sufixos sem equivalência automática para `route_id/trip_id/stop_id`.
+
+Resumo rastreável, limites, hashes e comandos: [DER_RMBH_AUDIT_20261122.md](DER_RMBH_AUDIT_20261122.md). Ambos os TXT permanecem somente no ambiente de testes; nenhum arquivo bruto foi incluído no PR. A publicação dos dados e a integração ao planejador continuam bloqueadas pela ausência de licença/validade verificada, geocodificação, calendários equivalentes e horários de passagem por parada.
