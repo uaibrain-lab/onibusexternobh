@@ -75,7 +75,7 @@ const WalkGraph=(()=>{
       for(const item of points){
         if(!Number.isInteger(item.index)||!Array.isArray(item.coords))continue;
         const snap=this.nearest(item.coords);
-        if(!snap)continue; // no verified pedestrian access, never fabricate
+        if(!snap||root[1]+snap[1]>limitMeters)continue; // inaccessible within budget
         if(!targets.has(snap[0]))targets.set(snap[0],[]);
         targets.get(snap[0]).push([item.index,snap[1]]);
         targetCount++;
