@@ -68,7 +68,7 @@ def inspect(capabilities, replies, expected, now=None):
 
 def probe(catalog,destination):
     routes=json.loads((Path(catalog)/'routes.json').read_text(encoding='utf8'))
-    valid=sorted({r.get('code','') for r in routes if
+    valid=sorted({str(r.get('code','')) for r in routes if
                   isinstance(r,dict) and re.fullmatch(r'[A-Za-z0-9_.:-]{1,70}',str(r.get('code','')))},key=str)
     if len(valid)<100:raise ValueError('GPS_ROUTE_CATALOG_INCOMPLETE')
     # 5 bounded calls, sampling routes across the whole current GTFS edition.

@@ -38,7 +38,7 @@ jobs:
       - name: Testes V1 (somente municipal)
         run: |
           python -m compileall -q data_quality scripts/prepare_hub_v1.py scripts/rebuild_hub_v1_catalog.py scripts/probe_hub_v1_gps.py
-          python -m unittest -q tests.test_hub_v1_gps_probe
+          python -m unittest discover -s tests -p test_hub_v1_gps_probe.py -q
           node --test tests/test_gtfs_realtime_worker.cjs tests/test_gtfs_realtime_adapter.cjs tests/test_live_gps_adapter.cjs
           python -m unittest -q \
             data_quality.test_bh_v1_release_gate \
