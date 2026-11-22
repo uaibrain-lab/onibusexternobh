@@ -31,3 +31,19 @@ test('road path length must be inside configured walk budget',()=>{
  const g=createGraph();
  assert.equal(g.route([-19.9000,-43.9000],[-19.9002,-43.9000],15),null);
 });
+
+test('skips pedestrian graph search when no stop snaps to OSM',()=>{
+ const g=createGraph();
+ // A graph traversal would access adjacency; empty/unsnapped targets must not.
+ g.adj[0]=new Proxy(g.adj[0],{get(){throw Error('unexpected OSM traversal')}});
+ assert.equal(g.distancesToStops([-19.9,-43.9],[],2500).size,0);
+ assert.equal(g.distancesToStops([-19.9,-43.9],
+   [{index:7,coords:[-19.95,-43.95]}],2500).size,0);
+});
+test('still returns walking distance for a snapped candidate',()=>{
+ const g=createGraph();
+ const found=g.distancesToStops([-19.9,-43.9],
+   [{index:7,coords:[-19.9001,-43.9]}],2500);
+ assert.ok(found.has(7));
+ assert.equal(found.get(7).meters,11);
+});
