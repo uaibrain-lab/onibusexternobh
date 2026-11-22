@@ -59,3 +59,14 @@ test('skips snapped targets when access alone exceeds walking budget',()=>{
  const found=g.distancesToStops(offset,[{index:11,coords:offset}],70);
  assert.equal(found.size,0); // two access legs already exceed 70 m
 });
+
+test('route avoids A-star when both OSM access legs exceed budget',()=>{
+ const g=createGraph();
+ const from=[-19.89964,-43.9],to=[-19.9001,-43.90056];
+ const a=g.nearest(from),b=g.nearest(to);
+ assert.ok(a&&b&&a[0]!==b[0]&&a[1]+b[1]>70);
+ g.adj[a[0]]=new Proxy(g.adj[a[0]],{
+   get(){throw Error('unnecessary A-star traversal')}
+ });
+ assert.equal(g.route(from,to,70),null);
+});
