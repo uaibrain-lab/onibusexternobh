@@ -1,6 +1,7 @@
 import {parseVehiclePositions} from './gtfs-rt.mjs';
 import {parseTripUpdates} from './gtfs-rt-trip-updates.mjs';
 import {officialStopPredictions} from './arrival-predictions.mjs';
+import {parseServiceAlerts} from './service-alerts.mjs';
 /* Externo BH GPS reader: independent Cloudflare Workers Free candidate.
  * No KV, D1, secret, scheduled task, paid plan, private geolocation or routing.
  * Disabled at the client until public PBH access and Free quotas are verified.
@@ -23,6 +24,7 @@ const REALTIME_URL='http://realtime4.mobilibus.com/web/4ch6j/vehicle-positions?a
 // SUMOB/PBH public CC BY 4.0 feed published at dados.pbh.gov.br.
 // Caller can NEVER supply the upstream host or feed credentials.
 const TRIP_UPDATES_URL='http://realtime4.mobilibus.com/web/4ch6j/trip-updates?accesskey=982a57efd77a9462bf1665696fb25984';
+const SERVICE_ALERTS_URL='http://realtime4.mobilibus.com/web/4ch6j/alerts?accesskey=982a57efd77a9462bf1665696fb25984';
 const RT_MAX_BODY=8*1024*1024;
 const API_VERSION='p24-gtfs-rt-geocode-20261117-1';
 const MAX_BODY=12*1024*1024;
@@ -106,6 +108,89 @@ async function readFeed(source,{fetchFn,cache,ctx,now,requestUrl}){
     else await store;
   }
   return body;
+}
+async function readServiceAlerts({fetchFn,cache,ctx,requestUrl}){
+  const key=new Request(new URL('/__gps_cache/raw/SERVICE_ALERTS',requestUrl));
+  if(cache){
+    try{
+      const hit=await cache.match(key);
+      if(hit?.ok){
+        const bytes=await hit.arrayBuffer();
+        if(bytes.byteLength>=5&&bytes.byteLength<=RT_MAX_BODY)return bytes;
+      }
+    }catch{/* cache opcional */}
+  }
+  const response=await fetchFn(SERVICE_ALERTS_URL,{
+    headers:{Accept:'application/x-protobuf,application/octet-stream'},
+    redirect:'manual',
+    signal:typeof AbortSignal.timeout==='function'?AbortSignal.timeout(9000):undefined
+  });
+  if(!response.ok||response.status>=300)throw Error('ALERTS_HTTP_'+response.status);
+  if(Number(response.headers.get('content-length')||0)>RT_MAX_BODY)
+    throw Error('GTFS_RT_ALERTS_TOO_LARGE');
+  const body=await response.arrayBuffer();
+  if(body.byteLength<5||body.byteLength>RT_MAX_BODY)throw Error('GTFS_RT_ALERTS_TOO_LARGE');
+  if(cache){
+    const put=cache.put(key,new Response(body,{headers:{
+      'Content-Type':'application/octet-stream',
+      'Cache-Control':'public, max-age='+MIN_CACHE_SECONDS
+    }})).catch(()=>{});
+    if(ctx?.waitUntil)ctx.waitUntil(put);else await put;
+  }
+  return body;
+}
+async function alertsRequest(url,origin,{fetchFn,cache,ctx,now}){
+  const stop=String(url.searchParams.get('stop')||'');
+  const raw=String(url.searchParams.get('routes')||'');
+  const routes=raw?raw.split(','):[];
+  if([...url.searchParams.keys()].some(k=>k!=='stop'&&k!=='routes')||
+     url.searchParams.getAll('stop').length>1||
+     url.searchParams.getAll('routes').length>1||
+     (!stop&&!routes.length)||(stop&&!/^[0-9]{1,20}$/.test(stop))||
+     routes.length>25||routes.some(r=>!/^[A-Za-z0-9_.:-]{1,70}$/.test(r))||
+     new Set(routes).size!==routes.length)
+    return reply({available:false,error:'INVALID_REQUEST'},400,origin);
+  const key=new Request(new URL('/__gps_cache/filtered/alerts?stop='+encodeURIComponent(stop)+
+    '&routes='+encodeURIComponent([...routes].sort().join(',')),url));
+  if(cache){
+    try{
+      const hit=await cache.match(key);
+      if(hit?.ok){
+        const data=await hit.json();
+        const age=now-Date.parse(data.fetchedAt||'');
+        if(data?.available===true&&age>=0&&age<=30000&&
+           Array.isArray(data.items))return reply(data,200,origin);
+      }
+    }catch{/* cache opcional */}
+  }
+  try{
+    const raw=await readServiceAlerts({fetchFn,cache,ctx,requestUrl:url.href});
+    const feed=parseServiceAlerts(raw,{
+      stopId:stop||null,routes,nowSeconds:Math.floor(now/1000)
+    });
+    const data={available:true,source:'SUMOB_GTFS_RT_ALERTS',
+      fetchedAt:new Date(now).toISOString(),
+      feedTimestamp:new Date(feed.feedTimestamp*1000).toISOString(),
+      items:feed.alerts,attribution:'Superintendência de Mobilidade Urbana de Belo Horizonte (SUMOB)',
+      license:'CC BY 4.0'};
+    if(cache){
+      const put=cache.put(key,new Response(JSON.stringify(data),{headers:{
+        'Content-Type':'application/json',
+        'Cache-Control':'public, max-age='+MIN_CACHE_SECONDS
+      }})).catch(()=>{});
+      if(ctx?.waitUntil)ctx.waitUntil(put);else await put;
+    }
+    return reply(data,200,origin);
+  }catch(error){
+    const msg=String(error?.message||'');
+    const reason=/^ALERTS_HTTP_[0-9]{3}$/.test(msg)?'UPSTREAM_HTTP':
+      msg==='GTFS_RT_ALERTS_TOO_LARGE'?'FEED_TOO_LARGE':
+      msg==='GTFS_RT_ALERTS_INVALID'?'FEED_INVALID_OR_STALE':
+      error?.name==='AbortError'||error?.name==='TimeoutError'?'UPSTREAM_TIMEOUT':
+      'SOURCE_UNAVAILABLE';
+    return reply({available:false,error:'ALERTS_UNAVAILABLE',reason,
+      source:'SUMOB_GTFS_RT_ALERTS'},503,origin);
+  }
 }
 async function readTripUpdates({fetchFn,cache,ctx,requestUrl}){
   const key=new Request(new URL('/__gps_cache/raw/TRIP_UPDATES',requestUrl));
@@ -329,13 +414,15 @@ export async function handleGpsRequest(request,{fetchFn=fetch,cache=globalThis.c
   if(url.pathname==='/api/gps/capabilities')
     return reply({service:'Externo BH GPS',apiVersion:API_VERSION,
       supportedSources:['CONVENCIONAL','SUPLEMENTAR','GTFS_RT'],
-      geocodingSupported:true,tripUpdatesSupported:true,
+      geocodingSupported:true,tripUpdatesSupported:true,serviceAlertsSupported:true,
       tripUpdatesEndpoint:'/api/arrivals?stop=14791950',
       dataSourceVerified:false},200,origin);
   if(url.pathname==='/api/geocode')
     return geocodeRequest(url,origin,{fetchFn,cache,ctx});
   if(url.pathname==='/api/arrivals')
     return arrivalRequest(url,origin,{fetchFn,cache,ctx,now});
+  if(url.pathname==='/api/alerts')
+    return alertsRequest(url,origin,{fetchFn,cache,ctx,now});
   if(url.pathname!=='/api/gps')return reply({available:false,error:'NOT_FOUND'},404,origin);
   const source=url.searchParams.get('source');
   const rt=source==='GTFS_RT';
