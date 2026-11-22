@@ -161,7 +161,7 @@ const WalkGraph=(()=>{
     }
     route(from,to,limitMeters=2500){
       const a=this.nearest(from),b=this.nearest(to);
-      if(!a||!b)return null;
+      if(!a||!b||a[1]+b[1]>limitMeters)return null;
       if(a[0]===b[0]){
         const meters=a[1]+b[1];
         return meters<=limitMeters?{
