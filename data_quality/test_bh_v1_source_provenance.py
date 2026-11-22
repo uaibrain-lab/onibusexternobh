@@ -155,6 +155,9 @@ class SourceProvenanceTests(unittest.TestCase):
     def test_overnight_time_supported(self):
         self.rows['stop_times.txt'][0]['arrival_time']='25:30:00'
         self.rows['stop_times.txt'][0]['departure_time']='25:30:00'
+        # A segunda parada deve ocorrer depois da partida da primeira.
+        self.rows['stop_times.txt'][1]['arrival_time']='25:40:00'
+        self.rows['stop_times.txt'][1]['departure_time']='25:40:00'
         self.make()
         self.assertEqual(self.audit()['status'],'pass')
 
