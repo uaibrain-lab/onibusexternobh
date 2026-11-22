@@ -66,6 +66,43 @@ jobs:
             --date "$(date -u +%Y%m%d)" --require-patterns \
             --require-arrivals --arrivals-index dist/externo/catalog/arrivals/index.json \
             --require-source-zip --source-zip /tmp/GTFSBHTRANS.zip
+      - name: Registrar procedência aprovada dentro do artefato (não é assinatura digital)
+        run: |
+          python - <<'PY'
+          import datetime
+          import hashlib
+          import json
+          from pathlib import Path
+          from zoneinfo import ZoneInfo
+          root=Path('dist/externo')
+          cat=root/'catalog'
+          manifest=json.loads((cat/'manifest.json').read_text(encoding='utf8'))
+          index=json.loads((cat/'arrivals/index.json').read_text(encoding='utf8'))
+          build=json.loads((root/'hub-v1-build.json').read_text(encoding='utf8'))
+          z=Path('/tmp/GTFSBHTRANS.zip')
+          h=hashlib.sha256()
+          with z.open('rb') as stream:
+              for block in iter(lambda:stream.read(1024*1024),b''):h.update(block)
+          recorded=Path('catalog/source-gtfs.sha256').read_text(encoding='ascii').strip()
+          assert h.hexdigest()==recorded
+          assert manifest['gtfsVersion']==build['gtfsVersion']==index['version']
+          assert manifest['feedEndDate']==build['validThrough']==index['validThrough']
+          qa={
+            'schema':1,'status':'passed','scope':'municipal-bh-and-metro',
+            'sourceSha256':recorded,
+            'validatedServiceDate':datetime.datetime.now(
+                ZoneInfo('America/Sao_Paulo')).strftime('%Y%m%d'),
+            'gtfsVersion':manifest['gtfsVersion'],
+            'validThrough':manifest['feedEndDate'],
+            'routes':manifest['routes'],
+            'scheduledStops':index['stopCount'],'shards':256,
+            'routingEnabled':False,'metropolitanEnabled':False,'gpsEnabled':False,
+            'attestation':'CI gate passed; not cryptographically signed; no deployment'
+          }
+          (root/'hub-v1-qa.json').write_text(
+              json.dumps(qa,ensure_ascii=False,indent=2)+'\n',encoding='utf8')
+          print('HUB_V1_QA_ATTESTATION_STAGED',qa['sourceSha256'],qa['gtfsVersion'])
+          PY
       - name: Smoke HTTP local (não publica)
         run: |
           python -m http.server 8765 --bind 127.0.0.1 --directory dist >/tmp/hub-v1-http.log 2>&1 &
