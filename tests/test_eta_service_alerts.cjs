@@ -41,6 +41,18 @@ test('alertas vencidos, não pertinentes, deletados ou antigos não aparecem',as
     assert.equal(parseServiceAlerts(data,opts).alerts.length,0);
   assert.throws(()=>parseServiceAlerts(wire({bad:true}),opts),/INVALID/);
 });
+test('seletores combinados rota e ponto não geram alerta fora do contexto',async()=>{
+  const {parseServiceAlerts}=await alerts;
+  const data=wire({route:'5102',stop:'14791950'});
+  assert.equal(parseServiceAlerts(data,{
+    stopId:'14791950',routes:['5102'],nowSeconds:NOW}).alerts.length,1);
+  assert.equal(parseServiceAlerts(data,{
+    stopId:'14791950',routes:['9106'],nowSeconds:NOW}).alerts.length,0);
+  assert.equal(parseServiceAlerts(data,{
+    stopId:'14799999',routes:['5102'],nowSeconds:NOW}).alerts.length,0);
+  assert.equal(parseServiceAlerts(data,{
+    routes:['5102'],nowSeconds:NOW}).alerts.length,0);
+});
 test('worker limita a origem e entrega alertas oficiais sem intermediários pagos',async()=>{
   const {handleGpsRequest}=await worker;
   const req=new Request('https://externo-bh-gps-free.hubufmg.workers.dev/api/alerts?stop=14791950&routes=5102',
