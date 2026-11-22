@@ -173,3 +173,24 @@ test('consulta de atrasos proíbe seleção de feed externo, rotas duplicadas e 
       wire({delayOnly:true,withoutSequence:true}))});
   assert.deepEqual((await noSeq.json()).relativeUpdates,[]);
 });
+
+test('250 observações são distribuídas entre linhas; linha minoritária não desaparece',async()=>{
+  const {officialTripDelays}=await predictions;
+  const make=(route,n)=>({
+    trip:{tripId:route+'-trip-'+n,routeId:route,
+      startDate:'20261119',startTime:'19:00:00'},
+    timestamp:NOW-10,
+    stopTimeUpdate:[{stopId:'14791950',stopSequence:12,
+      arrival:{delay:60}}]
+  });
+  const feed={feedTimestamp:NOW,updates:[
+    ...Array.from({length:270},(_,n)=>make('51',n)),
+    ...Array.from({length:10},(_,n)=>make('52',n))
+  ]};
+  const result=officialTripDelays(feed,['51','52'],NOW);
+  assert.equal(result.length,250);
+  assert.equal(result.filter(item=>item.routeId==='52').length,10,
+    'Linha com poucos ônibus precisa continuar representada');
+  assert.equal(result.filter(item=>item.routeId==='51').length,240);
+  assert.deepEqual(officialTripDelays(feed,['999'],NOW),[]);
+});
