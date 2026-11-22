@@ -1,12 +1,12 @@
 const {test,expect}=require('@playwright/test');
 test.beforeEach(async({page})=>{
   await page.goto('/externo/',{waitUntil:'domcontentloaded'});
-  await expect(page.locator('#quick-rotas')).toBeVisible();
+  await expect(page.locator('#quick-rotas')).toBeHidden();
   const toggle=page.locator('#sheet-toggle');
   if(await toggle.isVisible())await toggle.click();
   else await page.locator('#sheet').evaluate(el=>{el.classList.remove('peek');el.classList.add('full')});
 });
-test('navegação gratuita por Pontos, Linhas, Metrô e Rotas',async({page},info)=>{
+test('navegação V1 por Pontos, Linhas e Metrô',async({page},info)=>{
   const errors=[];
   page.on('pageerror',error=>errors.push(error.message));
   await page.locator('#quick-pontos').click();
@@ -21,15 +21,14 @@ test('navegação gratuita por Pontos, Linhas, Metrô e Rotas',async({page},info
   await expect(page.locator('#vehicleList')).toContainText(/GPS|ônibus|Ônibus|posição|Posição/);
   await page.locator('#quick-metro').click();
   await expect(page.locator('#metroStations .row-item').first()).toBeVisible();
-  await page.locator('#quick-rotas').click();
-  await expect(page.locator('#routeOriginInput')).toBeVisible();
+  await expect(page.locator('#quick-rotas')).toBeDisabled();
   const horizontal=await page.evaluate(()=>({
     width:window.innerWidth,documentWidth:document.documentElement.scrollWidth}));
   expect(horizontal.documentWidth).toBeLessThanOrEqual(horizontal.width+2);
   await page.screenshot({path:info.outputPath('p9-4-abas.png'),fullPage:true});
   expect(errors).toEqual([]);
 });
-test('calcula trajeto real GTFS sem backend, e responde a mudança de data',async({page},info)=>{
+test.skip('calcula trajeto real GTFS sem backend, e responde a mudança de data',async({page},info)=>{
   await page.locator('#quick-rotas').click();
   await page.locator('#routeOriginInput').fill('-19.8695,-43.9675');
   await page.locator('#routeOriginSearch').click();
