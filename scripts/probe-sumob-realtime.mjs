@@ -38,6 +38,10 @@ async function probe(kind,upstream){
         sourceEntities:parsed.sourceEntities,freshTripUpdates:parsed.updates.length,
         withAbsoluteStopTime:parsed.updates.filter(u=>u.stopTimeUpdate?.some(st=>
           Number.isSafeInteger(st.arrival?.time)||Number.isSafeInteger(st.departure?.time))).length,
+        withStopDelay:parsed.updates.filter(u=>u.stopTimeUpdate?.some(st=>
+          Number.isSafeInteger(st.arrival?.delay)||Number.isSafeInteger(st.departure?.delay))).length,
+        withTripDelay:parsed.updates.filter(u=>Number.isSafeInteger(u.delay)).length,
+        withoutTripTimestamp:parsed.updates.filter(u=>u.timestamp===undefined).length,
         withExactStopId:parsed.updates.filter(u=>u.stopTimeUpdate?.some(st=>st.stopId)).length});
     }else if(kind==='serviceAlerts'){
       const parsed=parseServiceAlerts(data,{routes:[],nowSeconds:Math.floor(now/1000)});
