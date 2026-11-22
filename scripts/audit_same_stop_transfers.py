@@ -96,6 +96,19 @@ def event_stream(trips, index, date, seconds_start, seconds_end, first, required
                 arrive, depart = row[1:3]
                 valid.append(type(arrive) is int and type(depart) is int and
                              0 <= arrive <= depart < 48*3600)
+            # A GTFS leg cannot travel backwards in scheduled time between
+            # consecutive stops. Ignore malformed trips rather than reporting
+            # impossible transfers from inconsistent stop_times.
+            previous_departure = None
+            chronological = True
+            for pos, row in enumerate(stops):
+                if not valid[pos] or (previous_departure is not None and
+                                      row[1] < previous_departure):
+                    chronological = False
+                    break
+                previous_departure = row[2]
+            if not chronological:
+                continue
             eligible = []
             if first:
                 earliest_board = None
