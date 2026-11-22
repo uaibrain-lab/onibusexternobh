@@ -1,7 +1,7 @@
 import {parseVehiclePositions} from './gtfs-rt.mjs';
 import {SUMOB_FEEDS} from './sumob-feeds.mjs';
 import {parseTripUpdates} from './gtfs-rt-trip-updates.mjs';
-import {officialStopPredictions} from './arrival-predictions.mjs';
+import {officialStopPredictions,officialTripDelays} from './arrival-predictions.mjs';
 import {parseServiceAlerts} from './service-alerts.mjs';
 /* Externo BH GPS reader: independent Cloudflare Workers Free candidate.
  * No KV, D1, secret, scheduled task, paid plan, private geolocation or routing.
@@ -226,11 +226,18 @@ async function readTripUpdates({fetchFn,cache,ctx,requestUrl}){
 }
 async function arrivalRequest(url,origin,{fetchFn,cache,ctx,now}){
   const stop=url.searchParams.get('stop');
+  const rawRoutes=String(url.searchParams.get('routes')||'');
+  const routes=rawRoutes?rawRoutes.split(','):[];
   if(url.searchParams.getAll('stop').length!==1||
-     [...url.searchParams.keys()].some(k=>k!=='stop')||
-     !/^[0-9]{1,20}$/.test(String(stop||'')))
-    return reply({available:false,error:'INVALID_STOP'},400,origin);
-  const key=new Request(new URL('/__gps_cache/filtered/arrivals/'+stop,url));
+     url.searchParams.getAll('routes').length>1||
+     [...url.searchParams.keys()].some(k=>k!=='stop'&&k!=='routes')||
+     !/^[0-9]{1,20}$/.test(String(stop||''))||
+     routes.length>25||new Set(routes).size!==routes.length||
+     routes.some(r=>!/^[A-Za-z0-9_.:-]{1,70}$/.test(r)))
+    return reply({available:false,error:'INVALID_STOP_OR_ROUTES'},400,origin);
+  const sortedRoutes=[...routes].sort();
+  const key=new Request(new URL('/__gps_cache/filtered/arrivals/'+stop+
+    '?routes='+encodeURIComponent(sortedRoutes.join(',')),url));
   if(cache){
     try{
       const hit=await cache.match(key);
@@ -238,7 +245,8 @@ async function arrivalRequest(url,origin,{fetchFn,cache,ctx,now}){
         const data=await hit.json();
         if(data?.available===true&&data.stopId===stop&&
            now-Date.parse(data.fetchedAt||'')<30000&&
-           now>=Date.parse(data.fetchedAt||'')&&Array.isArray(data.items))
+           now>=Date.parse(data.fetchedAt||'')&&Array.isArray(data.items)&&
+           (routes.length===0||Array.isArray(data.relativeUpdates)))
           return reply(data,200,origin);
       }
     }catch{/* Cache opcional. */}
@@ -247,10 +255,11 @@ async function arrivalRequest(url,origin,{fetchFn,cache,ctx,now}){
     const raw=await readTripUpdates({fetchFn,cache,ctx,requestUrl:url.href});
     const parsed=parseTripUpdates(raw,Math.floor(now/1000));
     const items=officialStopPredictions(parsed,stop,Math.floor(now/1000));
+    const relativeUpdates=officialTripDelays(parsed,sortedRoutes,Math.floor(now/1000));
     const data={available:true,source:'SUMOB_GTFS_RT_TRIP_UPDATES',
       stopId:stop,fetchedAt:new Date(now).toISOString(),
       feedTimestamp:new Date(parsed.feedTimestamp*1000).toISOString(),
-      items,attribution:'Superintendência de Mobilidade Urbana de Belo Horizonte (SUMOB)',
+      items,relativeUpdates,attribution:'Superintendência de Mobilidade Urbana de Belo Horizonte (SUMOB)',
       license:'CC BY 4.0'};
     if(cache){
       const put=cache.put(key,new Response(JSON.stringify(data),{headers:{
