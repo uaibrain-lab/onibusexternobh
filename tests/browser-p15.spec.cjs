@@ -21,7 +21,7 @@ test('UI integrada, GPS opcional desligado e métricas reais de navegador',async
   }
   await expect(page.locator('#quick-rotas')).toBeHidden();
   const result=await page.evaluate(()=>{
-    const tabHeights=['pontos','linhas','metro','rotas']
+    const tabHeights=['pontos','linhas','metro']
       .map(key=>Math.round(document.querySelector('#quick-'+key).getBoundingClientRect().height));
     const entries=performance.getEntriesByType('resource');
     const n=performance.getEntriesByType('navigation')[0];
