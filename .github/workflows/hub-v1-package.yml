@@ -4,12 +4,14 @@ on:
   push:
     branches:
       - feat/hub-v1-municipal-package-qa-20261122
+      - feat/hub-v1-gps-minibus-package-20261122
     paths:
       - .github/workflows/hub-v1-package.yml
       - scripts/prepare_hub_v1.py
       - scripts/rebuild_hub_v1_catalog.py
       - scripts/probe_hub_v1_gps.py
       - tests/test_hub_v1_gps_probe.py
+      - tests/test_gps_bus_canvas_icon.cjs
       - scripts/build_static_site.py
       - scripts/build_static_arrivals.py
       - static/**
@@ -35,10 +37,15 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
       - name: Testes V1 (somente municipal)
         run: |
           python -m compileall -q data_quality scripts/prepare_hub_v1.py scripts/rebuild_hub_v1_catalog.py scripts/probe_hub_v1_gps.py
           python -m unittest discover -s tests -p test_hub_v1_gps_probe.py -q
+          node --check static/app.js
+          node --test tests/test_gps_bus_canvas_icon.cjs
           node --test tests/test_gtfs_realtime_worker.cjs tests/test_gtfs_realtime_adapter.cjs tests/test_live_gps_adapter.cjs
           python -m unittest -q \
             data_quality.test_bh_v1_release_gate \
@@ -111,6 +118,7 @@ jobs:
             'gpsProvider':'gtfs_rt','gpsProbePassed':True,
             'gpsProbeCheckedAtUtc':proof['checkedAtUtc'],
             'gpsRecentPositionsObserved':proof['recentPositions'],
+            'mapVehicleMarker':'mini-bus-canvas',
             'attestation':'CI gate passed; not cryptographically signed; no deployment'
           }
           (root/'hub-v1-qa.json').write_text(
@@ -131,7 +139,7 @@ jobs:
       - name: Publicar apenas artefato de homologação (não faz deploy)
         uses: actions/upload-artifact@v4
         with:
-          name: externo-hub-v1-municipal-sem-rotas
+          name: externo-hub-v1-gps-mini-onibus
           path: dist/externo/
           compression-level: 0
           retention-days: 7

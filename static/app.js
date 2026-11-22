@@ -60,6 +60,39 @@ function getTile(z,x,y){
   return ent;
 }
 function drawTiles(w,h){let z=Math.floor(state.zoom),scale=2**(state.zoom-z),[cx,cy]=mercator(...state.center,z),tx=cx-w/2/scale,ty=cy-h/2/scale;const dark=document.documentElement.dataset.theme==='dark';ctx.fillStyle=dark?'#28323c':'#d9e4e4';ctx.fillRect(0,0,w,h);let minx=Math.floor(tx/256)-1,maxx=Math.ceil((tx+w/scale)/256)+1,miny=Math.floor(ty/256)-1,maxy=Math.ceil((ty+h/scale)/256)+1;for(let y=miny;y<=maxy;y++)for(let x=minx;x<=maxx;x++){let px=(x*256-tx)*scale,py=(y*256-ty)*scale,tile=getTile(z,x,y);if(tile&&tile.ready){ctx.drawImage(tile.img,px,py,256*scale+.5,256*scale+.5)}else{ctx.fillStyle=dark?(((x+y)&1)?'#33404d':'#2c3742'):(((x+y)&1)?'#e8eeea':'#dfe9e6');ctx.fillRect(px,py,256*scale+.5,256*scale+.5);ctx.strokeStyle=dark?'#3b4650':'#cddad7';ctx.strokeRect(px,py,256*scale,256*scale)}}}
+// Miniônibus visto de cima: o GPS informa posição e, quando disponível, direção.
+// Não extrapola sentido do trajeto nem transforma horário de tabela em ETA.
+function drawMiniBus(x,y,heading,condition='recent',selected=false,scale=1){
+  ctx.save();
+  ctx.translate(x,y);
+  if(Number.isFinite(heading))ctx.rotate(heading*Math.PI/180);
+  ctx.scale(scale,scale);
+  if(selected){
+    ctx.beginPath();ctx.arc(0,0,23,0,Math.PI*2);
+    ctx.fillStyle='rgba(12,153,119,.20)';ctx.fill();
+  }
+  const bodyColor=condition==='stale'?'#a85862':
+    condition==='paused'?'#b37b31':'#087a69';
+  ctx.fillStyle='#263840';
+  ctx.fillRect(-12,-9,3,7);ctx.fillRect(9,-9,3,7);
+  ctx.fillRect(-12,7,3,6);ctx.fillRect(9,7,3,6);
+  ctx.beginPath();
+  ctx.moveTo(-7,-16);ctx.quadraticCurveTo(-10,-16,-10,-12);
+  ctx.lineTo(-10,12);ctx.quadraticCurveTo(-10,16,-7,16);
+  ctx.lineTo(7,16);ctx.quadraticCurveTo(10,16,10,12);
+  ctx.lineTo(10,-12);ctx.quadraticCurveTo(10,-16,7,-16);
+  ctx.closePath();
+  ctx.shadowColor='rgba(0,0,0,.28)';ctx.shadowBlur=5;ctx.shadowOffsetY=2;
+  ctx.fillStyle=bodyColor;ctx.fill();
+  ctx.shadowBlur=0;ctx.shadowOffsetY=0;
+  ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.stroke();
+  // Frente na parte superior do símbolo, alinhada ao heading verdadeiro.
+  ctx.fillStyle='#d4f4ef';ctx.fillRect(-7,-11,14,7);
+  ctx.fillStyle='#b7d6d2';ctx.fillRect(-7,1,14,5);
+  ctx.fillStyle='#edf9f5';ctx.fillRect(-6,9,12,3);
+  ctx.fillStyle='#ffe7a1';ctx.fillRect(-8,-14,4,2);ctx.fillRect(4,-14,4,2);
+  ctx.restore();
+}
 function draw(){const w=$canvas.clientWidth,h=$canvas.clientHeight;if(!w||!h)return;ctx.clearRect(0,0,w,h);drawTiles(w,h);state.stopMarkers=[];
   const bucketSize=state.zoom<14?62:state.zoom<15.5?48:state.zoom<17?34:0;
   const buckets=new Map();
@@ -86,7 +119,20 @@ function draw(){const w=$canvas.clientWidth,h=$canvas.clientHeight;if(!w||!h)ret
 if(state.geometry?.selected&&lineMode()){let selected=state.geometry.selected,coords=selected.coordinates;if(coords.length){ctx.beginPath();coords.forEach(([lat,lng],i)=>{let [x,y]=screen(lat,lng);if(!i)ctx.moveTo(x,y);else ctx.lineTo(x,y)});ctx.strokeStyle='#0c6e6b';ctx.lineWidth=7;ctx.globalAlpha=.25;ctx.stroke();ctx.lineWidth=3;ctx.strokeStyle='#007f75';ctx.globalAlpha=.9;ctx.stroke();ctx.globalAlpha=1;}for(let s of selected.stops){let [x,y]=screen(s.lat,s.lng);if(x<-10||y<-10||x>w+10||y>h+10)continue;ctx.beginPath();ctx.arc(x,y,state.zoom>=14?3:2,0,Math.PI*2);ctx.fillStyle='#fefefe';ctx.fill();ctx.strokeStyle='#168f83';ctx.lineWidth=1.4;ctx.stroke();state.stopMarkers.push({x,y,stop:s})}}
   drawMetroLayer();
   drawRouteLayer();
-  state.markers=[];let vehicles=state.fleet?.vehicles||[];for(let v of vehicles){let [x,y]=screen(v.latitude,v.longitude);if(x<-25||y<-25||x>w+25||y>h+25)continue;let changedAge=diffSeconds(v.positionUnchangedSinceAt);let stale=diffSeconds(v.lastGpsFixAt)>120,frozen=Boolean(v.positionUnchangedSinceAt)&&changedAge>120;let isSelected=state.selectedVehicle===v.source+'|'+v.vehicleId;ctx.save();ctx.translate(x,y);if(isSelected){ctx.beginPath();ctx.arc(0,0,24,0,Math.PI*2);ctx.fillStyle='#38d5ab44';ctx.fill()}ctx.beginPath();ctx.arc(0,0,13,0,Math.PI*2);ctx.fillStyle=stale?'#a6565d':frozen?'#ad7728':'#136c66';ctx.fill();ctx.strokeStyle='#ffffff';ctx.lineWidth=2;ctx.stroke();ctx.rotate((v.heading||0)*Math.PI/180);ctx.fillStyle='#ffffff';ctx.beginPath();ctx.moveTo(0,-9);ctx.lineTo(-5,6);ctx.lineTo(0,3);ctx.lineTo(5,6);ctx.closePath();ctx.fill();ctx.restore();state.markers.push({x,y,id:v.source+'|'+v.vehicleId});}
+  state.markers=[];
+  let vehicles=state.fleet?.vehicles||[];
+  for(const v of vehicles){
+    const [x,y]=screen(v.latitude,v.longitude);
+    if(x<-28||y<-28||x>w+28||y>h+28)continue;
+    const changedAge=diffSeconds(v.positionUnchangedSinceAt);
+    const stale=diffSeconds(v.lastGpsFixAt)>120;
+    const frozen=Boolean(v.positionUnchangedSinceAt)&&changedAge>120;
+    const isSelected=state.selectedVehicle===v.source+'|'+v.vehicleId;
+    const heading=v.heading!==null&&v.heading!==undefined&&
+      Number.isFinite(Number(v.heading))?Number(v.heading):null;
+    drawMiniBus(x,y,heading,stale?'stale':frozen?'paused':'recent',isSelected);
+    state.markers.push({x,y,id:v.source+'|'+v.vehicleId});
+  }
   const highlightedLineStop=lineMode()&&lineFocusStopId
     ?state.geometry?.selected?.stops?.find(s=>String(s.id)===String(lineFocusStopId))
     :null;
@@ -94,7 +140,7 @@ if(state.geometry?.selected&&lineMode()){let selected=state.geometry.selected,co
     ?[Number(highlightedLineStop.lat),Number(highlightedLineStop.lng)]
     :(!lineMode()&&state.stopCoordinates&&state.selectedStop?state.stopCoordinates:null);
   if(highlightedStop){const [sx,sy]=screen(...highlightedStop);ctx.beginPath();ctx.arc(sx,sy,11,0,Math.PI*2);ctx.fillStyle='#fff';ctx.fill();ctx.lineWidth=4;ctx.strokeStyle='#f79009';ctx.stroke();ctx.beginPath();ctx.arc(sx,sy,3,0,Math.PI*2);ctx.fillStyle='#f79009';ctx.fill();}
-  if(highlightedStop&&state.selectedVehicle){const v=vehicles.find(x=>x.source+'|'+x.vehicleId===state.selectedVehicle);if(v){const [sx,sy]=screen(...highlightedStop);const [vx,vy]=screen(v.latitude,v.longitude);const area=visibleMapRect(),inView=vx>=area.left&&vx<=area.right&&vy>=area.top&&vy<=area.bottom;ctx.save();ctx.setLineDash([5,7]);ctx.strokeStyle='#0c6e6b';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(sx,sy);if(inView)ctx.lineTo(vx,vy);else{const dx=vx-sx,dy=vy-sy;const tx=dx>0?(area.right-sx)/dx:dx<0?(area.left-sx)/dx:Infinity;const ty=dy>0?(area.bottom-sy)/dy:dy<0?(area.top-sy)/dy:Infinity;const t=Math.max(0,Math.min(tx,ty,1));const ex=sx+dx*t,ey=sy+dy*t;ctx.lineTo(ex,ey);ctx.stroke();ctx.setLineDash([]);ctx.beginPath();ctx.arc(ex,ey,14,0,Math.PI*2);ctx.fillStyle='#136c66';ctx.fill();ctx.fillStyle='#fff';ctx.font='16px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('➤',ex,ey);ctx.restore();}if(inView){ctx.stroke();ctx.restore()}}}
+  if(highlightedStop&&state.selectedVehicle){const v=vehicles.find(x=>x.source+'|'+x.vehicleId===state.selectedVehicle);if(v){const [sx,sy]=screen(...highlightedStop);const [vx,vy]=screen(v.latitude,v.longitude);const area=visibleMapRect(),inView=vx>=area.left&&vx<=area.right&&vy>=area.top&&vy<=area.bottom;ctx.save();ctx.setLineDash([5,7]);ctx.strokeStyle='#0c6e6b';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(sx,sy);if(inView)ctx.lineTo(vx,vy);else{const dx=vx-sx,dy=vy-sy;const tx=dx>0?(area.right-sx)/dx:dx<0?(area.left-sx)/dx:Infinity;const ty=dy>0?(area.bottom-sy)/dy:dy<0?(area.top-sy)/dy:Infinity;const t=Math.max(0,Math.min(tx,ty,1));const ex=sx+dx*t,ey=sy+dy*t;ctx.lineTo(ex,ey);ctx.stroke();ctx.setLineDash([]);drawMiniBus(ex,ey,v.heading,'recent',false,.8);ctx.restore();}if(inView){ctx.stroke();ctx.restore()}}}
   if(state.userPosition){const [x,y]=screen(...state.userPosition);ctx.beginPath();ctx.arc(x,y,9,0,Math.PI*2);ctx.fillStyle='#1570ef';ctx.fill();ctx.lineWidth=3;ctx.strokeStyle='#fff';ctx.stroke()}
   $('mapToast').textContent=activeTab==='rotas'
     ?'Rotas · ônibus em horários GTFS; traços esquemáticos; caminhada aproximada'
