@@ -217,3 +217,154 @@ html[data-theme="dark"] #map{background:#28323c}
   .sheet-head .quick-tabs{gap:2px}
   #sheet .quick-tabs button{font-size:11px}
 }
+
+
+/* P20 — mapa + painel: contratos de geometria para desktop e Android.
+   Regras ficam no fim da folha P14, carregada após style.css, para
+   neutralizar larguras mínimas legadas que esmagavam quatro abas. */
+html,body{max-width:100%;overflow-x:hidden}
+#map,#mapCanvas{width:100%;height:100%;min-height:0}
+#sheet,#sheet *{min-width:0}
+#sheet #body{min-width:0;overflow-x:hidden}
+#sheet .list-rows,#sheet .vehicle-list,#sheet .route-options,
+#sheet .stats,#sheet .route-datetime{min-width:0;max-width:100%}
+#sheet .stats,#sheet .route-datetime{grid-template-columns:repeat(2,minmax(0,1fr))}
+#sheet .route-place input,#sheet .route-datetime input,#sheet select,
+#sheet #lineInput,#sheet #stopInput{max-width:100%;min-width:0}
+#sheet .route-arrival .arrival-info{min-width:0}
+#sheet .route-arrival .arrival-info b,#sheet .route-arrival .arrival-info small{overflow-wrap:anywhere}
+#sheet .route-arrival .eta{flex:0 0 auto}
+
+/* Keep the map status and controls in non-overlapping horizontal zones. */
+#map .map-toast{z-index:2;top:calc(78px + env(safe-area-inset-top,0px));
+  left:12px;right:72px;max-width:none;width:auto;
+  font-size:11px;overflow-wrap:anywhere}
+#map .map-controls{z-index:3;top:calc(80px + env(safe-area-inset-top,0px));right:12px}
+#map .map-controls button{width:44px;height:44px}
+#map .map-basemap-notice{
+  top:calc(238px + env(safe-area-inset-top,0px));
+  left:12px;right:72px;max-width:none;width:auto;transform:none;
+  overflow-wrap:anywhere
+}
+.source-pill{min-width:0}
+.source-pill #sourceText{min-width:0;overflow:hidden;text-overflow:ellipsis}
+#top{max-width:calc(100% - 165px)}
+#top .fab{max-width:100%;white-space:nowrap}
+
+/* Desktop panel: identity has its own row; all tabs share 4 equal columns.
+   346px cannot fit identity + four 64px buttons in one row. */
+@media(min-width:760px){
+  #sheet .sheet-head{
+    display:grid;grid-template-columns:minmax(0,1fr);
+    gap:8px;align-items:stretch;padding:12px 12px 10px;
+    height:auto;min-height:0
+  }
+  #sheet .sheet-identity{display:flex;min-width:0}
+  #sheet .sheet-identity span{display:block}
+  #sheet .quick-tabs{
+    display:grid;grid-template-columns:repeat(4,minmax(0,1fr));
+    width:100%;min-width:0;gap:5px;justify-content:stretch
+  }
+  #sheet .quick-tabs button{
+    display:block;width:100%;min-width:0;max-width:100%;
+    min-height:44px;padding:6px 2px;font-size:12px;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap
+  }
+  #sheet .sheet-toggle{display:none}
+  #sheet #body{padding:10px 13px 18px}
+  #map .map-toast{left:auto;right:74px;top:84px;max-width:270px}
+  #map .map-controls{top:85px;right:15px}
+  #map .map-basemap-notice{
+    left:auto;right:74px;top:160px;max-width:270px
+  }
+}
+@media(max-width:759px){
+  #sheet .sheet-head{
+    display:grid;grid-template-columns:minmax(0,1fr) 44px;
+    gap:6px;padding:6px 9px 8px;align-items:center;overflow:hidden
+  }
+  #sheet .sheet-head .sheet-identity{display:none}
+  #sheet .quick-tabs{
+    display:grid;grid-template-columns:repeat(4,minmax(0,1fr));
+    width:100%;min-width:0;gap:4px;justify-content:stretch
+  }
+  #sheet .quick-tabs button{
+    display:block;width:100%;min-width:0;max-width:100%;
+    min-height:44px;padding:5px 1px;
+    font-size:clamp(11px,3.3vw,13px);
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap
+  }
+  #sheet .sheet-toggle{width:44px;min-width:44px;height:44px}
+  #sheet .route-arrival{flex-wrap:nowrap}
+  #sheet .route-arrival .eta{font-size:clamp(16px,5vw,20px)}
+  #map .map-toast{max-width:none}
+  #map .map-basemap-notice{font-size:11px}
+}
+@media(max-width:360px){
+  #sheet .sheet-head{gap:4px;padding-inline:6px}
+  #sheet .quick-tabs{gap:2px}
+  #sheet .quick-tabs button{font-size:11px;padding-inline:0}
+  #top .fab{padding:9px}
+}
+
+
+/* P21: explicit line tracking lifecycle and boarding-stop timetable. */
+#lineExit{flex:0 0 auto;min-height:40px;max-width:45%;white-space:nowrap}
+.line-heading{min-width:0;flex-wrap:wrap}
+.line-heading .line-title{min-width:0;flex:1 1 130px;overflow-wrap:anywhere}
+.line-stop-chooser{max-width:100%;overflow:hidden}
+.line-stop-chooser label{line-height:1.4}
+#lineStopSelect{width:100%;max-width:100%;min-height:46px;font-size:14px}
+#lineStopForecast{font-size:12px;line-height:1.5;overflow-wrap:anywhere}
+#routeOriginResults,#routeDestinationResults{max-height:240px;overflow-y:auto;overscroll-behavior:contain}
+#routeOriginResults .row-item,#routeDestinationResults .row-item{
+  display:flex;min-height:44px;text-align:left;line-height:1.4
+}
+#routeOriginResults .name,#routeDestinationResults .name{min-width:0;overflow-wrap:anywhere}
+@media(max-width:360px){
+  #lineExit{font-size:11px;padding:7px 9px}
+  .line-heading .line-title{font-size:12px}
+}
+
+/* Optional planner diagnostics; closed by default. */
+.route-diagnostics{border:1px solid var(--line);border-radius:10px;
+  padding:8px 10px;margin:2px 0 9px;background:var(--bg);max-width:100%}
+.route-diagnostics summary{cursor:pointer;font-size:12px;font-weight:700;
+  line-height:1.5;min-height:28px;overflow-wrap:anywhere}
+.route-diagnostics p{font-size:11px;line-height:1.55;color:var(--mut);
+  margin:7px 0 2px;overflow-wrap:anywhere}
+
+/* P22: compact, intentionally non-promissory trip timing explanation. */
+.route-time-breakdown{
+  padding:7px 9px;margin:0 0 8px;border-radius:8px;
+  font-size:11px;line-height:1.5;overflow-wrap:anywhere;
+  color:var(--mut);background:var(--bg2);border:1px solid var(--line)
+}
+
+/* P23: caution for GTFS transfers under 2 minutes with OSM walking. */
+.route-transfer-warning{
+  border:1px solid var(--line);border-left:3px solid #cf8b34;
+  background:var(--bg2);border-radius:8px;
+  padding:8px 10px;margin:0 0 8px;font-size:11px;line-height:1.5;
+  overflow-wrap:anywhere;color:var(--mut)
+}
+
+/* P24: honest metropolitan-data coverage without increasing cards. */
+.route-coverage-notice{
+  padding:8px 10px;margin:4px 0 9px;border-radius:8px;
+  border:1px solid var(--line);border-left:3px solid #cf8b34;
+  background:var(--bg2);font-size:11px;line-height:1.5;
+  color:var(--mut);max-width:100%;overflow-wrap:anywhere
+}
+
+/* P27: phone 320–360px top bar — keep the geolocation action and
+   GTFS/GPS source badge in disjoint horizontal regions.
+   The source badge contracts and ellipsizes; the locate button retains
+   its full accessible label. Desktop layout is unchanged. */
+@media(max-width:360px){
+  #top{left:0;max-width:152px;padding:10px}
+  #top .fab{max-width:140px;min-width:0;overflow:hidden}
+  .source-pill{left:164px;right:12px;width:auto;max-width:none;min-width:0;
+    font-size:10px;padding:9px 8px;gap:5px}
+  .source-pill #sourceText{min-width:0;text-overflow:ellipsis;white-space:nowrap}
+}

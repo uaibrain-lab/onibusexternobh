@@ -5,9 +5,16 @@ on:
     branches:
       - feat/integracao-unica-pontos-gps-metro-rotas-20261117
       - feat/integracao-final-exclusiva-onibus-20261117
+      - feat/gps-worker-free-homologacao-p15-20261117
   pull_request:
     branches:
       - feat/externo-p9-multimodal-gratuito-20261117
+# Avoid redundant failed/queued jobs for every tiny feature-branch commit.
+# Push and PR from the same head branch share a single latest run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 jobs:
@@ -28,6 +35,10 @@ jobs:
         run: |
           node --check static/app.js
           node --check static/static-bus.js
+          node --check static/live-gps.js
+          node --check gps-worker/src/index.mjs
+          node --check gps-worker/src/gtfs-rt.mjs
+          node --check scripts/check_gtfs_rt_free.mjs
           node --check static/static-arrivals.js
           node --check static/route-worker.js
           node --check static/walk-network.js
@@ -44,6 +55,7 @@ jobs:
           for name in ['index.html','app.js','static-bus.js','static-arrivals.js',
                        'route-worker.js','hub-parity.css','service-worker.js',
                        'catalog/scan/index.json','catalog/metro.json','catalog/manifest.json',
+                       'live-gps.js','gps-config.json','catalog/gps-nl-map.json',
                        'catalog/arrivals/index.json','catalog/arrivals/calendar.json']:
               assert (p/name).is_file(), name
           data=json.loads((p/'catalog/arrivals/index.json').read_text())
@@ -52,6 +64,80 @@ jobs:
           assert 'data-app-mode="free-static"' in (p/'index.html').read_text()
           print('PREVIEW_INTEGRADO_OK',data['stopCount'], 'pontos')
           PY
+      - name: Diagnosticar transferências compartilhadas vs caminhada sem prometer ETA
+        run: python scripts/audit_transfer_topology.py
+      - name: Auditar janela temporal real do GTFS para baldeacoes em parada identica
+        run: |
+          python - <<'PY'
+          import json, subprocess, sys
+          cmd=[sys.executable,'scripts/audit_same_stop_transfers.py',
+               '--first','9106','--second','5106','--date','2026-11-17',
+               '--time','19:58','--hours','5']
+          output=subprocess.check_output(cmd,text=True)
+          print(output)
+          marker='P28_SAME_STOP_SCHEDULE_AUDIT_OK'
+          assert output.rstrip().endswith(marker), 'Auditoria GTFS não concluiu'
+          result=json.loads(output[:output.rfind(marker)])
+          assert result['timedTransferPairs']>0, 'Regressão: nenhuma baldeação temporal 9106/5106'
+          assert result['feasibleStops']>0, 'Regressão: nenhuma parada de baldeação 9106/5106'
+          print('P28_REFERENCE_TIMED_TRANSFERS_GATE_OK',result['timedTransferPairs'],result['feasibleStops'])
+          constrained=subprocess.check_output(cmd+['--origin-stop','14786682',
+                                                   '--destination-stop','14789497'],text=True)
+          payload=json.loads(constrained[:constrained.rfind(marker)])
+          assert payload['originDestinationConstrained'] is True
+          assert 0 <= payload['originDestinationConstrainedPairs'] <= payload['timedTransferPairs']
+          print('P28_REFERENCE_ORIGIN_DESTINATION_PAIRS',payload['originDestinationConstrainedPairs'])
+          PY
+          python scripts/audit_same_stop_transfers.py --first 9209 --second 51 --date 2026-11-17 --time 22:00 --hours 3
+          python scripts/audit_same_stop_transfers.py --first 9209 --second 67 --date 2026-11-17 --time 22:00 --hours 3
+      - name: Auditar componentes OSM das seis paradas publicas de baldeacao
+        run: python scripts/audit_walk_graph.py --focus-stops=14786682,14789497,14785707,14786677,14787518,14789565
+      - name: Reproduzir consulta real de paradas GTFS com motor OSM offline
+        run: |
+          timeout 180s node scripts/diagnose_route.cjs \
+            --fromstop=14786682 --tostop=14789497 \
+            --at=2026-11-17T19:58:00-03:00 --focus=9106+5106 --depth=expanded \
+            > /tmp/externo-route-diagnostic.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          raw=Path('/tmp/externo-route-diagnostic.json').read_text(encoding='utf-8')
+          payload=json.loads(raw[:raw.rfind('\nP23_DIAGNOSTIC_OK')])
+          assert payload['diagnostico']=='P23_GTFS_OFFLINE_SAME_ENGINE'
+          assert payload['dados']=='GTFS programado + OSM local; sem ETA GPS'
+          assert payload['status'] in ('ok','partial','walking_unavailable')
+          assert isinstance(payload['linhasEncontradas'],list)
+          d=payload['diagnostics']
+          assert isinstance(d,dict)
+          assert payload['arquivosLidos']>0
+          # Stage counts are diagnostic evidence, not an assertion that
+          # a scheduled 9106+5106 journey necessarily exists.
+          stages=('fullUniqueItineraries','shortlisted',
+                  'passedStreetVerification','paretoRetained')
+          for key in stages:
+              assert type(d.get(key)) is int and d[key]>=0, key
+          assert d['passedStreetVerification']<=d['shortlisted']
+          assert d['paretoRetained']<=d['passedStreetVerification']
+          focus=d.get('focus')
+          assert isinstance(focus,list)
+          assert any(isinstance(x,dict) and x.get('lines')=='9106+5106'
+                     for x in focus)
+          for x in focus:
+              assert isinstance(x,dict)
+              for key in ('generated','shortlisted','streetVerified','paretoRetained'):
+                  assert type(x.get(key)) is int and x[key]>=0, key
+              assert x['streetVerified']<=x['shortlisted']
+              assert x['paretoRetained']<=x['streetVerified']
+              assert isinstance(x.get('streetRejectionReasons'),dict)
+          print('P28_ROUTE_REAL_STOPS_DIAGNOSTIC_OK',
+                payload['status'],len(payload['linhasEncontradas']),
+                d['passedStreetVerification'])
+          print('P28_ROUTE_STAGE_COUNTS',
+                json.dumps({key:d[key] for key in stages},sort_keys=True))
+          print('P28_ROUTE_FOCUS_COUNTS',json.dumps(focus,sort_keys=True))
+          PY
+      - name: Auditoria de franquia Spark e arquivos sob demanda
+        run: python scripts/audit_static_budget.py --root dist/externo
       - name: Smoke HTTP em /externo/ sem backend de hospedagem
         run: |
           python -m http.server 8765 --directory dist >/tmp/http.log 2>&1 &

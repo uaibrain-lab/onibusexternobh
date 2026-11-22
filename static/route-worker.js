@@ -11,6 +11,8 @@
 const HOUR=3600000, MIN=60000, DAY=86400000, MAX_HOURS=5;
 const TRIP_MASK=(1<<20)-1,BOARD=1<<20,ALIGHT=1<<21;
 const BUFFER=45000,WALK_SPEED=1.15,WALK_FACTOR=1.35,MAX_RIDES=3;
+// Conservative schedule-only transfer margins. These are NOT measured GTFS pathways.
+const TRANSFER_BUFFER=120000,STATION_ACCESS_BUFFER=60000;
 const MAX_SCANNED=2100000,MAX_LABELS=12,MAX_ONBOARD=12;
 const cityTZ='America/Sao_Paulo';
 try{importScripts('./walk-network.js')}catch(e){/* optional; no fabricated graph */}
@@ -99,15 +101,66 @@ function nearby(lat,lng,radius=1050,limit=22) {
         if(metres<=radius)result.push([metres,idx]);
       }
   result.sort((a,b)=>a[0]-b[0]);
-  return result.slice(0,limit);
+  if(result.length<=limit||limit<40)return result.slice(0,limit);
+  // For access/egress do NOT select only the geographically nearest stops:
+  // in central BH dozens of near-side bays can crowd out a different line
+  // two streets away. Retain the very nearest, then sample across 16
+  // directions and 3 distance bands before running OSM street Dijkstra.
+  const chosen=result.slice(0,Math.min(24,Math.ceil(limit/5)));
+  const buckets=Array.from({length:48},()=>[]);
+  for(const candidate of result.slice(chosen.length)){
+    const stop=stops[candidate[1]];
+    const east=(stop[3]-lng)*Math.cos(lat*Math.PI/180);
+    const north=stop[2]-lat;
+    const direction=(Math.atan2(north,east)+2*Math.PI)%(2*Math.PI);
+    const sector=Math.min(15,Math.floor(direction/(2*Math.PI)*16));
+    const band=Math.min(2,Math.floor(candidate[0]/Math.max(1,radius)*3));
+    buckets[sector*3+band].push(candidate);
+  }
+  let pending=true;
+  while(chosen.length<limit&&pending){
+    pending=false;
+    for(const bucket of buckets){
+      if(!bucket.length)continue;
+      pending=true;chosen.push(bucket.shift());
+      if(chosen.length===limit)break;
+    }
+  }
+  return chosen.sort((a,b)=>a[0]-b[0]);
 }
-function neighbors(idx) {
-  if(nearCache.has(idx))return nearCache.get(idx);
+function neighbors(idx,expanded=false) {
+  // Extended-mode inter-stop walks can recover alternatives that change
+  // lines around a large avenue/interchange. Every pedestrian segment is
+  // subsequently checked against actual OSM streets before being returned.
+  // Preserve diverse platforms/corridors in dense interchanges. The previous
+  // 28-nearest cap could hide viable 9209+51 transfers despite correct GTFS.
+  // >=40 activates nearby()'s 16-direction / 3-distance-band sampling.
+  const radius=expanded?450:300,limit=expanded?90:48;
+  const key=idx+':'+radius;
+  if(nearCache.has(key))return nearCache.get(key);
   const s=stops[idx];
-  const list=nearby(s[2],s[3],165,10).filter(([m,id])=>id!==idx&&m>=2);
-  if(nearCache.size>20000)nearCache.clear();
-  nearCache.set(idx,list);
+  const list=nearby(s[2],s[3],radius,limit)
+    .filter(([m,id])=>id!==idx&&m>=2);
+  // A 90-stop list for 20k distinct stops could consume excessive mobile RAM.
+  // Evict oldest cached list individually instead of clearing the entire cache.
+  if(nearCache.size>=2500)nearCache.delete(nearCache.keys().next().value);
+  nearCache.set(key,list);
   return list;
+}
+function isStationStop(index){
+  if(typeof index!=='number'||!stops?.[index])return false;
+  // Names are only a conservative hint: no unsupported claim of a real
+  // station pathway, lift, stairs or exact platform travel duration.
+  return /\b(estacao|terminal|plataforma|move)\b/.test(norm(stops[index][1]));
+}
+function stationAccessExtra(edge){
+  if(edge?.mode!=='walk')return 0;
+  return isStationStop(edge.from)||isStationStop(edge.to)
+    ?STATION_ACCESS_BUFFER:0;
+}
+function boardingBuffer(label){
+  return (label?.rides>0?TRANSFER_BUFFER:BUFFER)+
+    stationAccessExtra(label?.edge);
 }
 function serviceActive(serviceIdx,day){
   const svc=meta.services[serviceIdx];
@@ -161,7 +214,7 @@ function insert(labels,node,ctx) {
 }
 function addTransfers(node,ctx){
   if(!ctx.pending.has(node.stop))ctx.pending.add(node.stop);
-  for(const [m,next] of neighbors(node.stop)){
+  for(const [m,next] of neighbors(node.stop,ctx.expanded)){
     const duration=walkSeconds(m)*1000;
     const newTime=node.time+(ctx.backward?-duration:duration);
     if(newTime<ctx.lo||newTime>ctx.hi)continue;
@@ -200,12 +253,16 @@ function emit(node,ctx) {
   if(!insert(ctx.labels,node,ctx))return;
   const ending=ctx.ends.get(node.stop);
   if(ending!==undefined){
-    const seconds=walkSeconds(ending),ms=seconds*1000;
+    const seconds=typeof ending==='number'?walkSeconds(ending):ending.seconds;
+    const meters=typeof ending==='number'?rounded(ending):ending.meters;
+    const ms=seconds*1000;
     // Reverse planning reserves a minimum boarding buffer at the very first
     // boarding point, just as forward planning does.
-    const endTime=node.time+(ctx.backward?-(ms+BUFFER):ms);
+    const firstBoardingBuffer=BUFFER+
+      (ctx.backward&&isStationStop(node.stop)?STATION_ACCESS_BUFFER:0);
+    const endTime=node.time+(ctx.backward?-(ms+firstBoardingBuffer):ms);
     if(endTime>=ctx.lo&&endTime<=ctx.hi){
-      ctx.finals.push({node,time:endTime,meters:rounded(ending)});
+      ctx.finals.push({node,time:endTime,meters,endingSeconds:seconds});
       if(ctx.finals.length>1000){
         ctx.partial=true;ctx.partialReasons.finals++;ctx.finals.splice(1000);
       }
@@ -221,7 +278,7 @@ function processConnection(conn,ctx){
     if(flags&ALIGHT){
       for(const label of ctx.labels.get(to)||[]){
         if(label.rides>=MAX_RIDES)continue;
-        const buffer=label.rides===0?0:BUFFER;
+        const buffer=label.rides===0?0:boardingBuffer(label);
         if(label.time<arr+buffer)continue;
         appendOnboard(ctx.onboard,key,{prev:label,endStop:to,endTime:arr},ctx);
       }
@@ -238,7 +295,7 @@ function processConnection(conn,ctx){
   }else{
     if(flags&BOARD){
       for(const label of ctx.labels.get(from)||[]){
-        if(label.rides>=MAX_RIDES||label.time+BUFFER>dep)continue;
+        if(label.rides>=MAX_RIDES||label.time+boardingBuffer(label)>dep)continue;
         appendOnboard(ctx.onboard,key,{prev:label,endStop:from,endTime:dep},ctx);
       }
     }
@@ -263,7 +320,9 @@ function reconstruct(hit,ctx) {
   if(!ctx.backward)all.reverse();
   const endWalk=ctx.backward
     ?{mode:'walk',from:'origin',to:hit.node.stop,
-      departure:hit.time,arrival:hit.node.time-BUFFER,
+      departure:hit.time,
+      arrival:hit.node.time-BUFFER-
+        (isStationStop(hit.node.stop)?STATION_ACCESS_BUFFER:0),
       metersApprox:hit.meters,pathVerified:false}
     :{mode:'walk',from:hit.node.stop,to:'destination',
       departure:hit.node.time,arrival:hit.time,
@@ -276,7 +335,10 @@ function reconstruct(hit,ctx) {
   if(ctx.backward&&legs.at(-1)?.mode==='walk'){
     const lastBus=buses.at(-1);
     const walk=legs.at(-1);
-    const duration=walkSeconds(walk.metersApprox/WALK_FACTOR)*1000;
+    // Reuse the real street-network walk time, not a second Euclidean
+    // estimate. This matters for arriveBy routes near the deadline.
+    const duration=(hit.endingSeconds??walkSeconds(
+      walk.metersApprox/WALK_FACTOR))*1000;
     walk.departure=lastBus.arrival;walk.arrival=lastBus.arrival+duration;
     if(walk.arrival>ctx.requested)return null;
   }
@@ -341,16 +403,38 @@ function locationOf(endpoint,ctx){
   const s=stops[endpoint];
   return s?[s[2],s[3]]:null;
 }
-function verifyWalking(itinerary,ctx,graph){
+function verifyWalking(itinerary,ctx,graph,reasons=null){
   const legs=itinerary.legs;
-  let walked=0,unknown=false;
+  const reject=(reason,index=null)=>{
+    if(reasons){
+      reasons[reason]=(reasons[reason]||0)+1;
+      // Keep user coordinates private. Expose only the phase of failed
+      // pedestrian validation to the opt-in local diagnostics.
+      const stage=index===null?'journey':index===0?'access':
+        index===legs.length-1?'egress':'transfer';
+      reasons['stage_'+stage]=(reasons['stage_'+stage]||0)+1;
+    }
+    return false;
+  };
+  let walked=0;
   for(let i=0;i<legs.length;i++){
     const leg=legs[i];
     if(leg.mode!=='walk')continue;
     const from=locationOf(leg.from,ctx),to=locationOf(leg.to,ctx);
-    if(!from||!to)return false;
+    if(!from||!to)return reject('missingWalkingCoordinates',i);
     const route=graph.route(from,to,i===0||i===legs.length-1?2500:800);
-    if(!route)return false;
+    if(!route){
+      if(reasons&&typeof graph.explainFailure==='function'){
+        // Extra graph-component computation is diagnostic-only and local.
+        // Never include origin/destination coordinates in public output.
+        const details=graph.explainFailure(from,to,
+          i===0||i===legs.length-1?2500:800);
+        const name=details?.reason;
+        if(typeof name==='string'&&/^[A-Za-z]{3,55}$/.test(name))
+          reasons['street_'+name]=(reasons['street_'+name]||0)+1;
+      }
+      return reject('streetPathUnavailable',i);
+    }
     leg.pathVerified=true;
     leg.geometry=route.geometry;
     leg.snapMeters=route.snapMeters;
@@ -363,28 +447,70 @@ function verifyWalking(itinerary,ctx,graph){
     if(prev&&prev.mode==='bus'){
       start=Date.parse(prev.arrival);
     }else if(i===0&&ctx.backward&&next?.mode==='bus'){
-      start=Date.parse(next.departure)-route.seconds*1000-BUFFER;
+      start=Date.parse(next.departure)-route.seconds*1000-
+        BUFFER-stationAccessExtra(leg);
     }else if(i===0){
       start=ctx.requested;
     }else if(prev){
       start=Date.parse(prev.arrival);
-    }else return false;
+    }else return reject('invalidWalkingSequence',i);
     const finish=start+route.seconds*1000;
-    if(next?.mode==='bus'&&finish+BUFFER>Date.parse(next.departure))
-      return false;
+    if(next?.mode==='bus'){
+      const margin=(prev?.mode==='bus'?TRANSFER_BUFFER:BUFFER)+
+        stationAccessExtra(leg);
+      if(finish+margin>Date.parse(next.departure))
+        return reject('insufficientTransferMargin',i);
+    }
     leg.departure=stamp(start);
     leg.arrival=stamp(finish);
+  }
+  // Same-stop transfers have no explicit walking leg: validate their
+  // boarding margin as well, not only walks between different stops.
+  for(let i=1;i<legs.length;i++){
+    if(legs[i-1].mode==='bus'&&legs[i].mode==='bus'&&
+      Date.parse(legs[i].departure)-Date.parse(legs[i-1].arrival)<TRANSFER_BUFFER)
+      return reject('insufficientTransferMargin',i);
   }
   const first=Date.parse(legs[0].departure),last=Date.parse(legs.at(-1).arrival);
   if(!Number.isFinite(first)||!Number.isFinite(last)||last<=first||
      last-first>MAX_HOURS*HOUR||ctx.backward&&last>ctx.requested||
-     !ctx.backward&&first<ctx.requested)return false;
+     !ctx.backward&&first<ctx.requested)return reject('invalidJourneyWindow');
   itinerary.walkMetersApprox=Math.round(walked);
   itinerary.departure=stamp(first);
   itinerary.arrival=stamp(last);
   itinerary.durationMinutes=Math.ceil((last-first)/MIN);
   itinerary.confidence='GTFS_scheduled_with_OSM_walk_graph_and_snap_uncertainty';
   return true;
+}
+function journeyQuality(trip){
+  // Transparent, adjustable generalized cost, inspired by open source
+  // multicriteria planners (NOT Google's or Moovit's proprietary weights).
+  // The actual arrival/departure times remain unchanged.
+  const duration=Math.max(0,Number(trip.durationMinutes)||0);
+  const walking=Math.max(0,Number(trip.walkMetersApprox)||0)/(WALK_SPEED*60);
+  const transfers=Math.max(0,Number(trip.transfers)||0);
+  let tightTransfers=0,minimumTransferSeconds=null;
+  let seenBus=false;
+  for(let i=0;i<(trip.legs||[]).length;i++){
+    const leg=trip.legs[i];
+    if(leg.mode!=='bus')continue;
+    if(seenBus){
+      const previous=trip.legs[i-1];
+      const slack=(Date.parse(leg.departure)-Date.parse(previous.arrival))/1000;
+      if(Number.isFinite(slack)){
+        minimumTransferSeconds=minimumTransferSeconds===null
+          ?Math.round(slack):Math.min(minimumTransferSeconds,Math.round(slack));
+        // Even a technically feasible two-minute transfer remains vulnerable
+        // to small operational delays, particularly around MOVE stations.
+        if(slack<240)tightTransfers++;
+      }
+    }
+    seenBus=true;
+  }
+  const costMinutes=Math.round((duration+walking+
+    transfers*4+tightTransfers*3)*10)/10;
+  return {costMinutes,tightTransfers,minimumTransferSeconds,
+    costBasis:'heuristic_duration_plus_walking_transfers_and_short_connections'};
 }
 function ranked(ctx,preference,limit=6) {
   const options=[];
@@ -405,9 +531,92 @@ function ranked(ctx,preference,limit=6) {
       return a.transfers-b.transfers||fastest(a,b)||a.walkMetersApprox-b.walkMetersApprox;
     if(preference==='leastWalking')
       return a.walkMetersApprox-b.walkMetersApprox||fastest(a,b)||a.transfers-b.transfers;
+    if(preference==='balanced')
+      return journeyQuality(a).costMinutes-journeyQuality(b).costMinutes||
+        fastest(a,b)||a.transfers-b.transfers;
     return fastest(a,b)||a.walkMetersApprox-b.walkMetersApprox||a.transfers-b.transfers;
   });
-  return options.slice(0,limit);
+  // Reserve room for different combinations of bus lines, rather than
+  // spending all 32/56 slots on departures of the same combination.
+  // The chronological best candidates remain represented.
+  if(limit<=6)return options.slice(0,limit);
+  const selected=options.slice(0,Math.ceil(limit*.55));
+  const selectedKeys=new Set(selected.map(t=>t.legs.filter(l=>l.mode==='bus')
+    .map(l=>l.line).join('>')));
+  for(const trip of options){
+    if(selected.length>=limit)break;
+    const key=trip.legs.filter(l=>l.mode==='bus').map(l=>l.line).join('>');
+    if(selectedKeys.has(key))continue;
+    selectedKeys.add(key);selected.push(trip);
+  }
+  for(const trip of options){
+    if(selected.length>=limit)break;
+    if(!selected.includes(trip))selected.push(trip);
+  }
+  return selected;
+}
+function summarizeTravelTimes(itinerary){
+  // Separate scheduled waiting from riding and walking, so a 56 min route
+  // can be compared meaningfully to another planner. These are elapsed
+  // GTFS timetable times; they are NOT GPS predictions or traffic models.
+  const start=Date.parse(itinerary.departure),end=Date.parse(itinerary.arrival);
+  if(!Number.isFinite(start)||!Number.isFinite(end)||end<=start)return null;
+  const total=end-start;
+  let walk=0,ride=0;
+  for(const leg of itinerary.legs||[]){
+    const from=Date.parse(leg.departure),to=Date.parse(leg.arrival);
+    if(!Number.isFinite(from)||!Number.isFinite(to)||to<from)return null;
+    if(leg.mode==='walk')walk+=to-from;
+    else if(leg.mode==='bus')ride+=to-from;
+  }
+  if(walk+ride>total+60000)return null; // Discontinuous/overlapping GTFS.
+  return {
+    totalMinutes:Math.ceil(total/MIN),
+    walkingMinutes:Math.round(walk/MIN),
+    onboardMinutes:Math.round(ride/MIN),
+    waitingMinutes:Math.max(0,Math.round((total-walk-ride)/MIN)),
+    basis:'GTFS scheduled, walking access approximate'
+  };
+}
+function paretoJourneys(items,backward){
+  // Multi-criteria nondominance inspired by OTP Range RAPTOR, applied AFTER
+  // timetable scanning + OSM verification. Unlike a score alone, this
+  // preserves a route that trades slightly later arrival for fewer
+  // transfers, shorter walk, or shorter elapsed trip.
+  const data=items.map(t=>{
+    const first=Date.parse(t.departure),last=Date.parse(t.arrival);
+    return {time:backward?-first:last,elapsed:last-first,
+      walking:Math.max(0,Number(t.walkMetersApprox)||0),
+      transfers:Math.max(0,Number(t.transfers)||0),
+      risky:journeyQuality(t).tightTransfers};
+  });
+  return items.filter((_,i)=>{
+    const b=data[i];
+    if(!Number.isFinite(b.time)||!Number.isFinite(b.elapsed))return false;
+    return !data.some((a,j)=>i!==j&&
+      a.time<=b.time&&a.elapsed<=b.elapsed&&
+      a.walking<=b.walking&&a.transfers<=b.transfers&&
+      a.risky<=b.risky&&
+      (a.time<b.time||a.elapsed<b.elapsed||a.walking<b.walking||
+       a.transfers<b.transfers||a.risky<b.risky));
+  });
+}
+function chooseDiverseItineraries(sorted,limit=6){
+  // Keep the earliest/shortest verified option first, but prevent five near-
+  // duplicate departures from crowding out useful alternatives (e.g. 5106).
+  const picked=[],counts=new Map();
+  for(const trip of sorted){
+    const signature=trip.legs.filter(l=>l.mode==='bus').map(l=>l.line).join('>');
+    const amount=counts.get(signature)||0;
+    if(amount>=2)continue;
+    picked.push(trip);counts.set(signature,amount+1);
+    if(picked.length===limit)return picked;
+  }
+  for(const trip of sorted){
+    if(picked.length===limit)break;
+    if(!picked.includes(trip))picked.push(trip);
+  }
+  return picked;
 }
 async function metroHints(origin,destination,at,railHintMode='departAt'){
   try{
@@ -448,20 +657,38 @@ async function metroHints(origin,destination,at,railHintMode='departAt'){
 function seedStops(ctx,which) {
   const place=which==='start'?(ctx.backward?ctx.destination:ctx.origin)
                              :(ctx.backward?ctx.origin:ctx.destination);
-  const found=nearby(...place);
+  const found=nearby(...place,ctx.accessRadius,ctx.accessLimit);
+  // Street access/egress is solved first, as in multimodal routing engines.
+  // One bounded Dijkstra handles all candidate stops (not N repeated A*).
+  const road=ctx.graph?.distancesToStops
+    ?ctx.graph.distancesToStops(place,found.map(([,index])=>({
+        index,coords:[stops[index][2],stops[index][3]]
+      })),2500)
+    :null;
+  const hasRoadCosts=Boolean(road&&typeof road.has==='function'&&
+    typeof road.get==='function');
+  const candidates=hasRoadCosts?found.filter(([,id])=>road.has(id)):found;
+  if(hasRoadCosts){
+    const field=which==='start'?'streetOriginStops':'streetDestinationStops';
+    ctx.accessStats[field]=candidates.length;
+    ctx.accessStats.unreachableStops+=found.length-candidates.length;
+  }
   if(which==='end'){
-    for(const [metres,id] of found)ctx.ends.set(id,metres);
+    for(const [metres,id] of candidates)
+      ctx.ends.set(id,hasRoadCosts?road.get(id):metres);
     return;
   }
-  for(const [metres,id] of found){
-    const ms=walkSeconds(metres)*1000;
+  for(const [metres,id] of candidates){
+    const access=hasRoadCosts?road.get(id):null;
+    const meters=access?access.meters:rounded(metres);
+    const ms=(access?access.seconds:walkSeconds(metres))*1000;
     const t=ctx.requested+(ctx.backward?-ms:ms);
     const edge=ctx.backward
       ?{mode:'walk',from:id,to:'destination',departure:t,
-        arrival:ctx.requested,metersApprox:rounded(metres),pathVerified:false}
+        arrival:ctx.requested,metersApprox:meters,pathVerified:false}
       :{mode:'walk',from:'origin',to:id,departure:ctx.requested,
-        arrival:t,metersApprox:rounded(metres),pathVerified:false};
-    insert(ctx.labels,{stop:id,time:t,rides:0,walk:rounded(metres),
+        arrival:t,metersApprox:meters,pathVerified:false};
+    insert(ctx.labels,{stop:id,time:t,rides:0,walk:meters,
       prev:null,edge},ctx);
   }
 }
@@ -518,7 +745,7 @@ async function plan(params,seq) {
   const mode=params.mode||'departAt';
   if(mode!=='departAt'&&mode!=='arriveBy')throw Error('Modo de viagem inválido');
   const preference=params.preference||'fastest';
-  if(!['fastest','leastWalking','leastTransfers'].includes(preference))
+  if(!['fastest','leastWalking','leastTransfers','balanced'].includes(preference))
     throw Error('Critério de ordenação inválido');
   const requested=params.at?Date.parse(params.at):Date.now();
   if(!Number.isFinite(requested))throw Error('Data/hora inválida');
@@ -528,13 +755,22 @@ async function plan(params,seq) {
       validFrom:meta.validFrom,validThrough:meta.validThrough,itineraries:[],metroHints:[]};
   const backward=mode==='arriveBy';
   const expanded=params.searchDepth==='expanded';
-  const ctx={origin,destination,mode,backward,requested,preference,labels:new Map(),
+  const ctx={origin,destination,mode,backward,requested,preference,expanded,labels:new Map(),
     onboard:new Map(),ends:new Map(),finals:[],pending:new Set(),
     scanned:0,partial:false,exceeded:false,
     maxLabels:expanded?24:MAX_LABELS,maxOnboard:expanded?24:MAX_ONBOARD,
+    // Keep multiple viable boarding corridors, not just the first bays.
+    // OSM Dijkstra is bounded to 160 nodes per endpoint.
+    accessRadius:expanded?1700:1300,accessLimit:expanded?160:120,
     partialReasons:{labels:0,onboard:0,finals:0,scanLimit:0},
+    graph:null,
+    accessStats:{streetOriginStops:null,streetDestinationStops:null,unreachableStops:0},
     lo:backward?requested-MAX_HOURS*HOUR:requested,
     hi:backward?requested:requested+MAX_HOURS*HOUR};
+  // The offline OSM graph is a static file, not a paid routing API.
+  // Graph-aware access times are calculated BEFORE timetable scanning.
+  const graph=await ensureWalkingGraph();
+  ctx.graph=graph;
   seedStops(ctx,'start');seedStops(ctx,'end');
   const first=Math.floor(ctx.lo/HOUR),last=Math.floor(ctx.hi/HOUR);
   const hours=[];
@@ -547,32 +783,119 @@ async function plan(params,seq) {
     self.postMessage({kind:'progress',seq,done:i+1,total:hours.length,
       found:ctx.finals.length,scanned:ctx.scanned});
   }
-  const graph=await ensureWalkingGraph();
-  let itineraries=ranked(ctx,preference,graph?32:6);
+  // P21: verify more than the first 32 timetable candidates on the OSM
+  // streets graph. Faster trips can be ranked after a crowd of unwalkable
+  // alternatives; pre-cutting them produced false "best route" claims.
+  const candidates=ranked(ctx,preference,graph?(expanded?96:56):24);
+  let itineraries=candidates;
+  let rejectedWalkCandidates=0;
+  const rejectedWalkReasons={},rejectedCombinations=new Map();
   if(graph){
-    itineraries=itineraries.filter(t=>verifyWalking(t,ctx,graph));
+    itineraries=candidates.filter(t=>{
+      const reasons=params.diagnostics===true?{}:null;
+      const valid=verifyWalking(t,ctx,graph,reasons);
+      if(!valid){
+        rejectedWalkCandidates++;
+        if(reasons){
+          const combo=t.legs.filter(leg=>leg.mode==='bus').map(leg=>leg.line).join('+');
+          const counters=rejectedCombinations.get(combo)||{};
+          for(const [reason,count] of Object.entries(reasons)){
+            counters[reason]=(counters[reason]||0)+count;
+            rejectedWalkReasons[reason]=(rejectedWalkReasons[reason]||0)+count;
+          }
+          rejectedCombinations.set(combo,counters);
+        }
+      }
+      return valid;
+    });
     const score=t=>preference==='leastWalking'?t.walkMetersApprox:
       preference==='leastTransfers'?t.transfers:
+      preference==='balanced'?journeyQuality(t).costMinutes:
       backward?-Date.parse(t.departure):Date.parse(t.arrival);
     itineraries.sort((a,b)=>score(a)-score(b)||
       a.walkMetersApprox-b.walkMetersApprox||a.transfers-b.transfers);
-    itineraries=itineraries.slice(0,6);
+  }
+  const streetVerified=itineraries;
+  itineraries=paretoJourneys(streetVerified,backward);
+  const paretoRetainedCount=itineraries.length;
+  let diagnostics=null;
+  if(params.diagnostics===true){
+    // Opt-in offline diagnostics: expose WHY a requested combination is
+    // absent. Ordinary users never download or render this extra payload.
+    const combo=t=>t.legs.filter(x=>x.mode==='bus').map(x=>x.line).join('+');
+    const counts=arr=>{
+      const map=new Map();
+      for(const t of arr)map.set(combo(t),(map.get(combo(t))||0)+1);
+      return map;
+    };
+    const all=ranked(ctx,preference,1000);
+    const allCounts=counts(all),shortCounts=counts(candidates);
+    const validCounts=counts(streetVerified);
+    const paretoCounts=counts(itineraries);
+    const requested=Array.isArray(params.focusCombinations)
+      ?params.focusCombinations.filter(x=>typeof x==='string'&&
+        /^[a-zA-Z0-9+ -]{2,80}$/.test(x)).slice(0,12)
+      :[];
+    const focus=requested.map(lines=>({
+      lines,
+      generated:allCounts.get(lines)||0,
+      shortlisted:shortCounts.get(lines)||0,
+      streetVerified:validCounts.get(lines)||0,
+      paretoRetained:paretoCounts.get(lines)||0,
+      streetRejectionReasons:rejectedCombinations.get(lines)||{}
+    }));
+    diagnostics={originalFinalLabels:ctx.finals.length,
+      fullUniqueItineraries:all.length,shortlisted:candidates.length,
+      passedStreetVerification:streetVerified.length,
+      paretoRetained:itineraries.length,
+      combinationsGenerated:allCounts.size,
+      combinationsShortlisted:shortCounts.size,
+      combinationsStreetVerified:validCounts.size,
+      rejectedWalkReasons,
+      focus};
+  }
+  itineraries=chooseDiverseItineraries(itineraries,6);
+  for(const trip of itineraries){
+    const summary=summarizeTravelTimes(trip);
+    if(summary)trip.timeBreakdown=summary;
+    trip.journeyQuality=journeyQuality(trip);
   }
   const hints=await metroHints(origin,destination,requested,mode);
+  const noPedestrianAccess=Boolean(graph&&
+    (ctx.accessStats.streetOriginStops===0||
+     ctx.accessStats.streetDestinationStops===0));
   return {
-    status:graph&&!itineraries.length&&ctx.finals.length?'walking_unavailable':
-      ctx.partial?'partial':'ok',mode,preference,
+    status:noPedestrianAccess||
+      (graph&&!itineraries.length&&ctx.finals.length)
+      ?'walking_unavailable':ctx.partial?'partial':'ok',mode,preference,
     requestedAt:stamp(requested),itineraries,metroHints:hints,
+    ...(diagnostics?{diagnostics}:{}),
     stats:{connectionsScanned:ctx.scanned,hoursScanned:hours.length,
       searchDepth:expanded?'expanded':'standard',
+      boardingStopRadiusMeters:ctx.accessRadius,
+      accessStopLimit:ctx.accessLimit,
+      transferWalkRadiusMeters:expanded?450:300,
+      transferStopCandidateLimit:expanded?90:48,
+      transferBoardingMarginSeconds:TRANSFER_BUFFER/1000,
+      stationAccessAllowanceSeconds:STATION_ACCESS_BUFFER/1000,
+      pedestrianAccess:graph?'OSM street shortest paths':'estimated distance',
+      verifiedStreetOriginStops:ctx.accessStats.streetOriginStops,
+      verifiedStreetDestinationStops:ctx.accessStats.streetDestinationStops,
+      inaccessibleStreetCandidates:ctx.accessStats.unreachableStops,
+      walkCandidatesEvaluated:graph?candidates.length:0,
+      walkCandidatesRejected:rejectedWalkCandidates,
+      paretoRetainedBeforeResultLimit:paretoRetainedCount,
       labelsPerStopLimit:ctx.maxLabels,onboardLimit:ctx.maxOnboard,
       truncatedLabels:ctx.partial,partialReasons:ctx.partialReasons},
     pedestrianRouting:graph?'osm_walk_graph_with_unverified_access_snap':'approximate',
     walkingNetworkStatus:walkGraphStatus,
     walkingNetworkSource:graph?.meta?.source||null,
     dataSource:'static_gtfs_browser_worker',
+    coverage:{municipalBh:true,metropolitanBh:false,
+      excludedExample:'411C',source:'PBH_SUMOB_GTFS'},
     notes:[
       'Horários de ônibus programados no GTFS, não previsões GPS.',
+      'Margens conservadoras de baldeação: 2 min e 1 min adicional estimado em acesso de estação; não substituem os caminhos de plataforma reais.',
       graph?
         'Caminhadas avaliadas na rede OSM; o acesso do ponto de partida ou parada ao caminho ainda exige validação.':
         'Rede de ruas OSM não instalada: caminhadas em linha reta aproximada, NÃO percursos reais.',

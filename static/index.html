@@ -6,7 +6,7 @@
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#ffffff">
 <meta name="description" content="Linhas e pontos de ônibus, estações e horários habituais do Metrô BH. Dados PBH/SUMOB e Metrô BH.">
-<title>Externo — Hub UFMG · Protótipo</title>
+<title>Externo BH — ônibus municipais e metrô</title>
 <link rel="manifest" href="./manifest.webmanifest">
 <link rel="icon" href="./icon-192.png" type="image/png">
 <link rel="stylesheet" href="./style.css">
@@ -52,17 +52,16 @@
       <button type="button" id="quick-pontos" class="on" aria-pressed="true">Pontos</button>
       <button type="button" id="quick-linhas" aria-pressed="false">Linhas</button>
       <button type="button" id="quick-metro" aria-pressed="false">Metrô</button>
-      <button type="button" id="quick-rotas" aria-pressed="false">Rotas</button>
+      <button type="button" id="quick-rotas" aria-pressed="false" hidden disabled aria-hidden="true">Rotas</button>
     </div>
     <button type="button" class="sheet-toggle" id="sheet-toggle" aria-label="Expandir lista" aria-expanded="false" aria-controls="body">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
     </button>
   </div>
   <div id="body" aria-hidden="true">
-    <div class="notice-top" role="note">Protótipo de dados oficiais PBH/SUMOB. Posições GPS podem estar atrasadas; horários de coleta não significam movimento.</div>
+    <div class="notice-top" role="note">Consulta municipal BH: horários GTFS programados, sujeitos ao calendário. GPS opcional não substitui horários oficiais.</div>
     <section id="pontosPane" aria-label="Pontos de ônibus">
       <section id="stopDetail" class="stop-detail" hidden aria-live="polite"></section>
-      <div class="flexhead"><h3>Meus pontos favoritos</h3></div><div id="favoriteStops" class="list-rows"></div>
       <h3 id="nearbyHeading">Pontos próximos</h3><p class="hint" id="nearbyHint">Mostrando a região da UFMG. Permita a localização para encontrar pontos perto de você.</p><div id="nearbyStops" class="list-rows"></div>
       <h2>Pontos de ônibus</h2>
       <label class="srch" for="stopInput"><span aria-hidden="true">⌕</span><input id="stopInput" type="search" placeholder="Buscar ponto em BH" aria-label="Buscar ponto em Belo Horizonte" autocomplete="off"></label>
@@ -72,13 +71,18 @@
       <div id="stopList" class="list-rows"></div>
     </section>
     <section id="linhasPane" hidden aria-label="Linhas e veículos">
-      <h3>Minhas linhas favoritas</h3><div id="favoriteLines" class="list-rows"></div>
       <label class="srch" for="lineInput"><span aria-hidden="true">⌕</span><input id="lineInput" list="routeList" placeholder="Buscar linha, ex.: 9202, S32, 62" autocomplete="off" aria-label="Buscar linha"></label>
       <datalist id="routeList"></datalist>
       <button id="goLine" type="button" class="btn primary">Consultar linha</button>
-      <div class="line-heading"><div class="line-title" id="lineTitle">Selecione uma linha</div><button type="button" id="lineFavorite" class="fav-btn" aria-label="Favoritar linha" hidden>☆</button></div>
+      
+      <div class="line-heading"><div class="line-title" id="lineTitle">Selecione uma linha</div><button type="button" id="lineExit" class="subtle" hidden>Fechar linha</button><button type="button" id="lineFavorite" class="fav-btn" aria-label="Favoritar linha" hidden>☆</button></div>
       <div class="stats"><div><strong id="vTotal">—</strong><small>Veículos encontrados</small></div><div><strong id="vRecent">—</strong><small>GPS recente (até 2 min)</small></div></div>
       <div class="block"><label for="patternInput"><strong>Sentido e percurso</strong></label><select id="patternInput" aria-describedby="patternHint"><option value="">Escolha o sentido</option></select><p class="hint" id="patternHint">A variante com mais viagens é exibida primeiro. Você pode trocar o sentido ou escolher um percurso alternativo.</p></div>
+      <div id="lineStopChooser" class="block line-stop-chooser" hidden>
+        <label for="lineStopSelect"><strong>Ponto de embarque ou acompanhamento</strong></label>
+        <select id="lineStopSelect"><option value="">Escolha um ponto deste percurso</option></select>
+        <div id="lineStopForecast" class="hint" role="status" aria-live="polite">Selecione um ponto para consultar os horários programados.</div>
+      </div>
       <div class="block vehicles-block"><div class="flexhead"><b>Ônibus da linha</b><button id="refresh" type="button" class="subtle">Atualizar</button></div><div id="vehicleList" class="vehicle-list"><p class="muted">Selecione uma linha.</p></div></div>
       <div class="block"><h3>Linhas disponíveis</h3><label class="srch" for="allLineSearch"><span aria-hidden="true">⌕</span><input id="allLineSearch" placeholder="Filtrar todas as linhas" aria-label="Filtrar todas as linhas" type="search"></label><div id="allLineList" class="list-rows"></div></div>
     </section>
@@ -102,14 +106,14 @@
       <h3>Ampliação da Linha 2</h3><p id="metroPlanned" class="muted info-small"></p>
       <p class="hint">O atendimento da Linha 2 inclui somente Nova Suíça e Amazonas nesta etapa. Estações futuras não são sugeridas como locais de embarque.</p>
     </section>
-    <section id="rotasPane" hidden aria-label="Planejamento de rotas para ônibus e metrô">
+    <section id="rotasPane" hidden inert aria-label="Planejamento de rotas para ônibus e metrô">
       <h2>Planejar viagem</h2>
       <p class="notice">Roteamento gratuito executado no seu navegador, com arquivos GTFS oficiais e sem enviar origem/destino a servidores de cálculo. Horários programados, não GPS. Caminhadas aproximadas e metrô informativo até existirem dados temporais verificáveis.</p>
       <div class="route-place">
         <label for="routeOriginInput"><strong>Origem</strong></label>
-        <input id="routeOriginInput" type="search" placeholder="Nome do ponto, estação ou lat,lng" autocomplete="off" aria-label="Local de partida">
+        <input id="routeOriginInput" type="search" placeholder="Endereço, padaria, faculdade, ponto ou coordenadas" autocomplete="off" aria-label="Local de partida">
         <div class="route-place-actions">
-          <button id="routeOriginSearch" type="button" class="subtle">Buscar ponto</button>
+          <button id="routeOriginSearch" type="button" class="subtle">Buscar local</button>
           <button id="routeOriginMap" type="button" class="subtle">Escolher no mapa</button>
           <button id="routeOriginLocation" type="button" class="subtle">Minha localização</button>
         </div>
@@ -117,9 +121,9 @@
       </div>
       <div class="route-place">
         <label for="routeDestinationInput"><strong>Destino</strong></label>
-        <input id="routeDestinationInput" type="search" placeholder="Nome do ponto, estação ou lat,lng" autocomplete="off" aria-label="Local de destino">
+        <input id="routeDestinationInput" type="search" placeholder="Endereço, padaria, faculdade, ponto ou coordenadas" autocomplete="off" aria-label="Local de destino">
         <div class="route-place-actions">
-          <button id="routeDestinationSearch" type="button" class="subtle">Buscar ponto</button>
+          <button id="routeDestinationSearch" type="button" class="subtle">Buscar local</button>
           <button id="routeDestinationMap" type="button" class="subtle">Escolher no mapa</button>
         </div>
         <div id="routeDestinationResults" class="list-rows" aria-live="polite"></div>
@@ -145,7 +149,8 @@
         </label>
         <label for="routePreference"><strong>Priorizar</strong></label>
         <select id="routePreference">
-          <option value="fastest">Mais rápido</option>
+          <option value="fastest">Mais rápido (chegada mais cedo)</option>
+          <option value="balanced">Equilibrada (tempo, caminhada e baldeações)</option>
           <option value="leastWalking">Andar menos</option>
           <option value="leastTransfers">Menos baldeações</option>
         </select>
@@ -159,11 +164,12 @@
       <div id="routePlanStatus" class="notice" role="status" aria-live="polite">Selecione origem e destino para começar.</div>
       <div id="routeResults" class="list-rows" aria-live="polite"></div>
       <div id="routeMetroHints" class="list-rows"></div>
-      <p class="hint">Pesquisa gratuita no catálogo local de pontos, por coordenadas ou selecionando diretamente no mapa. Ainda não há busca completa por endereço: use o mapa para indicar qualquer rua ou imóvel. Dados de ônibus © PBH/SUMOB. Horários de tabela não são GPS.</p>
+      <p class="hint">Busque pontos e estações locais ou, ao tocar em Buscar local, pesquise endereços e estabelecimentos no OpenStreetMap/Photon (serviço externo gratuito, sujeito a limites). A pesquisa digitada é enviada ao serviço apenas ao tocar em Buscar. O planejamento dos trajetos continua no aparelho; horários GTFS não são previsão GPS. Dados © PBH/SUMOB e © OpenStreetMap.</p>
     </section>
     <footer class="side-footer"><div id="lastPoll">Aguardando coleta</div><div>Fonte: Prefeitura de Belo Horizonte · protótipo não oficial.</div></footer>
   </div>
 </section>
+<script src="./place-geocoding.js" defer></script>
 <script src="./app.js" defer></script>
 </body>
 </html>

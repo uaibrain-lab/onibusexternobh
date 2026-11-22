@@ -31,3 +31,42 @@ test('road path length must be inside configured walk budget',()=>{
  const g=createGraph();
  assert.equal(g.route([-19.9000,-43.9000],[-19.9002,-43.9000],15),null);
 });
+
+test('skips pedestrian graph search when no stop snaps to OSM',()=>{
+ const g=createGraph();
+ // A graph traversal would access adjacency; empty/unsnapped targets must not.
+ g.adj[0]=new Proxy(g.adj[0],{get(){throw Error('unexpected OSM traversal')}});
+ assert.equal(g.distancesToStops([-19.9,-43.9],[],2500).size,0);
+ assert.equal(g.distancesToStops([-19.9,-43.9],
+   [{index:7,coords:[-19.95,-43.95]}],2500).size,0);
+});
+test('still returns walking distance for a snapped candidate',()=>{
+ const g=createGraph();
+ const found=g.distancesToStops([-19.9,-43.9],
+   [{index:7,coords:[-19.9001,-43.9]}],2500);
+ assert.ok(found.has(7));
+ assert.equal(found.get(7).meters,11);
+});
+
+test('skips snapped targets when access alone exceeds walking budget',()=>{
+ const g=createGraph();
+ const offset=[-19.89964,-43.9]; // ~40 m from the closest OSM node
+ const snap=g.nearest(offset);
+ assert.ok(snap&&snap[1]>35&&snap[1]<45);
+ g.adj[snap[0]]=new Proxy(g.adj[snap[0]],{
+   get(){throw Error('unnecessary pedestrian traversal')}
+ });
+ const found=g.distancesToStops(offset,[{index:11,coords:offset}],70);
+ assert.equal(found.size,0); // two access legs already exceed 70 m
+});
+
+test('route avoids A-star when both OSM access legs exceed budget',()=>{
+ const g=createGraph();
+ const from=[-19.89964,-43.9],to=[-19.9001,-43.90056];
+ const a=g.nearest(from),b=g.nearest(to);
+ assert.ok(a&&b&&a[0]!==b[0]&&a[1]+b[1]>70);
+ g.adj[a[0]]=new Proxy(g.adj[a[0]],{
+   get(){throw Error('unnecessary A-star traversal')}
+ });
+ assert.equal(g.route(from,to,70),null);
+});

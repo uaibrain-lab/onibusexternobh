@@ -270,7 +270,9 @@ class JourneyPlanner:
                     candidates=[]
                     entries=reversed(stops) if backward else iter(stops)
                     for row in entries:
-                        sid,arr,dep,pickup,dropoff = row
+                        # P27: preserve optional GTFS stop_sequence at row[5]
+                        # for TripUpdates without breaking older 5-column shards.
+                        sid,arr,dep,pickup,dropoff = row[:5]
                         stats['stopScans']+=1
                         if stats['stopScans']>MAX_STOP_SCANS:
                             stats['limited']=True

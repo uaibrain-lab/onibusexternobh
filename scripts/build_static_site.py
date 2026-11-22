@@ -15,26 +15,35 @@ from build_static_arrivals import build as build_arrivals
 ROOT=Path(__file__).resolve().parents[1]
 GB=1024**3
 MAX_BYTES=350*1024*1024
+STAGING_HOST='externo-bh-hml-uaibrain.pages.dev'
+STAGING_ENDPOINT='https://externo-bh-gps-free.hubufmg.workers.dev/api/gps'
 
 
-def build(target=None):
+def build(target=None, gps_staging=False, hub_v1=False):
+    if hub_v1 and gps_staging:
+        raise ValueError('Hub V1 cannot enable experimental GPS')
     target=Path(target) if target else ROOT/'dist'
     catalog=ROOT/'catalog'
     scan=catalog/'scan'
     info=scan/'index.json'
-    if not info.exists():
-        raise FileNotFoundError('Catálogo binário ausente; execute build_static_scan.py primeiro.')
-    manifest=json.loads(info.read_text(encoding='utf-8'))
-    if (manifest.get('schema') not in (1,2) or manifest.get('tripCount',0)<1000 or
-        manifest.get('connectionCount',0)<10000):
-        raise ValueError('Índice estático incompleto ou de versão incompatível')
-    # Route searches and point arrivals MUST share one official GTFS edition.
-    # A partial refresh cannot publish mismatched stops or stale stop times.
     source=json.loads((catalog/'manifest.json').read_text(encoding='utf-8'))
-    if (str(source.get('feedEndDate'))!=str(manifest.get('validThrough')) or
-        int(source.get('stops',0))!=int(manifest.get('stopCount',-1)) or
-        int(source.get('trips',0))!=int(manifest.get('tripCount',-1))):
-        raise ValueError('GTFS inconsistente entre índices de rotas e horários por parada')
+    if hub_v1:
+        # This release contains no origin/destination routing or large scan.
+        if (int(source.get('routes',0))<100 or int(source.get('stops',0))<1000 or
+                int(source.get('trips',0))<1000 or int(source.get('stopTimeRows',0))<10000):
+            raise ValueError('Municipal GTFS catalog is incomplete')
+        manifest={'validThrough':source.get('feedEndDate')}
+    else:
+        if not info.exists():
+            raise FileNotFoundError('Catálogo binário ausente; execute build_static_scan.py primeiro.')
+        manifest=json.loads(info.read_text(encoding='utf-8'))
+        if (manifest.get('schema') not in (1,2) or manifest.get('tripCount',0)<1000 or
+                manifest.get('connectionCount',0)<10000):
+            raise ValueError('Índice estático incompleto ou de versão incompatível')
+        if (str(source.get('feedEndDate'))!=str(manifest.get('validThrough')) or
+            int(source.get('stops',0))!=int(manifest.get('stopCount',-1)) or
+            int(source.get('trips',0))!=int(manifest.get('tripCount',-1))):
+            raise ValueError('GTFS inconsistente entre índices de rotas e horários por parada')
     if not (catalog/'metro.json').is_file():
         raise FileNotFoundError('Catálogo do metrô ausente.')
     if target.exists():
@@ -42,7 +51,7 @@ def build(target=None):
     public=target/'externo'
     public.mkdir(parents=True)
     static=ROOT/'static'
-    for name in ('app.js','style.css','hub-parity.css','route-worker.js','service-worker.js','static-bus.js','static-arrivals.js','walk-network.js','metro-timing.js','manifest.webmanifest','icon-192.png','icon-512.png'):
+    for name in ('app.js','style.css','hub-parity.css','route-worker.js','service-worker.js','static-bus.js','static-arrivals.js','live-gps.js','gps-config.json','place-geocoding.js','walk-network.js','metro-timing.js','metropolitan.html','metropolitan.js','manifest.webmanifest','icon-192.png','icon-512.png'):
         shutil.copy2(static/name,public/name)
     html=(static/'index.html').read_text(encoding='utf-8')
     anchor='<html lang="pt-BR">'
@@ -54,20 +63,96 @@ def build(target=None):
         raise ValueError('Script principal não localizado')
     html=html.replace(loader,
         '<script src="./static-arrivals.js" defer></script>\n'
+        '<script src="./live-gps.js" defer></script>\n'
         '<script src="./static-bus.js" defer></script>\n'+loader,1)
+    if gps_staging:
+        # Only the explicit *staging build output* enables live telemetry.
+        # Never mutate static/gps-config.json or the Firebase Hub.
+        raw_config=json.loads((static/'gps-config.json').read_text(encoding='utf-8'))
+        if raw_config.get('enabled') is not False:
+            raise ValueError('Configuração fonte GPS deve permanecer desativada')
+        config_stage={'enabled':True,'provider':'gtfs_rt',
+                      'endpoint':STAGING_ENDPOINT,'refreshSeconds':45}
+        (public/'gps-config.json').write_text(
+            json.dumps(config_stage,ensure_ascii=False,indent=2)+'\n',
+            encoding='utf-8')
+        html=html.replace('<head>', '<head>\n<meta name="robots" content="noindex,nofollow,noarchive">',1)
+        html=html.replace('data-app-mode="free-static"',
+                          'data-app-mode="free-static" data-gps-homologacao="true"',1)
+        html=html.replace('<title>Externo — Hub UFMG · Protótipo</title>',
+                          '<title>Externo BH · Homologação GPS SUMOB</title>',1)
+        heading='<div class="sheet-identity"><strong>Externo</strong><span>BELO HORIZONTE</span></div>'
+        if heading not in html:
+            raise ValueError('Marcador do título do Externo mudou')
+        html=html.replace(heading,heading.replace('BELO HORIZONTE','BELO HORIZONTE · GPS EM TESTE'),1)
+        pill='<div class="source-pill" aria-live="polite">'
+        if pill not in html:
+            raise ValueError('Marcador do status GPS não localizado')
+        html=html.replace(pill,pill+
+                          '<span class="gps-staging-label" aria-label="GPS em homologação">'
+                          'TESTE</span>',1)
+        notice='<div class="notice-top" role="note">'
+        if notice not in html:
+            raise ValueError('Marcador do aviso GPS não localizado')
+        html=html.replace(notice,notice+'HOMOLOGAÇÃO: GPS experimental SUMOB. Sem ETA validado. ',1)
+        # Stage-specific cache-busting: older HTML/CSS from the P17 build
+        # must never mask a corrected canvas/map release in an installed PWA.
+        stage_version='p27-osm-audit-mobile-20261118'
+        for name in ('app.js','style.css','hub-parity.css',
+                     'live-gps.js','static-bus.js','static-arrivals.js',
+                     'place-geocoding.js','route-worker.js'):
+            html=html.replace('src="./'+name+'"',
+                              'src="./'+name+'?v='+stage_version+'"')
+            html=html.replace('href="./'+name+'"',
+                              'href="./'+name+'?v='+stage_version+'"')
+        # Cloudflare Pages static directives exist ONLY in the isolated build.
+        (target/'_redirects').write_text('/ /externo/ 302\n',encoding='utf-8')
+        (target/'_headers').write_text(
+            '/*\n  X-Robots-Tag: noindex, nofollow, noarchive\n'
+            '  X-Content-Type-Options: nosniff\n'
+            '  Referrer-Policy: strict-origin-when-cross-origin\n'
+            '/externo/gps-config.json\n'
+            '  Cache-Control: no-store, max-age=0\n'
+            '/externo/index.html\n'
+            '  Cache-Control: no-cache, max-age=0\n'
+            '/externo/app.js\n'
+            '  Cache-Control: no-cache, max-age=0\n'
+            '/externo/style.css\n'
+            '  Cache-Control: no-cache, max-age=0\n'
+            '/externo/hub-parity.css\n'
+            '  Cache-Control: no-cache, max-age=0\n'
+            '/externo/place-geocoding.js\n'
+            '  Cache-Control: no-cache, max-age=0\n'
+            '/externo/route-worker.js\n'
+            '  Cache-Control: no-cache, max-age=0\n'
+            '/externo/walk-network.js\n'
+            '  Cache-Control: no-cache, max-age=0\n',
+            encoding='utf-8')
     (public/'index.html').write_text(html,encoding='utf-8')
     (public/'catalog').mkdir(exist_ok=True)
     shutil.copy2(catalog/'metro.json',public/'catalog'/'metro.json')
-    for name in ('manifest.json','routes.json','stops.json','patterns.json','shapes.json','routing-stop-routes.json'):
+    if not hub_v1:
+        # DER/MG is departures-only: never turn these records into GTFS trips.
+        der_source=catalog/'der-rmbh-411c-511c.json'
+        der=json.loads(der_source.read_text(encoding='utf-8'))
+        if (der.get('schema')!=1 or der.get('dataStatus')!='published-departures-only' or
+            der.get('routePlanningEnabled') is not False or
+            der.get('georeferencedStops') is not False or
+            der.get('calendarVerified') is not False or
+            sorted(der.get('lines',{}))!=['411C','511C']):
+            raise ValueError('DER/MG informativo inconsistente: bloquear build')
+        shutil.copy2(der_source,public/'catalog'/'der-rmbh-411c-511c.json')
+    for name in ('manifest.json','routes.json','stops.json','patterns.json','shapes.json','routing-stop-routes.json','gps-nl-map.json'):
         shutil.copy2(catalog/name,public/'catalog'/name)
-    shutil.copytree(scan,public/'catalog'/'scan')
+    if not hub_v1:
+        shutil.copytree(scan,public/'catalog'/'scan')
     # Do not ship the 18 MiB monolithic timetable to mobile visitors.
     # Build small, per-stop shards directly into the static release.
     build_arrivals(catalog,public/'catalog'/'arrivals')
     # The real OSM network is optional until validated. Do NOT fabricate one
     # from straight-line GTFS stop coordinates.
     walking=catalog/'walk'/'graph.json.gz'
-    if walking.is_file():
+    if not hub_v1 and walking.is_file():
         import gzip
         with gzip.open(walking,'rt',encoding='utf-8') as f:
             graph=json.load(f)
@@ -99,6 +184,9 @@ def build(target=None):
             ]
         }
     }
+    if hub_v1:
+        config['hosting']['headers']=[h for h in config['hosting']['headers']
+                                      if '/scan/' not in h['source']]
     (target/'firebase.json').write_text(
         json.dumps(config,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
     total=sum(p.stat().st_size for p in public.rglob('*') if p.is_file())
@@ -108,6 +196,9 @@ def build(target=None):
           'bytes=',total,'megabytes=',round(total/1048576,2),
           'validThrough=',manifest['validThrough'])
     print('PREVIEW_FOLDER',public)
+    print('GPS_STAGING_BUILD=',str(gps_staging).lower())
+    if gps_staging:
+        print('STAGING_ONLY_HOST=https://'+STAGING_HOST+'/externo/')
     print('NO_DEPLOY_PERFORMED')
     return target
 
@@ -115,5 +206,8 @@ def build(target=None):
 if __name__=='__main__':
     p=argparse.ArgumentParser()
     p.add_argument('--output',default=None)
+    p.add_argument('--gps-staging',action='store_true',
+                   help='ATENÇÃO: ativa GPS SOMENTE em dist/ para projeto Cloudflare Pages isolado')
+    p.add_argument('--hub-v1',action='store_true',help='Município + metrô, sem rotas/RMBH')
     args=p.parse_args()
-    build(args.output)
+    build(args.output,gps_staging=args.gps_staging,hub_v1=args.hub_v1)

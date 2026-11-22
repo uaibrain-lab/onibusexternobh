@@ -46,3 +46,12 @@ test('segurança de integração com Hub apenas no mesmo domínio',()=>{
   assert.doesNotMatch(page,/id="bandeco-navigation"/);
   assert.doesNotMatch(app,/firebase\.functions/);
 });
+
+test('V1 municipal oculta planejador e RMBH sem apagar implementação futura',()=>{
+  assert.match(page,/id="quick-rotas"[^>]*hidden[^>]*disabled/);
+  assert.match(page,/<section id="rotasPane" hidden inert/);
+  assert.doesNotMatch(page,/href="\.\/metropolitan\.html"/);
+  assert.match(app,/if\(tab==='rotas'\)tab='pontos'/);
+  assert.match(app,/function submitRoute/); // código preservado para V2
+  assert.match(page,/horários GTFS programados/);
+});
