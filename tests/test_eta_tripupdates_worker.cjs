@@ -229,3 +229,22 @@ test('duas previsões conflitantes para o mesmo trip+stop bloqueiam ETA',async()
   assert.equal(result[0].kind,'NO_DATA');
   assert.equal(result[0].delaySeconds,undefined);
 });
+
+test('limite da API não corta NO_DATA no meio de uma viagem',async()=>{
+  const {officialTripDelays}=await predictions;
+  const day='20261119',startTime='19:00:00';
+  const trip={tripId:'T-250-MARKERS',routeId:'51',startDate:day,startTime};
+  const huge={trip,stopTimeUpdate:[
+    ...Array.from({length:250},(_,n)=>({stopId:String(14780000+n),
+      stopSequence:n+1,arrival:{delay:120}})),
+    {stopId:'14791950',stopSequence:251,scheduleRelationship:2}
+  ]};
+  const small={trip:{...trip,tripId:'T-SAFE'},stopTimeUpdate:[
+    {stopId:'14791950',stopSequence:1,arrival:{delay:180}}
+  ]};
+  const feed={feedTimestamp:NOW,updates:[huge,small]};
+  const out=officialTripDelays(feed,['51'],NOW);
+  assert.equal(out.length,1,'Viagem com 251 alterações não pode ser truncada');
+  assert.equal(out[0].tripId,'T-SAFE');
+  assert.equal(out[0].delaySeconds,180);
+});
