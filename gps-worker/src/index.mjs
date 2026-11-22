@@ -10,6 +10,8 @@ const FEEDS=Object.freeze({
 const ORIGINS=new Set([
   'https://hubufmg.web.app',
   'https://hubufmg.firebaseapp.com',
+  // Firebase Hosting preview channel for isolated Hub UFMG QA.
+  'https://hubufmg--homologacao-exbdd4qe.web.app',
   // Isolated Pages Free project for GPS homologation; never a wildcard.
   'https://externo-bh-hml-uaibrain.pages.dev'
 ]);
