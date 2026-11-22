@@ -66,7 +66,7 @@ def read_line(catalog: Path, index: dict, code: str):
     return trips
 
 
-def event_stream(trips, index, date, seconds_start, seconds_end, first):
+def event_stream(trips, index, date, seconds_start, seconds_end, first, required_stop=None):
     """(stop_id, seconds since query-day midnight, trip_id, headsign), local only."""
     events = defaultdict(list)
     active_trips = set()
@@ -98,9 +98,11 @@ def event_stream(trips, index, date, seconds_start, seconds_end, first):
                     if (pos > 0 and valid[pos] and row[4] == 0 and
                             earliest_board is not None and earliest_board <= row[1]):
                         eligible.append((pos, row[1]))
-                    if valid[pos] and row[3] == 0:
-                        earliest_board = (row[2] if earliest_board is None else
-                                          min(earliest_board, row[2]))
+                    if valid[pos] and row[3] == 0 and (required_stop is None or str(row[0]) == required_stop):
+                        board_time = offset*86400 + row[2]
+                        if required_stop is None or board_time >= seconds_start:
+                            earliest_board = (row[2] if earliest_board is None else
+                                              min(earliest_board, row[2]))
             else:
                 latest_alight = None
                 for pos in range(len(stops) - 1, -1, -1):
@@ -108,7 +110,7 @@ def event_stream(trips, index, date, seconds_start, seconds_end, first):
                     if (pos < len(stops) - 1 and valid[pos] and row[3] == 0 and
                             latest_alight is not None and row[2] <= latest_alight):
                         eligible.append((pos, row[2]))
-                    if valid[pos] and row[4] == 0:
+                    if valid[pos] and row[4] == 0 and (required_stop is None or str(row[0]) == required_stop):
                         latest_alight = (row[1] if latest_alight is None else
                                          max(latest_alight, row[1]))
             for pos, time_seconds in eligible:
@@ -124,7 +126,8 @@ def hm(date: dt.date, seconds: int) -> str:
 
 
 def audit(catalog: Path, first: str, second: str, date: dt.date,
-          time_text: str, hours: int=3, min_wait: int=2, max_wait: int=30):
+          time_text: str, hours: int=3, min_wait: int=2, max_wait: int=30,
+          origin_stop: str | None=None, destination_stop: str | None=None):
     if not re.fullmatch(r"\d{2}:\d{2}",time_text):
         raise ValueError("Horário HH:MM inválido")
     hh,mm=map(int,time_text.split(":"))
@@ -134,6 +137,11 @@ def audit(catalog: Path, first: str, second: str, date: dt.date,
     end=start+hours*3600
     if first==second:
         raise ValueError("Informe duas linhas distintas")
+    if (origin_stop is None) != (destination_stop is None):
+        raise ValueError("Informe ambas as paradas de origem e destino")
+    if origin_stop is not None and (not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", origin_stop) or
+                                    not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", destination_stop)):
+        raise ValueError("Identificador público GTFS inválido")
     catalog=Path(catalog)
     index=read_json(catalog/"routing-index.json")
     a,b=read_line(catalog,index,first),read_line(catalog,index,second)
@@ -151,6 +159,22 @@ def audit(catalog: Path, first: str, second: str, date: dt.date,
     first_events,first_active=event_stream(a,index,date,start,end,True)
     next_events,second_active=event_stream(b,index,date,start+min_wait*60,
                                          end+max_wait*60,False)
+    if origin_stop is not None:
+        # Strictly ordered origin -> same-stop transfer -> destination, with
+        # boarding at/after the requested clock. No OSM/access-leg claim.
+        constrained_first,_=event_stream(a,index,date,start,end,True,origin_stop)
+        constrained_second,_=event_stream(b,index,date,start+min_wait*60,
+                                          end+max_wait*60,False,destination_stop)
+        constrained_pairs=0
+        for sid in constrained_first.keys() & constrained_second.keys():
+            times=sorted(event[0] for event in constrained_second[sid])
+            for arrival,_,_ in constrained_first[sid]:
+                constrained_pairs += (bisect_right(times,arrival+max_wait*60)-
+                                      bisect_left(times,arrival+min_wait*60))
+        result["originStop"]=origin_stop
+        result["destinationStop"]=destination_stop
+        result["originDestinationConstrainedPairs"]=constrained_pairs
+        result["originDestinationConstrained"]=True
     # Compare stop coverage using FULL shards, not just times within a window.
     stops_a={str(row[0]) for trip in a for row in trip[3] if isinstance(row,list) and len(row)>=5}
     stops_b={str(row[0]) for trip in b for row in trip[3] if isinstance(row,list) and len(row)>=5}
@@ -210,11 +234,14 @@ def main(argv=None):
     parser.add_argument("--hours",type=int,default=3)
     parser.add_argument("--min-wait",type=int,default=2)
     parser.add_argument("--max-wait",type=int,default=30)
+    parser.add_argument("--origin-stop",help="Stop_id público de embarque na primeira linha")
+    parser.add_argument("--destination-stop",help="Stop_id público de desembarque na segunda linha")
     args=parser.parse_args(argv)
     try:
         date=dt.date.fromisoformat(args.date)
         result=audit(args.catalog,args.first.upper(),args.second.upper(),
-                     date,args.time,args.hours,args.min_wait,args.max_wait)
+                     date,args.time,args.hours,args.min_wait,args.max_wait,
+                     args.origin_stop,args.destination_stop)
         print(json.dumps(result,ensure_ascii=False,indent=2))
         print("P28_SAME_STOP_SCHEDULE_AUDIT_OK")
         return 0
