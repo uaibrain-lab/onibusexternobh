@@ -193,3 +193,14 @@ pendências anteriores e sem duplicar a automação existente.
 - `.github/workflows/integracao.yml`: executa auditoria adicional para os IDs públicos de referência `14786682` → `14789497`, imprime o contador restrito e valida `0 <= constrained <= timedTransferPairs`. Zero permanece resultado permitido: não fabricar uma rota.
 - Commits de código/teste/CI: `9b8333ac2fe78d7c5f8fd4546c63799ed15a0556`, `727aea469466807e5dd54179f938025604b0f687`, `b301977c147ee482e5eb1801f8c3920404e6be76`, `bfdcfe6399f1eaf523672c2f63c0536309be8136`, `7fe17e5f3e22b2f74345ed44830ac1a00500eedf`.
 - Verificação: revisão estrutural do código e testes; integração CI do HEAD atualizado ainda deve ser conferida. Não alegar aprovação de testes novos antes de resultados Actions. Próximo agente: consultar logs do novo CI, extrair o contador restrito e, se for zero, investigar cobertura de origem/destino sem alterar arbitrariamente OSM. Se houver pares, confrontar com o motor ponta a ponta e acessos reais. Sem merge, deploy, ETA GPS, custo pago ou mudanças em outros repositórios.
+
+
+## P28 — Limite de leitura do índice GTFS (22/11/2026)
+
+- HEAD inicial confirmado: `47fa86fce84d25335efd16afa3b5d8877af686ac`. Integração #44969382248 e Testes P2 #44969386451 aprovados. P27–P29 revisados e SHAs de arquivos conferidos antes das alterações.
+- `scripts/audit_same_stop_transfers.py`: índice JSON não comprimido agora é lido com limite explícito de 32 MiB; antes havia apenas verificação do tamanho em disco, seguida de `read_text()` sem limite durante a leitura. Não altera regras de viagens, horários, OSM ou GPS.
+- `tests/test_p28_same_stop_transfers.py`: regressão sintética verifica índice normal e arquivo truncado em 32 MiB + 1 byte.
+- Commits: `4c21b29e68e16b241b3229a683de233dbc108428` (código) e `85304bf5cd1233c485d55ea3b973eb111c5e6362` (teste).
+- Validação local isolada equivalente em Python: `P28_INDEX_SIZE_GATE_OK 2/2`; **não** equivale à suíte integrada. Verificar CI do HEAD e corrigir qualquer regressão antes de novas alterações.
+- Bloqueio funcional permanece: 9106→5106 apresenta 58 pares temporais em seis paradas, mas zero pares restritos aos IDs de origem/destino de referência. Investigar acessos pedestres e corredores alternativos com GTFS e OSM reais; não fabricar rota nem ETA.
+- Handoff: conferir Actions após o commit documental, reconsultar HEAD e SHA antes de novas escritas. Sem merge, deploy, custos pagos ou mudanças em outros repositórios.
