@@ -42,6 +42,11 @@ async function probe(kind,upstream){
           Number.isSafeInteger(st.arrival?.delay)||Number.isSafeInteger(st.departure?.delay))).length,
         withTripDelay:parsed.updates.filter(u=>Number.isSafeInteger(u.delay)).length,
         withoutTripTimestamp:parsed.updates.filter(u=>u.timestamp===undefined).length,
+        withTripId:parsed.updates.filter(u=>u.trip?.tripId).length,
+        withRouteId:parsed.updates.filter(u=>u.trip?.routeId).length,
+        withStartDate:parsed.updates.filter(u=>u.trip?.startDate).length,
+        withStartTime:parsed.updates.filter(u=>u.trip?.startTime).length,
+        withStopSequence:parsed.updates.filter(u=>u.stopTimeUpdate?.some(st=>Number.isSafeInteger(st.stopSequence))).length,
         withExactStopId:parsed.updates.filter(u=>u.stopTimeUpdate?.some(st=>st.stopId)).length});
     }else if(kind==='serviceAlerts'){
       const parsed=parseServiceAlerts(data,{routes:[],nowSeconds:Math.floor(now/1000)});
