@@ -113,7 +113,7 @@ class SameStopTransferAuditTests(unittest.TestCase):
             with self.subTest(kwargs=kwargs),tempfile.TemporaryDirectory() as root:
                 setup(root,**kwargs)
                 r=module.audit(Path(root),"9106","5106",dt.date(2026,11,17),
-                               "22:00",2,2,30,"ORIGIN","DESTINATION")
+                               "21:45",2,2,30,"ORIGIN","DESTINATION")
                 self.assertEqual(r["originDestinationConstrainedPairs"],0)
 
     def test_24h_plus_times_use_previous_service_day(self):
