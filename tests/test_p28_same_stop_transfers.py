@@ -86,6 +86,36 @@ class SameStopTransferAuditTests(unittest.TestCase):
                 self.assertEqual(r["feasibleStops"],0)
                 self.assertFalse(r["endToEndJourneyVerified"])
 
+    def test_constrained_public_origin_destination_and_stop_order(self):
+        with tempfile.TemporaryDirectory() as root:
+            setup(root)
+            args=(Path(root),"9106","5106",dt.date(2026,11,17),"22:00",2,2,30)
+            r=module.audit(*args,"ORIGIN","DESTINATION")
+            self.assertEqual(r["originDestinationConstrainedPairs"],1)
+            self.assertTrue(r["originDestinationConstrained"])
+            self.assertFalse(r["endToEndJourneyVerified"])
+            self.assertEqual(r["timedTransferPairs"],1)
+            for origin,destination in (("LAST","DESTINATION"),
+                                       ("ORIGIN","SHARED"),("MISSING","DESTINATION")):
+                with self.subTest(origin=origin,destination=destination):
+                    self.assertEqual(module.audit(*args,origin,destination)[
+                        "originDestinationConstrainedPairs"],0)
+            with self.assertRaises(ValueError):
+                module.audit(*args,"../private","DESTINATION")
+            with self.assertRaises(ValueError):
+                module.audit(*args,"ORIGIN",None)
+
+    def test_constrained_rejects_prohibited_and_reversed_legs(self):
+        for kwargs in ({"bad_origin_board":True},
+                       {"bad_destination_alight":True},
+                       {"origin_after_transfer":True},
+                       {"destination_before_transfer":True}):
+            with self.subTest(kwargs=kwargs),tempfile.TemporaryDirectory() as root:
+                setup(root,**kwargs)
+                r=module.audit(Path(root),"9106","5106",dt.date(2026,11,17),
+                               "22:00",2,2,30,"ORIGIN","DESTINATION")
+                self.assertEqual(r["originDestinationConstrainedPairs"],0)
+
     def test_24h_plus_times_use_previous_service_day(self):
         with tempfile.TemporaryDirectory() as root:
             setup(root)
