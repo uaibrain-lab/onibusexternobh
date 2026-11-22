@@ -52,6 +52,26 @@ test('homologation Pages origin permitted by CORS without wildcard or GPS call',
   assert.equal((await handleGpsRequest(forbidden,{cache:null,now:NOW})).status,403);
 });
 
+test('Firebase homologacao exact Origin is permitted, other preview URLs stay blocked',async()=>{
+  const {handleGpsRequest}=await worker;
+  const allowed='https://hubufmg--homologacao-exbdd4qe.web.app';
+  const target='https://externo-bh-gps-free.hubufmg.workers.dev/api/gps/capabilities';
+  let upstream=0;
+  for(const method of ['GET','OPTIONS']){
+    const request=new Request(target,{method,headers:{Origin:allowed}});
+    const res=await handleGpsRequest(request,{cache:null,now:NOW,
+      fetchFn:async()=>{upstream++;throw Error('Unexpected upstream call')}});
+    assert.equal(res.status,method==='GET'?200:204);
+    assert.equal(res.headers.get('Access-Control-Allow-Origin'),allowed);
+  }
+  const disallowed=new Request(target,{
+    headers:{Origin:'https://hubufmg--homologacao-outro.web.app'}});
+  const blocked=await handleGpsRequest(disallowed,{cache:null,now:NOW});
+  assert.equal(blocked.status,403);
+  assert.equal(blocked.headers.get('Access-Control-Allow-Origin'),null);
+  assert.equal(upstream,0);
+});
+
 test('capability probe exposes Worker revision and GTFS-RT support without contacting PBH',async()=>{
   const {handleGpsRequest}=await worker;
   let calls=0;
