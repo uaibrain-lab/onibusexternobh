@@ -51,8 +51,6 @@ def setup(root, bad_alight=False,bad_board=False, bad_origin_board=False,
 
 class SameStopTransferAuditTests(unittest.TestCase):
     def test_malformed_routing_index_fails_closed(self):
-        valid = {"files": {}, "services": {"S": {}},
-                 "exceptions": {"20261117": {"S": 1}}}
         invalid = [[], None, {"files": {}, "services": {}, "exceptions": []},
                    {"files": {}, "services": {"S": []}, "exceptions": {}},
                    {"files": {}, "services": {}, "exceptions": {"20261117": []}}]
