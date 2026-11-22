@@ -7,6 +7,7 @@ on:
     paths:
       - .github/workflows/hub-v1-package.yml
       - scripts/prepare_hub_v1.py
+      - scripts/rebuild_hub_v1_catalog.py
       - scripts/build_static_site.py
       - scripts/build_static_arrivals.py
       - static/**
@@ -34,7 +35,7 @@ jobs:
           python-version: '3.11'
       - name: Testes V1 (somente municipal)
         run: |
-          python -m compileall -q data_quality scripts/prepare_hub_v1.py
+          python -m compileall -q data_quality scripts/prepare_hub_v1.py scripts/rebuild_hub_v1_catalog.py
           python -m unittest -q \
             data_quality.test_bh_v1_release_gate \
             data_quality.test_bh_v1_patterns \
@@ -44,18 +45,27 @@ jobs:
             data_quality.test_bh_v1_timetable_consistency \
             data_quality.test_bh_v1_zip_timetable_equivalence \
             data_quality.test_bh_v1_trip_sequence
+      - name: Baixar e reconstruir GTFS oficial só no ambiente temporário
+        run: |
+          curl --fail --location --retry 3 --retry-delay 8 \
+            --connect-timeout 20 --max-time 240 \
+            https://s3.amazonaws.com/mobilibus-uploads/gtfs/GTFSBHTRANS.zip \
+            -o /tmp/GTFSBHTRANS.zip
+          python scripts/check_official_gtfs.py /tmp/GTFSBHTRANS.zip catalog/source-gtfs.sha256
+          python -m scripts.rebuild_hub_v1_catalog /tmp/GTFSBHTRANS.zip catalog
       - name: Build imutável e redução V1 (sem rotas/RMBH/GPS)
         run: |
-          python scripts/build_static_site.py --output dist
+          python scripts/build_static_site.py --output dist --hub-v1
           python scripts/prepare_hub_v1.py dist/externo
           test ! -e dist/externo/catalog/scan/index.json
           test ! -e dist/externo/catalog/der-rmbh-411c-511c.json
           test -s dist/externo/catalog/arrivals/ff.json.gz
-      - name: Comparar catálogo real, variantes e 256 shards
+      - name: Verificar ZIP original, variantes e cada horário publicado
         run: |
           python -m data_quality.bh_v1_release_gate catalog \
             --date "$(date -u +%Y%m%d)" --require-patterns \
-            --require-arrivals --arrivals-index dist/externo/catalog/arrivals/index.json
+            --require-arrivals --arrivals-index dist/externo/catalog/arrivals/index.json \
+            --require-source-zip --source-zip /tmp/GTFSBHTRANS.zip
       - name: Smoke HTTP local (não publica)
         run: |
           python -m http.server 8765 --bind 127.0.0.1 --directory dist >/tmp/hub-v1-http.log 2>&1 &
@@ -75,15 +85,3 @@ jobs:
           compression-level: 0
           retention-days: 7
           if-no-files-found: error
-      - name: Validar ZIP municipal oficial atual contra o snapshot
-        run: |
-          curl --fail --location --retry 3 --retry-delay 8 \
-            --connect-timeout 20 --max-time 240 \
-            https://s3.amazonaws.com/mobilibus-uploads/gtfs/GTFSBHTRANS.zip \
-            -o /tmp/GTFSBHTRANS.zip
-          python -m data_quality.bh_v1_release_gate catalog \
-            --date "$(date -u +%Y%m%d)" \
-            --require-patterns --require-arrivals \
-            --arrivals-index dist/externo/catalog/arrivals/index.json \
-            --require-source-zip --source-zip /tmp/GTFSBHTRANS.zip
-          echo HUB_V1_SOURCE_GTFS_APPROVED
