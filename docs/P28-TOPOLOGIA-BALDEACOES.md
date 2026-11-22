@@ -213,3 +213,12 @@ pendências anteriores e sem duplicar a automação existente.
 - Correção `ed0af6deff279d27b1f47fd9f62d1fde5369ef8a`: restauradas quebras de linha reais no bloco `with path.open('rb')`, preservando o limite e a exceção para arquivo excessivo. Nenhuma alteração em GTFS, horários, OSM, GPS ou planejador.
 - Verificação necessária: confirmar integração e P2 do HEAD corrigido e resultados do teste `test_uncompressed_routing_index_is_size_bounded`; não considerar aprovado antes de CI. Prosseguir somente após o gate verde.
 - Sem merge/deploy e sem alterações fora deste repositório.
+
+## P28 — Rejeição de índice estruturalmente inválido (22/11/2026)
+
+- HEAD de partida: `49691fe759cefbbc134a641ddbfbc8ca32291170`; integração #44983212093 e Testes P2 #44983215248 aprovados nesse HEAD anterior.
+- Commits: `767c11665b7a06d6baf88f7cd7e12c2835398b7b` (validação), `2676be9881a93decd268b7b2352eb693e5934c43` (regressões) e `289bb93d429d7ad62696f2373c8f377a691ff9fc` (limpeza de fixture).
+- `scripts/audit_same_stop_transfers.py` agora rejeita com `ValueError` índices JSON cujo objeto raiz, `files`, `services`, `exceptions` ou seus registros aninhados tenham tipos incompatíveis. Evita `AttributeError` inesperado e diagnóstico falso em dados corrompidos. Não altera planejamento de rotas, dados OSM, GTFS-RT nem ETA.
+- `tests/test_p28_same_stop_transfers.py` cobre cinco estruturas inválidas e mantém um caso de catálogo válido.
+- Validação pré-publicação: seis checagens isoladas de estrutura Python executadas com sucesso. Checkout completo bloqueado por DNS; a validação isolada não substitui a suíte real. **Conferir CI do HEAD final antes de considerar homologado.**
+- Handoff: executar `python -m unittest discover -s tests -p 'test_p28_same_stop_transfers.py' -v`, verificar integração, P2 e Playwright. Priorizar diagnóstico real das alternativas pedestres 9106→5106 com ruas OSM e calendário GTFS; os 58 pares temporais de mesma parada não atendem às duas paradas públicas exatas investigadas. Não forçar itinerário, inventar ETA ou alterar produção.
