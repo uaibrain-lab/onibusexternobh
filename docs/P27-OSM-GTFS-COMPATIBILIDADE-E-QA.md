@@ -228,3 +228,11 @@ site não foi atualizado. Não usar -ReutilizarBuild na P27.
 - Teste `1196aa14cdea8fe979edfce1ed00892e30b62940`: grafo sintético com dois acessos de aproximadamente 40 m e orçamento de 70 m; adjacência instrumentada para detectar travessia desnecessária.
 - Validação pré-commit: três checagens isoladas de limite aritmético em Node; **não equivalem à execução do arquivo completo de testes**. Conferir integração/P2 no novo HEAD e executar `node --test tests/test_walk_network.cjs` antes de homologar.
 - Handoff: preservar OSM real e dados GTFS oficiais; medir impacto mobile e testar jornadas reais 9106→5106/9209→51 ou 67 com calendário, sentidos e paradas alternativas. Não assumir que 58 baldeações temporais são jornadas completas. Sem merge/deploy.
+
+## P27 — Evitar A* com acesso OSM inviável (22/11/2026)
+
+- Base `d29954fba4f5545243af3dbaca9a08feea675291`; PR #19. CI anterior aprovado: integração #45030819368 e P2 #45030823143.
+- Código `52caa193336ac135127a003271c52bbaebd3bf60` (`static/walk-network.js`): `route` retorna `null` antes do A* se as duas distâncias de snap já ultrapassam o limite de caminhada; mantém fail-closed, sem atalhos fictícios ou mudança de ETA.
+- Teste `a661b93a7ce81ea0f7e8373c15aef4de38c2df88` (`tests/test_walk_network.cjs`): dois endpoints com snap em nós diferentes, custo de acesso superior ao orçamento, instrumentação para impedir expansão de adjacências.
+- Validação local isolada: três asserções Node sobre a condição de limite passaram; **não foi executado o arquivo completo de testes em checkout local** (DNS do git indisponível). Conferir CI no HEAD final, rodar `node --test tests/test_walk_network.cjs` quando disponível.
+- Próximo gate: jornadas reais GTFS + caminhada OSM para 9106→5106 e 9209→51/67; medir latência em Android e verificar horários/serviço e conectividade. Sem alterações nos datasets do auxiliar, merge ou deploy.
