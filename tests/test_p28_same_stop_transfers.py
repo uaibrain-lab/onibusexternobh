@@ -89,7 +89,7 @@ class SameStopTransferAuditTests(unittest.TestCase):
     def test_constrained_public_origin_destination_and_stop_order(self):
         with tempfile.TemporaryDirectory() as root:
             setup(root)
-            args=(Path(root),"9106","5106",dt.date(2026,11,17),"22:00",2,2,30)
+            args=(Path(root),"9106","5106",dt.date(2026,11,17),"21:45",2,2,30)
             r=module.audit(*args,"ORIGIN","DESTINATION")
             self.assertEqual(r["originDestinationConstrainedPairs"],1)
             self.assertTrue(r["originDestinationConstrained"])
