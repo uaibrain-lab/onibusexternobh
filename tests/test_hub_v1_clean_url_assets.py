@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 from urllib.parse import urljoin
 
+sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from scripts.prepare_hub_v1 import fix_clean_urls_assets
 
 FIXTURE={
