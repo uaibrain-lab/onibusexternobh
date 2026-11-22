@@ -47,3 +47,15 @@ test('still returns walking distance for a snapped candidate',()=>{
  assert.ok(found.has(7));
  assert.equal(found.get(7).meters,11);
 });
+
+test('skips snapped targets when access alone exceeds walking budget',()=>{
+ const g=createGraph();
+ const offset=[-19.89964,-43.9]; // ~40 m from the closest OSM node
+ const snap=g.nearest(offset);
+ assert.ok(snap&&snap[1]>35&&snap[1]<45);
+ g.adj[snap[0]]=new Proxy(g.adj[snap[0]],{
+   get(){throw Error('unnecessary pedestrian traversal')}
+ });
+ const found=g.distancesToStops(offset,[{index:11,coords:offset}],70);
+ assert.equal(found.size,0); // two access legs already exceed 70 m
+});
