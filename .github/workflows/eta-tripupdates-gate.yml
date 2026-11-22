@@ -1,0 +1,35 @@
+name: GTFS-RT TripUpdates ETA - testes sem deploy
+on:
+  push:
+    branches:
+      - feat/eta-tripupdates-sumob-20261122
+    paths:
+      - gps-worker/src/**
+      - tests/test_eta_tripupdates_worker.cjs
+      - tests/test_gtfs_rt_trip_updates.cjs
+      - tests/test_gtfs_realtime_worker.cjs
+      - .github/workflows/eta-tripupdates-gate.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: eta-tripupdates-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verificar sintaxe
+        run: |
+          node --check gps-worker/src/index.mjs
+          node --check gps-worker/src/arrival-predictions.mjs
+          node --check gps-worker/src/gtfs-rt-trip-updates.mjs
+      - name: Testar ETA real sem chamar a fonte em CI
+        run: |
+          node --test tests/test_eta_tripupdates_worker.cjs tests/test_gtfs_rt_trip_updates.cjs tests/test_gtfs_rt_trip_instance.cjs tests/test_gtfs_realtime_worker.cjs tests/test_gps_worker_free.cjs
+          echo ETA_GTFS_RT_GUARD_OK
