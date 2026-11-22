@@ -147,6 +147,17 @@ class SameStopTransferAuditTests(unittest.TestCase):
             self.assertFalse(r["secondInCatalog"])
             self.assertFalse(r["endToEndJourneyVerified"])
 
+    def test_uncompressed_routing_index_is_size_bounded(self):
+        # A malformed local index must not trigger an unbounded memory read.
+        with tempfile.TemporaryDirectory() as root:
+            index=Path(root)/"routing-index.json"
+            index.write_text('{"services":{}}',encoding="utf-8")
+            self.assertEqual(module.read_json(index),{"services":{}})
+            with index.open("wb") as stream:
+                stream.truncate(module.MAX_ARCHIVE_BYTES+1)
+            with self.assertRaisesRegex(ValueError,"limite"):
+                module.read_json(index)
+
     def test_bad_time_and_line_rejected(self):
         with tempfile.TemporaryDirectory() as root:
             setup(root)
