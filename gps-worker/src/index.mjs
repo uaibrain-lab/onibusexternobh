@@ -1,4 +1,5 @@
 import {parseVehiclePositions} from './gtfs-rt.mjs';
+import {SUMOB_FEEDS} from './sumob-feeds.mjs';
 import {parseTripUpdates} from './gtfs-rt-trip-updates.mjs';
 import {officialStopPredictions} from './arrival-predictions.mjs';
 import {parseServiceAlerts} from './service-alerts.mjs';
@@ -20,11 +21,11 @@ const ORIGINS=new Set([
 ]);
 // Alternative official SUMOB GTFS-RT feed, publicly catalogued under CC BY 4.0.
 // Endpoint is fixed: callers cannot supply their own URL.
-const REALTIME_URL='http://realtime4.mobilibus.com/web/4ch6j/vehicle-positions?accesskey=982a57efd77a9462bf1665696fb25984';
+const REALTIME_URL=SUMOB_FEEDS.vehiclePositions;
 // SUMOB/PBH public CC BY 4.0 feed published at dados.pbh.gov.br.
 // Caller can NEVER supply the upstream host or feed credentials.
-const TRIP_UPDATES_URL='http://realtime4.mobilibus.com/web/4ch6j/trip-updates?accesskey=982a57efd77a9462bf1665696fb25984';
-const SERVICE_ALERTS_URL='http://realtime4.mobilibus.com/web/4ch6j/alerts?accesskey=982a57efd77a9462bf1665696fb25984';
+const TRIP_UPDATES_URL=SUMOB_FEEDS.tripUpdates;
+const SERVICE_ALERTS_URL=SUMOB_FEEDS.serviceAlerts;
 const RT_MAX_BODY=8*1024*1024;
 const API_VERSION='p24-gtfs-rt-geocode-20261117-1';
 const MAX_BODY=12*1024*1024;
