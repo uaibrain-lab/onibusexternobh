@@ -220,3 +220,11 @@ site não foi atualizado. Não usar -ReutilizarBuild na P27.
 - Regressão `28482ceb2ee9954f2525b5775df6d50bfdade884` (`tests/test_walk_network.cjs`): alvos vazios/sem snap não percorrem adjacências; destino válido mantém distância real.
 - Verificações isoladas executadas no runtime JS com grafo sintético: 3/3 aprovadas (alvos vazios, alvos sem snap, destino válido). **Suíte Node completa e CI dos commits novos ainda não confirmados**; verificar Actions no novo HEAD antes de homologar. Sem benchmark real quantificado nem jornada E2E comprovada nesta rodada.
 - Próximo gate: confirmar integração e P2 no novo HEAD, executar `node --test tests/test_walk_network.cjs` no checkout completo e diagnóstico `scripts/diagnose_route.cjs` com coordenadas/data/hora de referência verificadas. Investigar 9106+5106 e 9209+51/67 por calendário, direção, acesso e rede OSM, sem fabricar conexões. Sem merge/deploy.
+
+## P27 — Acesso pedestre acima do orçamento (22/11/2026)
+
+- HEAD de partida `8712ec01d678833d576eaeb316a46e63ca0f3d5c`, integração #45030302159 e P2 #45030305798 aprovados; PR principal #19. Sem alteração de datasets/importadores do agente auxiliar.
+- Código `e5b7a3d6c8a3bd18ffa166d6e43eded68d875798`: `distancesToStops` elimina candidatos quando somente a soma das duas distâncias de snap já excede o orçamento pedestre. Isso evita Dijkstra inútil e não descarta qualquer rota que pudesse caber no limite.
+- Teste `1196aa14cdea8fe979edfce1ed00892e30b62940`: grafo sintético com dois acessos de aproximadamente 40 m e orçamento de 70 m; adjacência instrumentada para detectar travessia desnecessária.
+- Validação pré-commit: três checagens isoladas de limite aritmético em Node; **não equivalem à execução do arquivo completo de testes**. Conferir integração/P2 no novo HEAD e executar `node --test tests/test_walk_network.cjs` antes de homologar.
+- Handoff: preservar OSM real e dados GTFS oficiais; medir impacto mobile e testar jornadas reais 9106→5106/9209→51 ou 67 com calendário, sentidos e paradas alternativas. Não assumir que 58 baldeações temporais são jornadas completas. Sem merge/deploy.
