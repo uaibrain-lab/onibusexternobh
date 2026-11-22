@@ -77,11 +77,13 @@ export function officialTripDelays(decoded,requestedRoutes,nowSeconds=Math.floor
      throw Error('ETA_INVALID_INPUT');
   const wanted=new Set(requestedRoutes.map(String));
   if(!wanted.size)return [];
-  const seen=new Set();
+  // A map also detects contradictory GTFS-RT entries instead of silently
+  // taking the first record and producing a possibly false ETA.
+  const seen=new Map();
   // Avoid starvation when a stop is served by many routes: the first
   // 250 updates in a feed may all belong to one busy route. Collect valid
   // observations by requested route and distribute the response fairly.
-  const groups=new Map([...wanted].sort().map(route=>[route,[]]));
+  const groups=new Map([...wanted].sort().map(route=>[route,new Map()]));
   for(const update of decoded.updates){
     const trip=update.trip||{};
     if(!wanted.has(String(trip.routeId||''))||
@@ -93,24 +95,51 @@ export function officialTripDelays(decoded,requestedRoutes,nowSeconds=Math.floor
     if(!Number.isSafeInteger(time)||time<nowSeconds-120||time>nowSeconds+60)continue;
     for(const stop of update.stopTimeUpdate||[]){
       if(!/^[0-9]{1,20}$/.test(String(stop.stopId||''))||
-         !Number.isSafeInteger(stop.stopSequence)||stop.stopSequence<0||
-         (stop.scheduleRelationship!==undefined&&stop.scheduleRelationship!==0))
-         continue;
+         !Number.isSafeInteger(stop.stopSequence)||stop.stopSequence<0)continue;
+      const relationship=stop.scheduleRelationship??0;
+      if(relationship!==0&&relationship!==1&&relationship!==2)continue;
+      // GTFS-RT SKIPPED is local to the skipped stop. NO_DATA terminates
+      // propagation until another stop provides a new prediction.
+      // If an absolute event is provided, time overrides delay. The browser
+      // already handles that time directly at the affected stop; without the
+      // scheduled time of this upstream stop we must not propagate its
+      // conflicting relative delay to downstream stops.
+      const absolute=Number.isSafeInteger(stop.arrival?.time)||
+        Number.isSafeInteger(stop.departure?.time);
       const delay=Number.isSafeInteger(stop.arrival?.delay)?stop.arrival.delay:
         Number.isSafeInteger(stop.departure?.delay)?stop.departure.delay:null;
-      if(delay===null||delay< -7200||delay>7200)continue;
-      const key=trip.tripId+'|'+trip.startDate+'|'+stop.stopSequence;
-      if(seen.has(key))continue;
-      seen.add(key);
-      groups.get(String(trip.routeId)).push({
+      const kind=relationship===1?'SKIPPED':
+        relationship===2||absolute?'NO_DATA':'DELAY';
+      if(kind==='DELAY'&&(delay===null||delay< -7200||delay>7200))
+        continue;
+      const key=trip.tripId+'|'+trip.routeId+'|'+trip.startDate+'|'+
+        trip.startTime+'|'+stop.stopSequence;
+      const record={
         routeId:String(trip.routeId),tripId:String(trip.tripId),
         startDate:String(trip.startDate),startTime:String(trip.startTime),
         observedStopId:String(stop.stopId),observedStopSequence:stop.stopSequence,
-        delaySeconds:delay,lastFeedUpdateAt:new Date(time*1000).toISOString()
-      });
+        ...(kind==='DELAY'?{delaySeconds:delay}:{kind}),
+        lastFeedUpdateAt:new Date(time*1000).toISOString()
+      };
+      if(seen.has(key)){
+        const previous=seen.get(key);
+        if(previous.kind==='NO_DATA')continue;
+        if(previous.observedStopId!==record.observedStopId||
+           previous.kind!==record.kind||
+           previous.delaySeconds!==record.delaySeconds){
+          // Conflicting source records: terminate propagation, never guess.
+          const blocked={...record,kind:'NO_DATA'};
+          delete blocked.delaySeconds;
+          groups.get(String(trip.routeId)).set(key,blocked);
+          seen.set(key,blocked);
+        }
+        continue;
+      }
+      seen.set(key,record);
+      groups.get(String(trip.routeId)).set(key,record);
     }
   }
-  const out=[],ordered=[...groups.values()],limit=250;
+  const out=[],ordered=[...groups.values()].map(group=>[...group.values()]),limit=250;
   for(let depth=0;out.length<limit;depth++){
     let added=false;
     for(const group of ordered){
