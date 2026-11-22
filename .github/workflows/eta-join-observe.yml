@@ -1,0 +1,55 @@
+name: SUMOB GTFS-RT - diagnostico rapido de compatibilidade
+on:
+  push:
+    branches:
+      - feat/eta-tripupdates-sumob-20261122
+    paths:
+      - scripts/qa-live-eta-join.mjs
+      - .github/workflows/eta-join-observe.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: eta-join-observe-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  observe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Baixar catalogo oficial validado existente, sem refazer o GTFS
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/externo"
+          gh run download 45076776184 -R uaibrain-lab/onibusexternobh -n externo-hub-v1-gps-mini-onibus -D "$RUNNER_TEMP/externo"
+          test -s "$RUNNER_TEMP/externo/catalog/rt-trips/index.json"
+          test -s "$RUNNER_TEMP/externo/catalog/rt-trips/00.json.gz"
+          echo "CATALOGO_GTFS_OFICIAL_REUTILIZADO"
+      - name: Verificar campos de compatibilidade do feed atual sem dados identificáveis
+        continue-on-error: true
+        env:
+          CATALOG: ${{ runner.temp }}/externo/catalog
+        shell: bash
+        run: |
+          set -uo pipefail
+          node scripts/qa-live-eta-join.mjs "$CATALOG" --observe-only
+          if test -s sumob-eta-join-qa.json; then
+            echo '### SUMOB GTFS-RT: contagens agregadas e correspondencia' >> "$GITHUB_STEP_SUMMARY"
+            cat sumob-eta-join-qa.json >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Anexar somente diagnostico agregado
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sumob-eta-join-observe
+          path: sumob-eta-join-qa.json
+          if-no-files-found: ignore
+          retention-days: 3
