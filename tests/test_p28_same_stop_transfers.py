@@ -132,6 +132,21 @@ class SameStopTransferAuditTests(unittest.TestCase):
                                "21:45",2,2,30,"ORIGIN","DESTINATION")
                 self.assertEqual(r["originDestinationConstrainedPairs"],0)
 
+    def test_nonchronological_trip_does_not_create_false_transfer(self):
+        with tempfile.TemporaryDirectory() as root:
+            setup(root)
+            shard=Path(root)/"routing"/(ROUTES["9106"]+".json.gz")
+            with gzip.open(shard,"rt",encoding="utf-8") as stream:
+                trips=json.load(stream)
+            # First trip arrives at SHARED before its origin departure.
+            trips[0][3][0][1]=trips[0][3][0][2]=22*3600+11*60
+            with gzip.open(shard,"wt",encoding="utf-8") as stream:
+                json.dump(trips,stream)
+            result=module.audit(Path(root),"9106","5106",
+                                dt.date(2026,11,17),"22:00",2)
+            self.assertEqual(result["timedTransferPairs"],0)
+            self.assertFalse(result["endToEndJourneyVerified"])
+
     def test_24h_plus_times_use_previous_service_day(self):
         with tempfile.TemporaryDirectory() as root:
             setup(root)
