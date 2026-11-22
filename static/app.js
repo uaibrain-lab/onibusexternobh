@@ -470,6 +470,8 @@ function syncSheetAccessibility(){
 function openSheet(full=false){const sheet=$('sheet');sheet.classList.remove('peek');sheet.classList.toggle('full',!!full);$('sheet-toggle').setAttribute('aria-expanded','true');$('grab').setAttribute('aria-expanded','true');syncSheetAccessibility()}
 function closeSheet(){if($('body').contains(document.activeElement))$('sheet-toggle').focus();const sheet=$('sheet');sheet.classList.add('peek');sheet.classList.remove('full');$('sheet-toggle').setAttribute('aria-expanded','false');$('grab').setAttribute('aria-expanded','false');syncSheetAccessibility()}
 function switchTab(tab,open=false){
+  // V1 municipal: retain planner code for later, but never expose its tab.
+  if(tab==='rotas')tab='pontos';
   // Leaving a line restores exactly the earlier map and point context.
   if(activeTab==='linhas'&&tab!=='linhas'&&lineMapSession)
     restoreLineMapSession();
