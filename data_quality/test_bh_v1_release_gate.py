@@ -1,5 +1,8 @@
 """Small synthetic-only fixtures for V1 release gate; no fictional public departures."""
 import json
+import gzip
+
+from data_quality.static_arrivals_reference import _bucket_id
 from pathlib import Path
 import tempfile
 import unittest
@@ -76,6 +79,38 @@ class BhV1GateTests(unittest.TestCase):
         self.assertEqual(rep['status'], 'pass')
         self.assertIn('stops_without_scheduled_arrivals:1', rep['warnings'])
         self.assertTrue(rep['scheduledNotRealtime'])
+
+    def sample_arrivals(self):
+        root = self.root / 'arrivals'
+        root.mkdir(exist_ok=True)
+        calendar = self.docs['timetable-calendar.json']
+        (root / 'calendar.json').write_text(json.dumps(calendar), encoding='utf-8')
+        sizes = {}
+        for i in range(256):
+            key = f'{i:02x}'
+            group = {sid: [['TEST', 'WK', 'Synthetic', [600, 900]]]
+                     for sid in ('S1','S2') if _bucket_id(sid) == key}
+            blob = gzip.compress(json.dumps(group).encode('utf-8'), mtime=0)
+            name = key + '.json.gz'
+            (root / name).write_bytes(blob)
+            sizes[name] = len(blob)
+        idx = {'schema': 1, 'buckets': 256, 'version': 'synthetic-1',
+               'validThrough': '20261130', 'stopCount': 2, 'sizes': sizes}
+        path = root / 'index.json'
+        path.write_text(json.dumps(idx), encoding='utf-8')
+        return path
+
+    def test_package_with_all_shards_passes_release_gate(self):
+        path = self.sample_arrivals()
+        result = self.gate(arrivals_index=path, require_arrivals=True)
+        self.assertEqual(result['errors'], [])
+        self.assertEqual(result['arrivalsAudit']['filesChecked'], 256)
+
+    def test_package_with_missing_shard_blocks_release_gate(self):
+        path = self.sample_arrivals()
+        (path.parent / '00.json.gz').unlink()
+        result = self.gate(arrivals_index=path, require_arrivals=True)
+        self.assertIn('static_arrivals_bucket_unreadable', result['errors'])
 
     def test_bad_source_checksum_blocks(self):
         (self.root/'source-gtfs.sha256').write_text('bad')

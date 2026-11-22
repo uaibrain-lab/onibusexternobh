@@ -104,12 +104,12 @@ def audit(catalog, service_date, arrivals_index=None, require_arrivals=False):
     warnings.append("source_checksum_does_not_prove_derived_file_identity")
     if require_arrivals and arrivals_index is None:
         errors.append("static_arrivals_index_required")
+    arrival_report = None
     if arrivals_index is not None:
-        index = json.loads(Path(arrivals_index).read_text(encoding="utf-8"))
-        if (index.get("version") != version or index.get("validThrough") != manifest.get("feedEndDate") or
-                index.get("stopCount") != timed_stops or index.get("buckets") != 256 or
-                len(index.get("sizes", {})) != 256):
-            errors.append("static_arrivals_index_incompatible")
+        from data_quality.static_arrivals_reference import audit_arrivals
+        arrival_report = audit_arrivals(arrivals_index, root, timed_stops, version,
+                                        manifest.get("feedEndDate"))
+        errors.extend(arrival_report["errors"])
     line_ids = set()
     station_ids = set()
     for line in metro.get("lines", []):
@@ -139,6 +139,7 @@ def audit(catalog, service_date, arrivals_index=None, require_arrivals=False):
                        "activeServices": len(active), "metroLines": len(line_ids), "metroStations": len(station_ids)},
             "errors": sorted(set(errors)), "warnings": sorted(set(warnings)),
             "scheduledNotRealtime": True, "routesAndRmbhInScope": False,
+            "arrivalsAudit": arrival_report,
             "sourceSha256": digest_path.read_text(encoding="utf-8").strip() if digest_path.is_file() else None}
 
 

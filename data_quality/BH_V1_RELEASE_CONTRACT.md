@@ -30,3 +30,13 @@ Um detalhe a corrigir com o agente principal na etapa de empacotamento: o `manif
 5. Somente após homologação, pedir autorização separada para merge/deploy no Hub UFMG; sem qualquer modificação de `main` nesta branch.
 
 Os testes do gate usam apenas fixtures sintéticas e nenhum horário fictício é divulgado como oficial.
+
+## Gate de blobs estáticos: verificar os 256 arquivos de verdade
+
+A validação V1 **não aceita mais só o índice** `arrivals/index.json`: quando `--require-arrivals` e `--arrivals-index` são passados, `bh_v1_release_gate` invoca `static_arrivals_reference.audit_arrivals` para abrir e conferir **todos** os 256 arquivos `00.json.gz` a `ff.json.gz`. Essa checagem é somente leitura e não mistura datasets, UI ou motor de roteamento.
+
+Invariantes bloqueantes: esquema/versão/validade do índice, nomes e tamanhos exatos dos buckets; presença e integridade do gzip, limite de descompressão, distribuição por hash de stop_id, cobertura dos pontos com tabela, existência dos stops/linhas/serviços referenciados, array de horários ordenado, numérico e inferior a 48 horas desde a meia-noite do **dia de serviço**; igualdade do calendário estático com o calendário do catálogo. `arrivalsAudit` informa arquivos, pontos, grupos e bytes efetivamente conferidos. Não há inferência de ETA, duração de viagem ou conversão de data operacional para relógio do passageiro.
+
+O contrato **não** comprova que os 256 buckets vieram do ZIP identificado por `source-gtfs.sha256`, nem que o GTFS continua atualizado, nem substitui testes HTTP/browser e comparação com a origem oficial. O agente principal deve integrar o comando somente depois do build concluído e antes de autorizar a promoção/publicação, com fail-closed em qualquer erro. Se o validador informar `blocked`, **não publicar** o pacote. Preservar a aba Rotas apenas como código inativo para V2, sem depender de OSM/RMBH/GPS na V1.
+
+Testes locais desta ampliação: `python -m unittest discover -s data_quality -p 'test_*.py' -v` em checkout de testes contendo 24 casos (13 de gate + 11 de buckets) e `python -m compileall -q data_quality` — ambos passaram em Python 3.13. Os testes HTTP reais e o build estático completo **não foram executados nesta rodada**.
