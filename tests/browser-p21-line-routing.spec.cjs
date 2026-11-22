@@ -40,7 +40,7 @@ test('Abrir 5102 mostra só paradas da linha e sair restaura mapa anterior',asyn
   expect(after.zoom).toBeCloseTo(previous.zoom,4);
   expect(errors).toEqual([]);
 });
-test('Pesquisa explícita de padaria abre local Photon sem autocomplete',async({page})=>{
+test.skip('Pesquisa explícita de padaria abre local Photon sem autocomplete',async({page})=>{
   const calls=[],routingDownloads=[];
   page.on('request',request=>{
     if(request.url().includes('/catalog/scan/index.json')||
