@@ -64,3 +64,46 @@ export function officialStopPredictions(decoded,stopId,nowSeconds=Math.floor(Dat
     a.routeId.localeCompare(b.routeId)||a.tripId.localeCompare(b.tripId));
   return out.slice(0,MAX_ITEMS);
 }
+
+/**
+ * Raw official trip delays, NOT yet passenger arrival times.
+ * The browser must match trip_id + route_id + service date + start_time
+ * and stop_sequence against the EXACT static GTFS trip before projecting.
+ */
+export function officialTripDelays(decoded,requestedRoutes,nowSeconds=Math.floor(Date.now()/1000)){
+  if(!decoded||!Array.isArray(decoded.updates)||!Array.isArray(requestedRoutes)||
+     requestedRoutes.length>25||!Number.isSafeInteger(nowSeconds)||
+     requestedRoutes.some(x=>!/^[A-Za-z0-9_.:-]{1,70}$/.test(String(x))))
+     throw Error('ETA_INVALID_INPUT');
+  const wanted=new Set(requestedRoutes.map(String));
+  if(!wanted.size)return [];
+  const out=[],seen=new Set();
+  for(const update of decoded.updates){
+    const trip=update.trip||{};
+    if(!wanted.has(String(trip.routeId||''))||
+       !/^[A-Za-z0-9_.:-]{1,90}$/.test(String(trip.tripId||''))||
+       !validDate(String(trip.startDate||''))||
+       !/^\d{1,3}:[0-5]\d:[0-5]\d$/.test(String(trip.startTime||''))||
+       (trip.scheduleRelationship!==undefined&&trip.scheduleRelationship!==0))continue;
+    const time=update.timestamp===undefined?decoded.feedTimestamp:update.timestamp;
+    if(!Number.isSafeInteger(time)||time<nowSeconds-120||time>nowSeconds+60)continue;
+    for(const stop of update.stopTimeUpdate||[]){
+      if(!/^[0-9]{1,20}$/.test(String(stop.stopId||''))||
+         !Number.isSafeInteger(stop.stopSequence)||stop.stopSequence<0||
+         (stop.scheduleRelationship!==undefined&&stop.scheduleRelationship!==0))
+         continue;
+      const delay=Number.isSafeInteger(stop.arrival?.delay)?stop.arrival.delay:
+        Number.isSafeInteger(stop.departure?.delay)?stop.departure.delay:null;
+      if(delay===null||delay< -7200||delay>7200)continue;
+      const key=trip.tripId+'|'+trip.startDate+'|'+stop.stopSequence;
+      if(seen.has(key))continue;
+      seen.add(key);
+      out.push({routeId:String(trip.routeId),tripId:String(trip.tripId),
+        startDate:String(trip.startDate),startTime:String(trip.startTime),
+        observedStopId:String(stop.stopId),observedStopSequence:stop.stopSequence,
+        delaySeconds:delay,lastFeedUpdateAt:new Date(time*1000).toISOString()});
+      if(out.length>=250)return out;
+    }
+  }
+  return out;
+}
