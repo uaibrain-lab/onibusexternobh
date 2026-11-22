@@ -11,6 +11,51 @@ from pathlib import Path
 
 LIMIT=50*1024*1024
 
+def fix_clean_urls_assets(root):
+    """Keep /externo assets working when Firebase cleanUrls removes trailing /.
+
+    A document at /externo (no slash) normally resolves ./style.css to
+    /style.css, while its HTML/CSS/JS live under /externo/. An explicit base
+    fixes HTML references; JS that resolves via location.href must use the
+    document base as well. Only generated V1 artifacts are edited.
+    """
+    root=Path(root)
+    htmlfile=root/'index.html'
+    html=htmlfile.read_text(encoding='utf8')
+    marker='<base href="/externo/">'
+    if html.count('<head>')!=1 or marker in html:
+        raise ValueError('Unexpected Hub V1 index head/base')
+    if html.count('href="./style.css"')!=1 or html.count('href="./hub-parity.css"')!=1:
+        raise ValueError('Hub V1 CSS source schema changed')
+    htmlfile.write_text(html.replace('<head>','<head>\n'+marker,1),encoding='utf8')
+
+    replacements={
+      'static-bus.js':[
+        ("new URL('./catalog/',location.href)",
+         "new URL('./catalog/',document.baseURI)")],
+      'static-arrivals.js':[
+        ("new URL('./catalog/arrivals/',location.href)",
+         "new URL('./catalog/arrivals/',document.baseURI)")],
+      'live-gps.js':[
+        ("new URL('./',location.href)",
+         "new URL('./',document.baseURI)")],
+      'app.js':[
+        ("new URL('./catalog/scan/',location.href)",
+         "new URL('./catalog/scan/',document.baseURI)"),
+        ("new URL('./route-worker.js',location.href)",
+         "new URL('./route-worker.js',document.baseURI)"),
+        ("navigator.serviceWorker.register('./service-worker.js',{scope:'./'})",
+         "navigator.serviceWorker.register('/externo/service-worker.js',{scope:'/externo/'})")]
+    }
+    for filename,pairs in replacements.items():
+        file=root/filename
+        content=file.read_text(encoding='utf8')
+        for before,after in pairs:
+            if content.count(before)!=1:
+                raise ValueError(f'Unrecognized V1 relative asset in {filename}: {before}')
+            content=content.replace(before,after,1)
+        file.write_text(content,encoding='utf8')
+
 def prepare(directory):
     root=Path(directory)
     cat=root/'catalog'
@@ -48,6 +93,7 @@ def prepare(directory):
         if (not f.is_file() or not isinstance(sizes.get(name),int) or
                 f.stat().st_size!=sizes[name]):
             raise ValueError('Arrival bucket missing or wrong size: '+name)
+    fix_clean_urls_assets(root)
     # Scan indexes are REQUIRED to build the existing static bundle.
     # Remove their 116 MB only AFTER generation, since routes are V2.
     for path in (cat/'scan',cat/'walk'):
