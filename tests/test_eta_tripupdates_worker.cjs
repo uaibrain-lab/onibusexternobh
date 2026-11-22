@@ -8,12 +8,15 @@ function v(num){let n=BigInt(num);const out=[];while(n>127n){out.push(Number((n&
 function f(n,p){return [...v(n*8+2),...v(p.length),...p];}
 function u(n,value){return [...v(n*8),...v(value)];}
 function s(n,text){return f(n,[...Buffer.from(text)]);}
-function wire({stop='14791950',route='5102',at=NOW+240,tripRelationship,stopRelationship,old=false}={}){
+function wire({stop='14791950',route='5102',at=NOW+240,tripRelationship,stopRelationship,
+  old=false,withoutTimestamp=false,withoutSequence=false,duplicateStop=false}={}){
   const trip=[...s(1,'TRIP-5102-A'),...s(3,'20261119'),...s(5,route),
     ...(tripRelationship===undefined?[]:u(4,tripRelationship))];
-  const stopInfo=[...u(1,12),...f(2,u(2,at)),...s(4,stop),
+  const stopInfo=[...(withoutSequence?[]:u(1,12)),...f(2,u(2,at)),...s(4,stop),
     ...(stopRelationship===undefined?[]:u(5,stopRelationship))];
-  const update=[...f(1,trip),...f(2,stopInfo),...u(4,old?NOW-130:NOW-10)];
+  const update=[...f(1,trip),...f(2,stopInfo),
+    ...(duplicateStop?f(2,stopInfo):[]),
+    ...(withoutTimestamp?[]:u(4,old?NOW-130:NOW-10))];
   const entity=[...s(1,'e-1'),...f(3,update)];
   const header=[...s(1,'2.0'),...u(3,NOW)];
   return Uint8Array.from([...f(1,header),...f(2,entity)]);
@@ -94,4 +97,38 @@ test('seleção da fonte descarta registros duplos e horários sem stop_id',asyn
   const all=officialStopPredictions(decoded,'14791950',NOW);
   assert.equal(all.length,1);
   assert.equal(all[0].at,new Date((NOW+150)*1000).toISOString());
+});
+
+test('GTFS-RT aceita carimbo individual e sequência opcionais só em casos inequívocos',async()=>{
+  const {handleGpsRequest}=await worker;
+  const samples=[
+    {input:wire({withoutTimestamp:true,withoutSequence:true}),items:1,source:'feed'},
+    {input:wire({withoutSequence:true}),items:1,source:'trip'},
+    {input:wire({withoutSequence:true,duplicateStop:true}),items:0},
+    {input:wire({withoutTimestamp:true,old:true}),items:1,source:'feed'},
+    {input:wire({old:true}),items:0}
+  ];
+  for(const sample of samples){
+    const response=await handleGpsRequest(req('?stop=14791950'),{
+      now:NOW*1000,cache:null,fetchFn:async()=>new Response(sample.input)});
+    assert.equal(response.status,200);
+    const data=await response.json();
+    assert.equal(data.items.length,sample.items);
+    if(sample.items){
+      assert.equal(data.items[0].freshnessSource,sample.source);
+      if(sample.source==='feed')
+        assert.equal(data.items[0].lastFeedUpdateAt,new Date(NOW*1000).toISOString());
+      if(sample.input===samples[0].input)
+        assert.equal('stopSequence' in data.items[0],false);
+    }
+  }
+});
+test('o cabeçalho vencido não pode legitimar atualização sem timestamp',async()=>{
+  const {handleGpsRequest}=await worker;
+  const input=wire({withoutTimestamp:true});
+  // Feed header NOW is 3 minutes old even if a data update omitted its timestamp.
+  const response=await handleGpsRequest(req('?stop=14791950'),{
+    now:(NOW+190)*1000,cache:null,fetchFn:async()=>new Response(input)});
+  assert.equal(response.status,503);
+  assert.equal((await response.json()).reason,'FEED_INVALID_OR_STALE');
 });
